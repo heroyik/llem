@@ -236,8 +236,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) { return; }
         const { ollamaBase, defaultModel } = getConfig();
         try {
-            const res = await axios.get(`${ollamaBase}/api/tags`);
-            const models: string[] = res.data.models.map((m: any) => m.name);
+            const res = await axios.get(`${ollamaBase}/api/tags`, { timeout: 3000 });
+            let models: string[] = res.data.models.map((m: any) => m.name);
+            if (models.length === 0) {
+                models = [defaultModel];
+            } else if (!models.includes(defaultModel)) {
+                models.unshift(defaultModel);
+            }
             this._view.webview.postMessage({ type: 'modelsList', value: models });
         } catch {
             this._view.webview.postMessage({ type: 'modelsList', value: [defaultModel] });
