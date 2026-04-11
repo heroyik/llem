@@ -652,7 +652,7 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'injectPrompt':input.value=msg.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';send();break;
 } });
 } catch(err) {
-  document.body.innerHTML = '<div style="color:#ff4444;padding:20px;background:#111;height:100%;font-size:14px;overflow:auto;"><h2>⚠️ WEBVIEW JS CRASH</h2><pre>' + err.name + ': ' + err.message + '\n' + err.stack + '</pre></div>';
+  document.body.innerHTML = '<div style="color:#ff4444;padding:20px;background:#111;height:100%;font-size:14px;overflow:auto;"><h2>⚠️ WEBVIEW JS CRASH</h2><pre>' + err.name + ': ' + err.message + '\\n' + err.stack + '</pre></div>';
 }
 </script></body></html>`;
     }
