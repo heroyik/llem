@@ -596,13 +596,7 @@ textarea::placeholder{color:var(--text-dim)}
 <div class="welcome-logo">\u2726</div>
 <div class="welcome-title">Connect AI LAB</div>
 <div class="welcome-sub">100% \ub85c\uceec \u00b7 100% \uc624\ud504\ub77c\uc778 \u00b7 100% \ubb34\ub8cc<br>\ud504\ub85c\uc81d\ud2b8\ub97c \uc774\ud574\ud558\uace0, \ucf54\ub4dc\ub97c \uc791\uc131\ud558\uace0, \uc2e4\ud589\ud569\ub2c8\ub2e4.</div>
-<div class="welcome-features"><div class="wf"><span class="wf-icon">\ud83d\udcc1</span> \ud30c\uc77c \uc0dd\uc131</div><div class="wf"><span class="wf-icon">\u270f\ufe0f</span> \ucf54\ub4dc \ud3b8\uc9d1</div><div class="wf"><span class="wf-icon">\ud83d\udda5\ufe0f</span> \ud130\ubbf8\ub110</div><div class="wf"><span class="wf-icon">\ud83d\udd0d</span> \ubd84\uc11d</div></div>
-<div class="quick-actions">
-<button class="qa-btn" data-prompt="\uac04\ub2e8\ud55c \ud3ec\ud2b8\ud3f4\ub9ac\uc624 \uc6f9\uc0ac\uc774\ud2b8\ub97c \ub9cc\ub4e4\uc5b4\uc918">\ud83c\udf10 \uc6f9\uc0ac\uc774\ud2b8 \uc0dd\uc131</button>
-<button class="qa-btn" data-prompt="Express API \uc11c\ubc84\ub97c \ub9cc\ub4e4\uc5b4\uc918">\u26a1 API \uc11c\ubc84</button>
-<button class="qa-btn" data-prompt="\uc774 \ud504\ub85c\uc81d\ud2b8\uc758 \uad6c\uc870\ub97c \ubd84\uc11d\ud574\uc918">\ud83d\udd0d \ud504\ub85c\uc81d\ud2b8 \ubd84\uc11d</button>
-<button class="qa-btn" data-prompt="README.md\ub97c \uc791\uc131\ud574\uc918">\ud83d\udcdd README</button>
-</div></div></div>
+</div></div>
 <div class="input-wrap"><div class="input-box">
 <textarea id="input" rows="1" placeholder="\ubb34\uc5c7\uc744 \ub9cc\ub4e4\uc5b4 \ub4dc\ub9b4\uae4c\uc694?"></textarea>
 <div class="input-footer"><span class="input-hint">Enter \uc804\uc1a1 \u00b7 Shift+Enter \uc904\ubc14\uafc8</span>
