@@ -503,14 +503,16 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // ============================================================
     // Webview HTML — Premium UI v2
     // ============================================================
+
+    // ============================================================
+    // Webview HTML — Premium UI v2 (Zero External Dependencies)
+    // ============================================================
     private _getHtml(): string {
         return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
 <title>Connect AI LAB</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
   --bg:#111113;--bg2:#18181b;--surface:#1e1e22;--surface2:#27272b;
@@ -520,7 +522,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
   --input-bg:#1a1a1e;--code-bg:#0c0c0e;
   --green:#34d399;--yellow:#fbbf24;--cyan:#22d3ee;--red:#fb7185;
 }
-html,body{height:100%;font-family:'Inter',-apple-system,system-ui,sans-serif;font-size:13px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:13px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
 .header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:rgba(17,17,19,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);flex-shrink:0;position:relative;z-index:10}
 .header::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent);opacity:.3}
 .header-left{display:flex;align-items:center;gap:10px}
@@ -540,7 +542,7 @@ select:hover,select:focus{border-color:var(--accent)}
 .av-user{background:var(--surface2);color:var(--text)}.av-ai{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 0 8px rgba(129,140,248,.2)}
 .msg-body{padding-left:30px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;font-size:13px}
 .msg-user .msg-body{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;margin-left:30px;color:var(--text-bright)}
-.msg-body pre{background:var(--code-bg);border:1px solid var(--border2);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.55}
+.msg-body pre{background:var(--code-bg);border:1px solid var(--border2);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.55;color:#adbac7}
 .msg-body code{font-family:'SF Mono','Fira Code','Cascadia Code','Menlo',monospace;font-size:12px}
 .msg-body :not(pre)>code{background:rgba(129,140,248,.1);color:var(--accent);padding:1px 6px;border-radius:4px;border:1px solid rgba(129,140,248,.15)}
 .code-wrap{position:relative}
@@ -549,9 +551,7 @@ select:hover,select:focus{border-color:var(--accent)}
 .code-wrap:hover .copy-btn{opacity:1}.copy-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .copy-btn.copied{background:var(--green);color:#fff;border-color:var(--green);opacity:1}
 .file-badge{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px 8px 0 0;border-bottom:none;padding:8px 14px;font-size:11px;font-weight:600;color:var(--yellow);display:flex;align-items:center;gap:6px}
-.file-badge+.code-wrap pre{border-top-left-radius:0;border-top-right-radius:0;margin-top:0}
 .edit-badge{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.2);border-radius:8px 8px 0 0;border-bottom:none;padding:8px 14px;font-size:11px;font-weight:600;color:var(--cyan);display:flex;align-items:center;gap:6px}
-.edit-badge+.code-wrap pre{border-top-left-radius:0;border-top-right-radius:0;margin-top:0}
 .cmd-badge{background:rgba(129,140,248,.06);border:1px solid rgba(129,140,248,.2);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:12px;color:var(--accent);font-family:'SF Mono','Menlo',monospace;display:flex;align-items:center;gap:8px}
 .agent-report{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);border-radius:8px;padding:12px 14px;margin-top:8px;font-size:12px;line-height:1.7}
 .msg-error .msg-body{color:var(--red)}
@@ -602,7 +602,6 @@ textarea::placeholder{color:var(--text-dim)}
 <textarea id="input" rows="1" placeholder="\ubb34\uc5c7\uc744 \ub9cc\ub4e4\uc5b4 \ub4dc\ub9b4\uae4c\uc694?"></textarea>
 <div class="input-footer"><span class="input-hint">Enter \uc804\uc1a1 \u00b7 Shift+Enter \uc904\ubc14\uafc8</span>
 <div class="input-btns"><button class="stop-btn" id="stopBtn">\u25a0</button><button class="send-btn" id="sendBtn">\u2191</button></div></div></div></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
 <script>
 const vscode=acquireVsCodeApi(),chat=document.getElementById('chat'),input=document.getElementById('input'),
 sendBtn=document.getElementById('sendBtn'),stopBtn=document.getElementById('stopBtn'),
@@ -617,8 +616,7 @@ function fmt(t){
   t=t.replace(/<create_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/create_file>/g,(_,p,c)=>'<div class="file-badge">\ud83d\udcc1 '+esc(p)+' \u2014 \uc790\ub3d9 \uc0dd\uc131\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');
   t=t.replace(/<edit_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/edit_file>/g,(_,p,c)=>'<div class="edit-badge">\u270f\ufe0f '+esc(p)+' \u2014 \ud3b8\uc9d1\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');
   t=t.replace(/<run_command>([\\s\\S]*?)<\\/run_command>/g,(_,c)=>'<div class="cmd-badge">\u25b6 '+esc(c)+'</div>');
-  t=t.replace(/---\\n\ud83d\udce6 \\*\\*\uc5d0\uc774\uc804\ud2b8 \uc791\uc5c5 \uacb0\uacfc\\*\\*\\n([\\s\\S]*?)$/,(_,c)=>'<div class="agent-report">\ud83d\udce6 <strong>\uc5d0\uc774\uc804\ud2b8 \uc791\uc5c5 \uacb0\uacfc</strong>\\n'+c+'</div>');
-  t=t.replace(/\`\`\`(\\w*)\\n([\\s\\S]*?)\`\`\`/g,(_,lang,c)=>{const l=lang||'code';return '<div class="code-wrap"><span class="code-lang">'+l+'</span><pre><code class="language-'+lang+'">'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'});
+  t=t.replace(/\`\`\`(\\w*)\\n([\\s\\S]*?)\`\`\`/g,(_,lang,c)=>{const l=lang||'code';return '<div class="code-wrap"><span class="code-lang">'+l+'</span><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'});
   t=t.replace(/\`([^\`]+)\`/g,(_,c)=>'<code>'+esc(c)+'</code>');
   t=t.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
   return t;
@@ -632,7 +630,6 @@ function addMsg(text,role){
   const body=document.createElement('div');body.className='msg-body';
   if(isUser){body.innerText=text}else{body.innerHTML=fmt(text)}
   el.appendChild(head);el.appendChild(body);chat.appendChild(el);chat.scrollTop=chat.scrollHeight;
-  el.querySelectorAll('pre code').forEach(b=>{try{hljs.highlightElement(b)}catch(e){}});
 }
 function showLoader(){loader=document.createElement('div');loader.className='msg';loader.innerHTML='<div class="msg-head"><div class="av av-ai">\u2726</div><span>Connect AI LAB</span><span class="msg-time">'+getTime()+'</span></div><div class="loading-wrap"><div class="loading-bar"></div><span class="loading-text">\uc0dd\uac01\ud558\ub294 \uc911...</span></div>';chat.appendChild(loader);chat.scrollTop=chat.scrollHeight}
 function hideLoader(){if(loader&&loader.parentNode)loader.parentNode.removeChild(loader);loader=null}
