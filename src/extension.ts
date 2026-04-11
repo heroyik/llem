@@ -506,6 +506,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _getHtml(): string {
         return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src data:;">
 <title>Connect AI LAB</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css">
 <style>
