@@ -1,31 +1,31 @@
-import * as vscode from 'vscode';
-import axios from 'axios';
-import * as fs from 'fs';
-import * as path from 'path';
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.activate = activate;
+exports.deactivate = deactivate;
+const vscode = require("vscode");
+const axios_1 = require("axios");
+const fs = require("fs");
+const path = require("path");
 // ============================================================
 // Connect AI LAB — Full Agentic Local AI for VS Code
 // 100% Offline · File Create · File Edit · Terminal · Multi-file Context
 // ============================================================
-
 // Settings are read from VS Code configuration (File > Preferences > Settings)
 function getConfig() {
     const cfg = vscode.workspace.getConfiguration('connectAiLab');
     return {
-        ollamaBase: cfg.get<string>('ollamaUrl', 'http://127.0.0.1:11434'),
-        defaultModel: cfg.get<string>('defaultModel', 'gemma4:e2b'),
-        maxTreeFiles: cfg.get<number>('maxContextFiles', 200),
-        timeout: cfg.get<number>('requestTimeout', 300) * 1000,
+        ollamaBase: cfg.get('ollamaUrl', 'http://127.0.0.1:11434'),
+        defaultModel: cfg.get('defaultModel', 'gemma4:e2b'),
+        maxTreeFiles: cfg.get('maxContextFiles', 200),
+        timeout: cfg.get('requestTimeout', 300) * 1000,
     };
 }
-
 const EXCLUDED_DIRS = new Set([
     'node_modules', '.git', '.vscode', 'out', 'dist', 'build',
     '.next', '.cache', '__pycache__', '.DS_Store', 'coverage',
     '.turbo', '.nuxt', '.output', 'vendor', 'target'
 ]);
 const MAX_CONTEXT_SIZE = 40_000; // chars
-
 const SYSTEM_PROMPT = `You are "Connect AI LAB", a premium agentic AI coding assistant running 100% offline on the user's machine.
 
 You have THREE powerful agent actions. Use them whenever appropriate:
@@ -52,101 +52,79 @@ RULES:
 4. For code that is just for explanation (not to be saved), use standard markdown code fences.
 5. Be concise, professional, and helpful.
 6. When editing files, the <find> text must EXACTLY match existing content in the file.`;
-
 // ============================================================
 // Extension Activation
 // ============================================================
-
-export function activate(context: vscode.ExtensionContext) {
-    vscode.window.showInformationMessage('🔥 Connect AI LAB V2 활성화 완료!');
-console.log('Connect AI LAB extension activated.');
-
+function activate(context) {
+    console.log('Connect AI LAB extension activated.');
     const provider = new SidebarChatProvider(context.extensionUri, context);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('connect-ai-lab-v2-view', provider, {
-            webviewOptions: { retainContextWhenHidden: true }
-        })
-    );
-
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('local-ai-chat-view', provider, {
+        webviewOptions: { retainContextWhenHidden: true }
+    }));
     // New Chat
-    context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.newChat', () => {
-            provider.resetChat();
-        })
-    );
-
+    context.subscriptions.push(vscode.commands.registerCommand('connect-ai-lab.newChat', () => {
+        provider.resetChat();
+    }));
     // Export Chat as Markdown
-    context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.exportChat', async () => {
-            await provider.exportChat();
-        })
-    );
-
+    context.subscriptions.push(vscode.commands.registerCommand('connect-ai-lab.exportChat', async () => {
+        await provider.exportChat();
+    }));
     // Focus Chat Input (Cmd+L)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.focusChat', () => {
-            provider.focusInput();
-        })
-    );
-
+    context.subscriptions.push(vscode.commands.registerCommand('connect-ai-lab.focusChat', () => {
+        provider.focusInput();
+    }));
     // Explain Selected Code (right-click menu)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.explainSelection', () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) { return; }
-            const selection = editor.document.getText(editor.selection);
-            if (selection.trim()) {
-                provider.sendPromptFromExtension(`이 코드를 분석하고 설명해줘:\n\`\`\`\n${selection}\n\`\`\``);
-            }
-        })
-    );
+    context.subscriptions.push(vscode.commands.registerCommand('connect-ai-lab.explainSelection', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+        const selection = editor.document.getText(editor.selection);
+        if (selection.trim()) {
+            provider.sendPromptFromExtension(`이 코드를 분석하고 설명해줘:\n\`\`\`\n${selection}\n\`\`\``);
+        }
+    }));
 }
-
-export function deactivate() {}
-
+function deactivate() { }
 // ============================================================
 // Sidebar Chat Provider
 // ============================================================
-
-class SidebarChatProvider implements vscode.WebviewViewProvider {
-    private _view?: vscode.WebviewView;
-    private _chatHistory: { role: string; content: string }[] = [];
-    private _terminal?: vscode.Terminal;
-    private _ctx: vscode.ExtensionContext;
-
+class SidebarChatProvider {
+    _extensionUri;
+    _view;
+    _chatHistory = [];
+    _terminal;
+    _ctx;
     // 대화 표시용 (system prompt 제외, 유저에게 보여줄 것만 저장)
-    private _displayMessages: { text: string; role: string }[] = [];
-
-    constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
+    _displayMessages = [];
+    constructor(_extensionUri, ctx) {
+        this._extensionUri = _extensionUri;
         this._ctx = ctx;
         this._restoreHistory();
     }
-
     /** 저장된 대화 기록 복원 */
-    private _restoreHistory() {
-        const saved = this._ctx.workspaceState.get<{ chat: any[]; display: any[] }>('chatState');
+    _restoreHistory() {
+        const saved = this._ctx.workspaceState.get('chatState');
         if (saved && saved.chat && saved.chat.length > 1) {
             this._chatHistory = saved.chat;
             this._displayMessages = saved.display || [];
-        } else {
+        }
+        else {
             this._initHistory();
         }
     }
-
     /** 대화 기록 영구 저장 (워크스페이스 단위) */
-    private _saveHistory() {
+    _saveHistory() {
         this._ctx.workspaceState.update('chatState', {
             chat: this._chatHistory,
             display: this._displayMessages
         });
     }
-
-    private _initHistory() {
+    _initHistory() {
         this._chatHistory = [{ role: 'system', content: SYSTEM_PROMPT }];
         this._displayMessages = [];
     }
-
-    public resetChat() {
+    resetChat() {
         this._initHistory();
         this._saveHistory();
         if (this._view) {
@@ -154,9 +132,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
         vscode.window.showInformationMessage('Connect AI LAB: 새 대화가 시작되었습니다.');
     }
-
     /** 대화를 Markdown 파일로 내보내기 */
-    public async exportChat() {
+    async exportChat() {
         if (this._displayMessages.length === 0) {
             vscode.window.showWarningMessage('내보낼 대화가 없습니다.');
             return;
@@ -175,17 +152,15 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             vscode.window.showInformationMessage(`대화가 ${path.basename(filePath)}로 저장되었습니다.`);
         }
     }
-
     /** 채팅 입력창에 포커스 (Cmd+L) */
-    public focusInput() {
+    focusInput() {
         if (this._view) {
             this._view.show?.(true);
             this._view.webview.postMessage({ type: 'focusInput' });
         }
     }
-
     /** 외부에서 프롬프트 전송 (예: 코드 선택 → 설명) */
-    public sendPromptFromExtension(prompt: string) {
+    sendPromptFromExtension(prompt) {
         if (this._view) {
             this._view.show?.(true);
             // 약간의 딜레이 후 전송 (뷰가 보이기를 기다림)
@@ -194,22 +169,16 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }, 300);
         }
     }
-
     // --------------------------------------------------------
     // Webview Lifecycle
     // --------------------------------------------------------
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken,
-    ) {
+    resolveWebviewView(webviewView, _context, _token) {
         this._view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [this._extensionUri],
         };
         webviewView.webview.html = this._getHtml();
-
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'prompt':
@@ -228,77 +197,90 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
         });
     }
-
     // --------------------------------------------------------
     // Fetch installed Ollama models
     // --------------------------------------------------------
-    private async _sendModels() {
-        if (!this._view) { return; }
+    async _sendModels() {
+        if (!this._view) {
+            return;
+        }
         const { ollamaBase, defaultModel } = getConfig();
         try {
-            const res = await axios.get(`${ollamaBase}/api/tags`);
-            const models: string[] = res.data.models.map((m: any) => m.name);
+            const res = await axios_1.default.get(`${ollamaBase}/api/tags`);
+            const models = res.data.models.map((m) => m.name);
             this._view.webview.postMessage({ type: 'modelsList', value: models });
-        } catch {
+        }
+        catch {
             this._view.webview.postMessage({ type: 'modelsList', value: [defaultModel] });
         }
     }
-
     /** 저장된 대화 메시지를 웹뷰에 다시 전송 (복원) */
-    private _restoreDisplayMessages() {
-        if (!this._view || this._displayMessages.length === 0) { return; }
+    _restoreDisplayMessages() {
+        if (!this._view || this._displayMessages.length === 0) {
+            return;
+        }
         this._view.webview.postMessage({
             type: 'restoreMessages',
             value: this._displayMessages
         });
     }
-
     // --------------------------------------------------------
     // Build workspace file tree + read key files
     // --------------------------------------------------------
-    private _getWorkspaceContext(): string {
+    _getWorkspaceContext() {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root) { return ''; }
-
+        if (!root) {
+            return '';
+        }
         // --- 1. File tree ---
-        const lines: string[] = [];
+        const lines = [];
         let count = 0;
-
-        const walk = (dir: string, prefix: string) => {
-            if (count >= getConfig().maxTreeFiles) { return; }
-            let entries: fs.Dirent[];
+        const walk = (dir, prefix) => {
+            if (count >= getConfig().maxTreeFiles) {
+                return;
+            }
+            let entries;
             try {
                 entries = fs.readdirSync(dir, { withFileTypes: true });
-            } catch { return; }
-
+            }
+            catch {
+                return;
+            }
             entries.sort((a, b) => {
-                if (a.isDirectory() && !b.isDirectory()) { return -1; }
-                if (!a.isDirectory() && b.isDirectory()) { return 1; }
+                if (a.isDirectory() && !b.isDirectory()) {
+                    return -1;
+                }
+                if (!a.isDirectory() && b.isDirectory()) {
+                    return 1;
+                }
                 return a.name.localeCompare(b.name);
             });
-
             for (const entry of entries) {
-                if (count >= getConfig().maxTreeFiles) { break; }
-                if (EXCLUDED_DIRS.has(entry.name)) { continue; }
-                if (entry.name.startsWith('.') && entry.isDirectory()) { continue; }
-
+                if (count >= getConfig().maxTreeFiles) {
+                    break;
+                }
+                if (EXCLUDED_DIRS.has(entry.name)) {
+                    continue;
+                }
+                if (entry.name.startsWith('.') && entry.isDirectory()) {
+                    continue;
+                }
                 if (entry.isDirectory()) {
                     lines.push(`${prefix}📁 ${entry.name}/`);
                     count++;
                     walk(path.join(dir, entry.name), prefix + '  ');
-                } else {
+                }
+                else {
                     lines.push(`${prefix}📄 ${entry.name}`);
                     count++;
                 }
             }
         };
         walk(root, '');
-
         let result = '';
         if (lines.length > 0) {
             result += `\n\n[프로젝트 파일 구조]\n${lines.join('\n')}`;
         }
-
         // --- 2. Auto-read key project files ---
         const keyFiles = [
             'package.json', 'tsconfig.json', 'vite.config.ts', 'vite.config.js',
@@ -309,9 +291,10 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         ];
         let totalRead = 0;
         const MAX_AUTO_READ = 15_000; // chars total
-
         for (const kf of keyFiles) {
-            if (totalRead >= MAX_AUTO_READ) { break; }
+            if (totalRead >= MAX_AUTO_READ) {
+                break;
+            }
             const abs = path.join(root, kf);
             if (fs.existsSync(abs)) {
                 try {
@@ -320,19 +303,19 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                         result += `\n\n[파일 내용: ${kf}]\n\`\`\`\n${content}\n\`\`\``;
                         totalRead += content.length;
                     }
-                } catch { /* skip */ }
+                }
+                catch { /* skip */ }
             }
         }
-
         return result;
     }
-
     // --------------------------------------------------------
     // Handle user prompt → Ollama → agent actions → response
     // --------------------------------------------------------
-    private async _handlePrompt(prompt: string, modelName: string) {
-        if (!this._view) { return; }
-
+    async _handlePrompt(prompt, modelName) {
+        if (!this._view) {
+            return;
+        }
         try {
             // 1. Context: active editor content
             const editor = vscode.window.activeTextEditor;
@@ -344,59 +327,49 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     contextBlock = `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
                 }
             }
-
             // 2. Context: workspace file tree + key file contents
             const workspaceCtx = this._getWorkspaceContext();
-
             // 3. Push user message
             this._chatHistory.push({
                 role: 'user',
                 content: prompt + contextBlock + workspaceCtx
             });
-
             // 저장용: 유저 메시지 기록 (프롬프트만, 컨텍스트 제외)
             this._displayMessages.push({ text: prompt, role: 'user' });
-
             // 4. Call Ollama
             const { ollamaBase, defaultModel, timeout } = getConfig();
-            const response = await axios.post(`${ollamaBase}/api/chat`, {
+            const response = await axios_1.default.post(`${ollamaBase}/api/chat`, {
                 model: modelName || defaultModel,
                 messages: this._chatHistory,
                 stream: false,
             }, { timeout });
-
-            const aiMessage: string = response.data.message.content;
+            const aiMessage = response.data.message.content;
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
-
             // 5. Execute agent actions
             const report = this._executeActions(aiMessage);
-
             // 6. Send to webview
             let output = aiMessage;
             if (report.length > 0) {
                 output += `\n\n---\n📦 **에이전트 작업 결과**\n${report.join('\n')}`;
             }
             this._view.webview.postMessage({ type: 'response', value: output });
-
             // 저장용: AI 응답 기록
             this._displayMessages.push({ text: output, role: 'ai' });
             this._saveHistory();
-
-        } catch (error: any) {
+        }
+        catch (error) {
             const errMsg = error.code === 'ECONNREFUSED'
                 ? '⚠️ Ollama 서버에 연결할 수 없습니다.\n터미널에서 `ollama serve`를 실행해주세요.'
                 : `⚠️ 오류: ${error.message}`;
             this._view.webview.postMessage({ type: 'error', value: errMsg });
         }
     }
-
     // --------------------------------------------------------
     // Execute ALL agent actions from AI response
     // --------------------------------------------------------
-    private _executeActions(aiMessage: string): string[] {
-        const report: string[] = [];
+    _executeActions(aiMessage) {
+        const report = [];
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
         if (!rootPath) {
             const hasActions = /<create_file|<edit_file|<run_command/.test(aiMessage);
             if (hasActions) {
@@ -404,12 +377,10 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
             return report;
         }
-
         // ACTION 1: Create files
         const createRegex = /<create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/g;
-        let match: RegExpExecArray | null;
+        let match;
         let firstCreatedFile = '';
-
         while ((match = createRegex.exec(aiMessage)) !== null) {
             const relPath = match[1].trim();
             const content = match[2].replace(/^\n/, ''); // remove leading newline only
@@ -421,57 +392,55 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
                 fs.writeFileSync(absPath, content, 'utf-8');
                 report.push(`✅ 생성: ${relPath}`);
-                if (!firstCreatedFile) { firstCreatedFile = absPath; }
-            } catch (err: any) {
+                if (!firstCreatedFile) {
+                    firstCreatedFile = absPath;
+                }
+            }
+            catch (err) {
                 report.push(`❌ 생성 실패: ${relPath} — ${err.message}`);
             }
         }
-
         // Open first created file
         if (firstCreatedFile) {
             vscode.window.showTextDocument(vscode.Uri.file(firstCreatedFile), { preview: false });
         }
-
         // ACTION 2: Edit files
         const editRegex = /<edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/g;
         while ((match = editRegex.exec(aiMessage)) !== null) {
             const relPath = match[1].trim();
             const body = match[2];
             const absPath = path.join(rootPath, relPath);
-
             if (!fs.existsSync(absPath)) {
                 report.push(`❌ 편집 실패: ${relPath} — 파일이 존재하지 않습니다.`);
                 continue;
             }
-
             try {
                 let fileContent = fs.readFileSync(absPath, 'utf-8');
                 const findReplaceRegex = /<find>([\s\S]*?)<\/find>\s*<replace>([\s\S]*?)<\/replace>/g;
-                let frMatch: RegExpExecArray | null;
+                let frMatch;
                 let editCount = 0;
-
                 while ((frMatch = findReplaceRegex.exec(body)) !== null) {
                     const findText = frMatch[1];
                     const replaceText = frMatch[2];
                     if (fileContent.includes(findText)) {
                         fileContent = fileContent.replace(findText, replaceText);
                         editCount++;
-                    } else {
+                    }
+                    else {
                         report.push(`⚠️ ${relPath}: 일치하는 텍스트를 찾지 못했습니다.`);
                     }
                 }
-
                 if (editCount > 0) {
                     fs.writeFileSync(absPath, fileContent, 'utf-8');
                     report.push(`✏️ 편집 완료: ${relPath} (${editCount}건 수정)`);
                     // Open edited file
                     vscode.window.showTextDocument(vscode.Uri.file(absPath), { preview: false });
                 }
-            } catch (err: any) {
+            }
+            catch (err) {
                 report.push(`❌ 편집 실패: ${relPath} — ${err.message}`);
             }
         }
-
         // ACTION 3: Run commands
         const cmdRegex = /<run_command>([\s\S]*?)<\/run_command>/g;
         while ((match = cmdRegex.exec(aiMessage)) !== null) {
@@ -486,29 +455,25 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 this._terminal.show();
                 this._terminal.sendText(cmd);
                 report.push(`🖥️ 실행: ${cmd}`);
-            } catch (err: any) {
+            }
+            catch (err) {
                 report.push(`❌ 명령 실패: ${cmd} — ${err.message}`);
             }
         }
-
         // Show notification
         const successCount = report.filter(r => r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🖥️')).length;
         if (successCount > 0) {
             vscode.window.showInformationMessage(`Connect AI LAB: ${successCount}개 에이전트 작업 완료!`);
         }
-
         return report;
     }
-
-
     // ============================================================
     // Webview HTML — Premium UI v2
     // ============================================================
-
     // ============================================================
     // Webview HTML — Premium UI v2 (Zero External Dependencies)
     // ============================================================
-    private _getHtml(): string {
+    _getHtml() {
         return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Connect AI LAB</title>
@@ -603,7 +568,6 @@ textarea::placeholder{color:var(--text-dim)}
 <div class="input-footer"><span class="input-hint">Enter \uc804\uc1a1 \u00b7 Shift+Enter \uc904\ubc14\uafc8</span>
 <div class="input-btns"><button class="stop-btn" id="stopBtn">\u25a0</button><button class="send-btn" id="sendBtn">\u2191</button></div></div></div></div>
 <script>
-try {
 const vscode=acquireVsCodeApi(),chat=document.getElementById('chat'),input=document.getElementById('input'),
 sendBtn=document.getElementById('sendBtn'),stopBtn=document.getElementById('stopBtn'),
 modelSel=document.getElementById('modelSel'),newChatBtn=document.getElementById('newChatBtn');
@@ -649,9 +613,7 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'focusInput':input.focus();break;
   case 'injectPrompt':input.value=msg.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';send();break;
 } });
-} catch(err) {
-  document.body.innerHTML = '<div style="color:#ff4444;padding:20px;background:#111;height:100%;font-size:14px;overflow:auto;"><h2>⚠️ WEBVIEW JS CRASH</h2><pre>' + err.name + ': ' + err.message + '\n' + err.stack + '</pre></div>';
-}
 </script></body></html>`;
     }
 }
+//# sourceMappingURL=extension.js.map
