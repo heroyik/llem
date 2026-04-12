@@ -604,12 +604,12 @@ textarea::placeholder{color:var(--text-dim)}
 @keyframes shimmer{0%{left:-40px}100%{left:120px}}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 </style></head><body>
-<div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI LAB</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
+<div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
 <div class="chat" id="chat">
 <div class="welcome">
 <div class="welcome-logo">\u2726</div>
-<div class="welcome-title">Connect AI LAB</div>
-<div class="welcome-sub">100% \ub85c\uceec \u00b7 100% \uc624\ud504\ub77c\uc778 \u00b7 100% \ubb34\ub8cc<br>\ud504\ub85c\uc81d\ud2b8\ub97c \uc774\ud574\ud558\uace0, \ucf54\ub4dc\ub97c \uc791\uc131\ud558\uace0, \uc2e4\ud589\ud569\ub2c8\ub2e4.</div>
+<div class="welcome-title">Connect AI</div>
+<div class="welcome-sub">보안 · 비용최적화 · 지식화<br>프로젝트를 이해하고, 코드를 작성하고, 실행합니다.</div>
 </div></div>
 <div class="input-wrap"><div class="input-box">
 <textarea id="input" rows="1" placeholder="\ubb34\uc5c7\uc744 \ub9cc\ub4e4\uc5b4 \ub4dc\ub9b4\uae4c\uc694?"></textarea>
@@ -627,12 +627,16 @@ input.addEventListener('input',()=>{input.style.height='auto';input.style.height
 function getTime(){return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}
 function esc(s){const d=document.createElement('div');d.innerText=s;return d.innerHTML}
 function fmt(t){
-  t=t.replace(new RegExp('<create_file\\\\s+path="([^"]+)">([\\\\s\\\\S]*?)<\\\\/create_file>', 'g'),(_,p,c)=>'<div class="file-badge">\uD83D\uDCC1 '+esc(p)+' \u2014 \uC790\uB3D9 \uC0DD\uC131\uB428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');
-  t=t.replace(new RegExp('<edit_file\\\\s+path="([^"]+)">([\\\\s\\\\S]*?)<\\\\/edit_file>', 'g'),(_,p,c)=>'<div class="edit-badge">\u270F\uFE0F '+esc(p)+' \u2014 \uD3B8\uC9D1\uB428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');
-  t=t.replace(new RegExp('<run_command>([\\\\s\\\\S]*?)<\\\\/run_command>', 'g'),(_,c)=>'<div class="cmd-badge">\u25B6 '+esc(c)+'</div>');
-  t=t.replace(new RegExp('\\\\x60\\\\x60\\\\x60(\\\\w*)\\\\n([\\\\s\\\\S]*?)\\\\x60\\\\x60\\\\x60', 'g'),(_,lang,c)=>{const l=lang||'code';return '<div class="code-wrap"><span class="code-lang">'+l+'</span><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'});
-  t=t.replace(new RegExp('\\\\x60([^\\\\x60]+)\\\\x60', 'g'),(_,c)=>'<code>'+esc(c)+'</code>');
+  const blocks = [];
+  function pushB(h){ blocks.push(h); return '__B' + (blocks.length-1) + '__'; }
+  t=t.replace(new RegExp('<create_file\\\\s+path="([^"]+)">([\\\\s\\\\S]*?)<\\\\/create_file>', 'g'),(_,p,c)=>pushB('<div class="file-badge">\uD83D\uDCC1 '+esc(p)+' \u2014 \uC790\uB3D9 \uC0DD\uC131\uB428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
+  t=t.replace(new RegExp('<edit_file\\\\s+path="([^"]+)">([\\\\s\\\\S]*?)<\\\\/edit_file>', 'g'),(_,p,c)=>pushB('<div class="edit-badge">\u270F\uFE0F '+esc(p)+' \u2014 \uD3B8\uC9D1\uB428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
+  t=t.replace(new RegExp('<run_command>([\\\\s\\\\S]*?)<\\\\/run_command>', 'g'),(_,c)=>pushB('<div class="cmd-badge">\u25B6 '+esc(c)+'</div>'));
+  t=t.replace(new RegExp('\\\\x60\\\\x60\\\\x60(\\\\w*)\\\\n([\\\\s\\\\S]*?)\\\\x60\\\\x60\\\\x60', 'g'),(_,lang,c)=>{const l=lang||'code';return pushB('<div class="code-wrap"><span class="code-lang">'+esc(l)+'</span><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');});
+  t=t.replace(new RegExp('\\\\x60([^\\\\x60]+)\\\\x60', 'g'),(_,c)=>pushB('<code>'+esc(c)+'</code>'));
+  t=esc(t);
   t=t.replace(new RegExp('\\\\*\\\\*([^*]+)\\\\*\\\\*', 'g'),'<strong>$1</strong>');
+  t=t.replace(new RegExp('__B(\\\\d+)__', 'g'), (_,i)=>blocks[i]);
   return t;
 }
 function copyCode(btn){const code=btn.parentElement.querySelector('code');if(!code)return;navigator.clipboard.writeText(code.innerText).then(()=>{btn.textContent='\u2713 Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1500)})}
@@ -640,12 +644,12 @@ function addMsg(text,role){
   const isUser=role==='user',isErr=role==='error';
   const el=document.createElement('div');el.className='msg'+(isUser?' msg-user':'')+(isErr?' msg-error':'');
   const head=document.createElement('div');head.className='msg-head';
-  head.innerHTML=(isUser?'<div class="av av-user">\ud83d\udc64</div><span>You</span>':'<div class="av av-ai">\u2726</div><span>Connect AI LAB</span>')+'<span class="msg-time">'+getTime()+'</span>';
+  head.innerHTML=(isUser?'<div class="av av-user">\ud83d\udc64</div><span>You</span>':'<div class="av av-ai">\u2726</div><span>Connect AI</span>')+'<span class="msg-time">'+getTime()+'</span>';
   const body=document.createElement('div');body.className='msg-body';
   if(isUser){body.innerText=text}else{body.innerHTML=fmt(text)}
   el.appendChild(head);el.appendChild(body);chat.appendChild(el);chat.scrollTop=chat.scrollHeight;
 }
-function showLoader(){loader=document.createElement('div');loader.className='msg';loader.innerHTML='<div class="msg-head"><div class="av av-ai">\u2726</div><span>Connect AI LAB</span><span class="msg-time">'+getTime()+'</span></div><div class="loading-wrap"><div class="loading-bar"></div><span class="loading-text">\uc0dd\uac01\ud558\ub294 \uc911...</span></div>';chat.appendChild(loader);chat.scrollTop=chat.scrollHeight}
+function showLoader(){loader=document.createElement('div');loader.className='msg';loader.innerHTML='<div class="msg-head"><div class="av av-ai">\u2726</div><span>Connect AI</span><span class="msg-time">'+getTime()+'</span></div><div class="loading-wrap"><div class="loading-bar"></div><span class="loading-text">\uc0dd\uac01\ud558\ub294 \uc911...</span></div>';chat.appendChild(loader);chat.scrollTop=chat.scrollHeight}
 function hideLoader(){if(loader&&loader.parentNode)loader.parentNode.removeChild(loader);loader=null}
 function setSending(v){sending=v;sendBtn.disabled=v;stopBtn.classList.toggle('visible',v);input.disabled=v;if(!v)input.focus()}
 function send(){const text=input.value.trim();if(!text||sending)return;const w=document.querySelector('.welcome');if(w)w.remove();document.querySelectorAll('.quick-actions').forEach(e=>e.remove());addMsg(text,'user');input.value='';input.style.height='auto';setSending(true);showLoader();vscode.postMessage({type:'prompt',value:text,model:modelSel.value})}
