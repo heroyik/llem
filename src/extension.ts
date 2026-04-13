@@ -268,8 +268,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) return;
 
         const pick = await vscode.window.showQuickPick([
-            { label: 'Ollama (로컬 기본)', description: '초보자 추천', action: 'ollama' },
-            { label: 'LM Studio (고급형)', description: '맥북/고급 유저 추천', action: 'lmstudio' },
+            { label: 'Ollama', description: '', action: 'ollama' },
+            { label: 'LM Studio', description: '', action: 'lmstudio' },
         ], { placeHolder: 'AI 엔진을 선택하세요' });
 
         if (!pick) return;
