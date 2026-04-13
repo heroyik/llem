@@ -819,18 +819,23 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     private _executeActions(aiMessage: string): string[] {
         const report: string[] = [];
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        let rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+        // Fallback to active editor directory if no workspace folder is open
+        if (!rootPath && vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri.scheme === 'file') {
+            rootPath = path.dirname(vscode.window.activeTextEditor.document.uri.fsPath);
+        }
 
         if (!rootPath) {
-            const hasActions = /<create_file|<edit_file|<run_command/.test(aiMessage);
+            const hasActions = /<(?:create_file|edit_file|run_command|file)/i.test(aiMessage);
             if (hasActions) {
-                report.push('❌ 폴더가 열려있지 않습니다. File → Open Folder로 폴더를 먼저 열어주세요.');
+                report.push('❌ 폴더가 열려있지 않습니다. File → Open Folder로 폴더를 열거나 파일을 열어주세요.');
             }
             return report;
         }
 
         // ACTION 1: Create files
-        const createRegex = /<create_file\s+path=['"]?([^'">]+)['"]?[^>]*>([\s\S]*?)<\/create_file>/gi;
+        const createRegex = /<(?:create_file|file)\s+(?:path|file|name)=['"]?([^'">]+)['"]?[^>]*>([\s\S]*?)<\/(?:create_file|file)>/gi;
         let match: RegExpExecArray | null;
         let firstCreatedFile = '';
 
@@ -866,7 +871,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         // ACTION 2: Edit files
-        const editRegex = /<edit_file\s+path=['"]?([^'">]+)['"]?[^>]*>([\s\S]*?)<\/edit_file>/gi;
+        const editRegex = /<(?:edit_file|edit)\s+(?:path|file|name)=['"]?([^'">]+)['"]?[^>]*>([\s\S]*?)<\/(?:edit_file|edit)>/gi;
         while ((match = editRegex.exec(aiMessage)) !== null) {
             const relPath = match[1].trim();
             const body = match[2];
@@ -906,7 +911,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         // ACTION 3: Run commands
-        const cmdRegex = /<run_command>([\s\S]*?)<\/run_command>/gi;
+        const cmdRegex = /<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi;
         while ((match = cmdRegex.exec(aiMessage)) !== null) {
             let cmd = match[1].trim();
             // Clean up if AI outputs markdown inside
