@@ -34,7 +34,7 @@ const MAX_CONTEXT_SIZE = 40_000; // chars
 
 const SYSTEM_PROMPT = `You are "Connect AI", a premium agentic AI coding assistant running 100% offline on the user's machine.
 
-You have THREE powerful agent actions. Use them whenever appropriate:
+You have FOUR powerful agent actions. Use them whenever appropriate:
 
 ━━━ ACTION 1: CREATE NEW FILES ━━━
 <create_file path="relative/path/file.ext">
@@ -51,13 +51,21 @@ You can have multiple <find>/<replace> pairs inside one <edit_file> block.
 ━━━ ACTION 3: RUN TERMINAL COMMANDS ━━━
 <run_command>npm install express</run_command>
 
+━━━ ACTION 4: READ USER'S SECOND BRAIN (KNOWLEDGE BASE) ━━━
+<read_brain>filename.md</read_brain>
+Use this action to READ a specific document from the user's personal knowledge base (Second Brain).
+A [SECOND BRAIN INDEX] section will list all available documents. When the user asks questions related to their stored knowledge, coding rules, design patterns, or any topic that may be covered in their brain documents, you MUST use <read_brain> to fetch and read the relevant document BEFORE answering.
+You can use multiple <read_brain> tags in one response to read multiple documents.
+After reading, incorporate the knowledge into your answer.
+
 RULES:
 1. ALWAYS respond in the same language the user uses.
 2. Use agent actions automatically when the user's request requires creating, editing files, or running commands.
 3. Outside of action blocks, briefly explain what you did.
 4. For code that is just for explanation (not to be saved), use standard markdown code fences.
 5. Be concise, professional, and helpful.
-6. When editing files, the <find> text must EXACTLY match existing content in the file.`;
+6. When editing files, the <find> text must EXACTLY match existing content in the file.
+7. When a SECOND BRAIN INDEX is available, ALWAYS check it first and use <read_brain> to fetch relevant documents before answering questions about user knowledge, rules, or preferences.`;
 
 // ============================================================
 // Extension Activation
@@ -333,58 +341,79 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    // 재귀 탐색 유틸리티 (하위 폴더까지 .md/.txt 파일 긁어옴)
+    private _findBrainFiles(dir: string): string[] {
+        let results: string[] = [];
+        try {
+            const list = fs.readdirSync(dir);
+            for (const file of list) {
+                const filePath = path.join(dir, file);
+                const stat = fs.statSync(filePath);
+                if (stat && stat.isDirectory()) {
+                    if (file !== '.git' && file !== 'node_modules' && file !== '.obsidian') {
+                        results = results.concat(this._findBrainFiles(filePath));
+                    }
+                } else {
+                    if (file.endsWith('.md') || file.endsWith('.txt')) {
+                        results.push(filePath);
+                    }
+                }
+            }
+        } catch (e) { /* skip unreadable dirs */ }
+        return results;
+    }
+
+    // 목차(인덱스)만 생성 — 내용은 AI가 <read_brain>으로 직접 열람
     private _getSecondBrainContext(): string {
         const brainDir = path.join(os.homedir(), '.connect-ai-brain');
         if (!fs.existsSync(brainDir)) return '';
 
-        let combined = '';
-        try {
-            // 하위 폴더까지 재귀적으로 탐색하여 지식을 긁어오는 함수
-            const findFilesRecursive = (dir: string): string[] => {
-                let results: string[] = [];
-                const list = fs.readdirSync(dir);
-                for (const file of list) {
-                    const filePath = path.join(dir, file);
-                    const stat = fs.statSync(filePath);
-                    if (stat && stat.isDirectory()) {
-                        // Git 폴더 등은 무시
-                        if (file !== '.git' && file !== 'node_modules') {
-                            results = results.concat(findFilesRecursive(filePath));
-                        }
-                    } else {
-                        if (file.endsWith('.md') || file.endsWith('.txt')) {
-                            results.push(filePath);
-                        }
-                    }
-                }
-                return results;
-            };
+        const files = this._findBrainFiles(brainDir);
+        if (files.length === 0) return '';
 
-            const files = findFilesRecursive(brainDir);
-            let currentLen = 0;
-            const MAX_BRAIN_CHARS = 15000;
-
-            for (const file of files) {
-                if (currentLen > MAX_BRAIN_CHARS) break;
-                const content = fs.readFileSync(file, 'utf-8');
-                
-                // 각 파일당 최대 3000자 반영
-                const snippet = `\n--- [User Knowledge Base: ${path.basename(file)}] ---\n${content.slice(0, 3000)}\n`;
-                combined += snippet;
-                currentLen += snippet.length;
+        // 파일 목록 + 첫 줄(제목) 요약을 목차로 생성
+        const index: string[] = [];
+        for (const file of files) {
+            const relativePath = path.relative(brainDir, file);
+            try {
+                const firstLine = fs.readFileSync(file, 'utf-8').split('\n').find(l => l.trim().length > 0) || '';
+                // 제목 부분만 추출 (# 헤더 또는 첫 줄)
+                const title = firstLine.replace(/^#+\s*/, '').slice(0, 80);
+                index.push(`  📄 ${relativePath}  →  "${title}"`);
+            } catch {
+                index.push(`  📄 ${relativePath}`);
             }
+        }
 
-            if (combined.length > MAX_BRAIN_CHARS) {
-                combined = combined.slice(0, MAX_BRAIN_CHARS) + '\n... (일부 지식만 로드됨 - 컨텍스트 용량 제한)';
-            }
-        } catch (e) {
-            console.error('Brain read error', e);
+        return `\n\n[SECOND BRAIN INDEX — User's Personal Knowledge Base (${files.length} documents)]\nThe user has synced a personal knowledge repository. Below is the TABLE OF CONTENTS only.\nTo read the actual content of any document, use: <read_brain>filename_or_path</read_brain>\n\n${index.join('\n')}\n\n`;
+    }
+
+    // AI가 <read_brain>태그로 요청한 파일의 실제 내용을 읽어서 반환
+    private _readBrainFile(filename: string): string {
+        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        if (!fs.existsSync(brainDir)) return '[ERROR] Second Brain이 동기화되지 않았습니다. 🧠 버튼을 먼저 눌러주세요.';
+
+        // 정확한 경로 매칭 시도
+        const exactPath = path.join(brainDir, filename);
+        if (fs.existsSync(exactPath)) {
+            const content = fs.readFileSync(exactPath, 'utf-8');
+            return content.slice(0, 8000); // 파일당 최대 8000자
         }
-        
-        if (combined.trim().length > 0) {
-            return `\n\n[CRITICAL INSTRUCTION: USER'S SECOND BRAIN - KNOWLEDGE BASE]\nYou MUST strictly read and follow the styling, rules, and knowledges defined in these provided files authored by the user when answering or coding:\n${combined}\n\n`;
+
+        // 파일명만으로 퍼지 검색 (하위 폴더에 있을 수 있으므로)
+        const allFiles = this._findBrainFiles(brainDir);
+        const match = allFiles.find(f => 
+            path.basename(f) === filename || 
+            path.basename(f) === filename + '.md' ||
+            f.includes(filename)
+        );
+
+        if (match) {
+            const content = fs.readFileSync(match, 'utf-8');
+            return content.slice(0, 8000);
         }
-        return '';
+
+        return `[NOT FOUND] "${filename}" 파일을 Second Brain에서 찾을 수 없습니다. 목차(INDEX)를 다시 확인해주세요.`;
     }
 
     /** 저장된 대화 메시지를 웹뷰에 다시 전송 (복원) */
@@ -536,9 +565,39 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 stream: false,
             }, { timeout });
 
-            const aiMessage: string = isLMStudio 
+            let aiMessage: string = isLMStudio 
                 ? response.data.choices[0].message.content 
                 : response.data.message.content;
+
+            // 4.5 Second Brain 자율 열람: AI가 <read_brain>을 사용했는지 확인
+            const brainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
+            if (brainReads.length > 0) {
+                // AI가 지식을 요청했다! 파일을 읽어서 다시 쿼리한다.
+                let brainContent = '';
+                for (const match of brainReads) {
+                    const requestedFile = match[1].trim();
+                    const fileContent = this._readBrainFile(requestedFile);
+                    brainContent += `\n\n[BRAIN DOCUMENT: ${requestedFile}]\n${fileContent}\n`;
+                }
+
+                // 원래 AI 응답에서 read_brain 태그를 제거하고, 읽어온 지식과 함께 재질의
+                const cleanedResponse = aiMessage.replace(/<read_brain>[\s\S]*?<\/read_brain>/g, '').trim();
+                
+                // 지식을 포함한 Follow-up 메시지 전송
+                reqMessages.push({ role: 'assistant', content: cleanedResponse || '문서를 열람 중입니다...' });
+                reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents were retrieved from the user\'s Second Brain. Use this information to provide a complete and accurate answer to the user\'s original question.]\n${brainContent}\n\nNow answer the user\'s question using the above knowledge. Do NOT use <read_brain> again.` });
+
+                const followUp = await axios.post(apiUrl, {
+                    model: modelName || defaultModel,
+                    messages: reqMessages,
+                    stream: false,
+                }, { timeout });
+
+                aiMessage = isLMStudio
+                    ? followUp.data.choices[0].message.content
+                    : followUp.data.message.content;
+            }
+
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
 
             // 5. Execute agent actions
