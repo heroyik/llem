@@ -972,6 +972,17 @@ textarea::placeholder{color:var(--text-dim)}
 .stream-active{position:relative}
 .stream-active::after{content:'';display:inline-block;width:2px;height:14px;background:var(--accent);margin-left:2px;animation:blink .6s step-end infinite;vertical-align:text-bottom;border-radius:1px;box-shadow:0 0 6px var(--accent)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.stream-active .code-wrap:last-child {
+  border: 1px solid var(--accent);
+  animation: codePulse 2s infinite;
+}
+.stream-active .code-wrap:last-child pre {
+  box-shadow: inset 0 0 20px rgba(124,106,255,0.05);
+}
+@keyframes codePulse {
+  0%, 100% { box-shadow: 0 0 15px var(--accent-glow); }
+  50% { box-shadow: 0 0 35px var(--accent2-glow); border-color: var(--accent2); }
+}
 </style></head><body>
 <div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="brainBtn" title="Second Brain">\ud83e\udde0</button><button class="btn-icon" id="settingsBtn" title="Settings">\u2699\ufe0f</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
 <div class="chat" id="chat">
@@ -996,6 +1007,11 @@ input.addEventListener('input',()=>{input.style.height='auto';input.style.height
 function getTime(){return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}
 function esc(s){const d=document.createElement('div');d.innerText=s;return d.innerHTML}
 function fmt(t){
+  if(t.lastIndexOf('<create_file') > t.lastIndexOf('</create_file>')) t += '</create_file>';
+  if(t.lastIndexOf('<edit_file') > t.lastIndexOf('</edit_file>')) t += '</edit_file>';
+  if(t.lastIndexOf('<run_command') > t.lastIndexOf('</run_command>')) t += '</run_command>';
+  if((t.match(/\x60\x60\x60/g)||[]).length % 2 !== 0) t += '\n\x60\x60\x60';
+
   const blocks = [];
   function pushB(h){ blocks.push(h); return '__B' + (blocks.length-1) + '__'; }
   t=t.replace(/<create_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/create_file>/g,(_,p,c)=>pushB('<div class="file-badge">\ud83d\udcc1 '+esc(p)+' \u2014 \uc790\ub3d9 \uc0dd\uc131\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
