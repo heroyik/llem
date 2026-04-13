@@ -1,8 +1,8 @@
-# ✦ Connect AI LAB 
+# ✦ Connect AI 
 
 **100% 로컬 · 100% 오프라인 · 100% 무료**  
 VS Code / Cursor 기반의 프리미엄 AI 코딩 에이전트입니다. 코드를 읽고, 작성하고, 터미널 명령어를 대신 실행해 줍니다.
-이 프로젝트는 **EZERAI**와 **Connect AI LAB**이 함께 연구하고 제작했습니다.
+이 프로젝트는 **EZERAI**와 **Connect AI**이 함께 연구하고 제작했습니다.
 
 ---
 
@@ -44,7 +44,7 @@ vsce package
 
 ## ⚙️ AI 엔진 세팅 가이드 (Ollama / LM Studio)
 
-Connect AI LAB은 사용자의 컴퓨터 자원 안에서 돌아가는 오프라인 모델을 사용합니다. 아래 두 가지 엔진 중 편하신 것을 하나 사용하세요.
+Connect AI은 사용자의 컴퓨터 자원 안에서 돌아가는 오프라인 모델을 사용합니다. 아래 두 가지 엔진 중 편하신 것을 하나 사용하세요.
 
 ### 🟡 Option A: Ollama 설정 (초보자 추천)
 1. **설치:** [Ollama 공식 홈페이지](https://ollama.com)에서 다운로드 또는 `brew install ollama`
@@ -75,4 +75,4 @@ ollama pull gemma4:e2b
 ## 📄 라이선스
 MIT License — 자유롭게 사용, 수정, 배포 가능합니다.
 
-**Designed & Developed with ❤️ by EZERAI and Connect AI LAB**
+**Designed & Developed with ❤️ by EZERAI and Connect AI**

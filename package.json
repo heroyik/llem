@@ -1,8 +1,8 @@
 {
   "name": "connect-ai-lab",
-  "displayName": "Connect AI LAB",
+  "displayName": "Connect AI",
   "description": "100% 로컬 AI 코딩 에이전트 — 파일 생성, 코드 편집, 터미널 실행을 오프라인으로. Ollama + Gemma/Llama/DeepSeek 지원.",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "publisher": "connectailab",
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -35,20 +35,20 @@
     "commands": [
       {
         "command": "connect-ai-lab.newChat",
-        "title": "Connect AI LAB: New Chat",
+        "title": "Connect AI: New Chat",
         "icon": "$(add)"
       },
       {
         "command": "connect-ai-lab.exportChat",
-        "title": "Connect AI LAB: Export Chat as Markdown"
+        "title": "Connect AI: Export Chat as Markdown"
       },
       {
         "command": "connect-ai-lab.explainSelection",
-        "title": "Connect AI LAB: Explain Selected Code"
+        "title": "Connect AI: Explain Selected Code"
       },
       {
         "command": "connect-ai-lab.focusChat",
-        "title": "Connect AI LAB: Focus Chat Input"
+        "title": "Connect AI: Focus Chat Input"
       }
     ],
     "keybindings": [
@@ -71,7 +71,7 @@
       "activitybar": [
         {
           "id": "connect-ai-lab-sidebar",
-          "title": "Connect AI LAB",
+          "title": "Connect AI",
           "icon": "$(hubot)"
         }
       ]
@@ -86,7 +86,7 @@
       ]
     },
     "configuration": {
-      "title": "Connect AI LAB",
+      "title": "Connect AI",
       "properties": {
         "connectAiLab.ollamaUrl": {
           "type": "string",

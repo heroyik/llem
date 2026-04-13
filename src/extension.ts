@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // ============================================================
-// Connect AI LAB — Full Agentic Local AI for VS Code
+// Connect AI — Full Agentic Local AI for VS Code
 // 100% Offline · File Create · File Edit · Terminal · Multi-file Context
 // ============================================================
 
@@ -26,7 +26,7 @@ const EXCLUDED_DIRS = new Set([
 ]);
 const MAX_CONTEXT_SIZE = 40_000; // chars
 
-const SYSTEM_PROMPT = `You are "Connect AI LAB", a premium agentic AI coding assistant running 100% offline on the user's machine.
+const SYSTEM_PROMPT = `You are "Connect AI", a premium agentic AI coding assistant running 100% offline on the user's machine.
 
 You have THREE powerful agent actions. Use them whenever appropriate:
 
@@ -58,8 +58,8 @@ RULES:
 // ============================================================
 
 export function activate(context: vscode.ExtensionContext) {
-    vscode.window.showInformationMessage('🔥 Connect AI LAB V2 활성화 완료!');
-console.log('Connect AI LAB extension activated.');
+    vscode.window.showInformationMessage('🔥 Connect AI V2 활성화 완료!');
+console.log('Connect AI extension activated.');
 
     const provider = new SidebarChatProvider(context.extensionUri, context);
     context.subscriptions.push(
@@ -152,7 +152,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             this._view.webview.postMessage({ type: 'clearChat' });
         }
-        vscode.window.showInformationMessage('Connect AI LAB: 새 대화가 시작되었습니다.');
+        vscode.window.showInformationMessage('Connect AI: 새 대화가 시작되었습니다.');
     }
 
     /** 대화를 Markdown 파일로 내보내기 */
@@ -161,9 +161,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             vscode.window.showWarningMessage('내보낼 대화가 없습니다.');
             return;
         }
-        let md = `# Connect AI LAB — 대화 기록\n\n_${new Date().toLocaleString('ko-KR')}_\n\n---\n\n`;
+        let md = `# Connect AI — 대화 기록\n\n_${new Date().toLocaleString('ko-KR')}_\n\n---\n\n`;
         for (const m of this._displayMessages) {
-            const label = m.role === 'user' ? '**👤 You**' : '**✦ Connect AI LAB**';
+            const label = m.role === 'user' ? '**👤 You**' : '**✦ Connect AI**';
             md += `### ${label}\n\n${m.text}\n\n---\n\n`;
         }
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -442,8 +442,12 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._saveHistory();
 
         } catch (error: any) {
+            const { ollamaBase } = getConfig();
+            const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
+            const targetName = isLM ? "LM Studio" : "Ollama";
+            
             const errMsg = error.code === 'ECONNREFUSED'
-                ? '⚠️ Ollama 서버에 연결할 수 없습니다.\n터미널에서 `ollama serve`를 실행해주세요.'
+                ? `⚠️ ${targetName} 서버에 연결할 수 없습니다.\n앱에서 로컬 서버가 켜져 있는지(Start Server) 확인해주세요.`
                 : `⚠️ 오류: ${error.message}`;
             this._view.webview.postMessage({ type: 'error', value: errMsg });
         }
@@ -538,7 +542,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             try {
                 if (!this._terminal || this._terminal.exitStatus !== undefined) {
                     this._terminal = vscode.window.createTerminal({
-                        name: '🚀 Connect AI LAB',
+                        name: '🚀 Connect AI',
                         cwd: rootPath
                     });
                 }
@@ -553,7 +557,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         // Show notification
         const successCount = report.filter(r => r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🖥️')).length;
         if (successCount > 0) {
-            vscode.window.showInformationMessage(`Connect AI LAB: ${successCount}개 에이전트 작업 완료!`);
+            vscode.window.showInformationMessage(`Connect AI: ${successCount}개 에이전트 작업 완료!`);
         }
 
         return report;
@@ -570,7 +574,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _getHtml(): string {
         return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Connect AI LAB</title>
+<title>Connect AI</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
