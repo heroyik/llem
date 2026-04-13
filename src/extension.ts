@@ -983,8 +983,13 @@ textarea::placeholder{color:var(--text-dim)}
   0%, 100% { box-shadow: 0 0 15px var(--accent-glow); }
   50% { box-shadow: 0 0 35px var(--accent2-glow); border-color: var(--accent2); }
 }
-</style></head><body>
+.main-view{flex:1;display:flex;flex-direction:column;overflow:hidden;transition:all .5s cubic-bezier(.16,1,.3,1)}
+body.init .main-view{justify-content:center}
+body.init .chat{flex:0 0 auto;overflow:visible;padding-bottom:10px}
+body.init .input-wrap{max-width:680px;width:100%;margin:0 auto;transform:translateY(-10px);transition:all .5s cubic-bezier(.16,1,.3,1)}
+</style></head><body class="init">
 <div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="brainBtn" title="Second Brain">\ud83e\udde0</button><button class="btn-icon" id="settingsBtn" title="Settings">\u2699\ufe0f</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
+<div class="main-view" id="mainView">
 <div class="chat" id="chat">
 <div class="welcome">
 <div class="welcome-logo">\u2726</div>
@@ -995,6 +1000,7 @@ textarea::placeholder{color:var(--text-dim)}
 <textarea id="input" rows="1" placeholder="\ubb34\uc5c7\uc744 \ub9cc\ub4e4\uc5b4 \ub4dc\ub9b4\uae4c\uc694?"></textarea>
 <div class="input-footer"><span class="input-hint">Enter \uc804\uc1a1 \u00b7 Shift+Enter \uc904\ubc14\uafc8</span>
 <div class="input-btns"><button class="stop-btn" id="stopBtn">\u25a0</button><button class="send-btn" id="sendBtn">\u2191</button></div></div></div></div>
+</div>
 <script>
 try {
 const vscode=acquireVsCodeApi(),chat=document.getElementById('chat'),input=document.getElementById('input'),
@@ -1037,7 +1043,7 @@ function addMsg(text,role){
 function showLoader(){loader=document.createElement('div');loader.className='msg';loader.innerHTML='<div class="msg-head"><div class="av av-ai">\u2726</div><span>Connect AI</span><span class="msg-time">'+getTime()+'</span></div><div class="loading-wrap"><div class="loading-dots"><span></span><span></span><span></span></div><span class="loading-text">\uc0dd\uac01\ud558\ub294 \uc911...</span></div>';chat.appendChild(loader);chat.scrollTop=chat.scrollHeight}
 function hideLoader(){if(loader&&loader.parentNode)loader.parentNode.removeChild(loader);loader=null}
 function setSending(v){sending=v;sendBtn.disabled=v;stopBtn.classList.toggle('visible',v);input.disabled=v;if(!v)input.focus()}
-function send(){const text=input.value.trim();if(!text||sending)return;const w=document.querySelector('.welcome');if(w)w.remove();document.querySelectorAll('.quick-actions').forEach(e=>e.remove());addMsg(text,'user');input.value='';input.style.height='auto';setSending(true);showLoader();vscode.postMessage({type:'prompt',value:text,model:modelSel.value})}
+function send(){const text=input.value.trim();if(!text||sending)return;document.body.classList.remove('init');const w=document.querySelector('.welcome');if(w)w.remove();document.querySelectorAll('.quick-actions').forEach(e=>e.remove());addMsg(text,'user');input.value='';input.style.height='auto';setSending(true);showLoader();vscode.postMessage({type:'prompt',value:text,model:modelSel.value})}
 document.addEventListener('click',e=>{if(e.target.classList.contains('qa-btn')){const p=e.target.getAttribute('data-prompt');if(p){input.value=p;send()}}});
 sendBtn.addEventListener('click',send);
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
@@ -1064,8 +1070,20 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     setSending(false);streamEl=null;streamBody=null;
     break;}
   case 'modelsList':modelSel.innerHTML='';msg.value.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;modelSel.appendChild(o)});break;
-  case 'clearChat':chat.innerHTML='';addMsg('\uc0c8 \ub300\ud654\uac00 \uc2dc\uc791\ub418\uc5c8\uc2b5\ub2c8\ub2e4.','ai');break;
-  case 'restoreMessages':chat.innerHTML='';if(msg.value&&msg.value.length>0){msg.value.forEach(m=>addMsg(m.text,m.role))}break;
+  case 'clearChat':
+    document.body.classList.add('init');
+    chat.innerHTML='<div class="welcome"><div class="welcome-logo">\u2726</div><div class="welcome-title">Connect AI</div><div class="welcome-sub">\ubcf4\uc548 \u00b7 \ube44\uc6a9\ucd5c\uc801\ud654 \u00b7 \uc9c0\uc2dd\uc5f0\uacb0<br>\ud504\ub85c\uc81d\ud2b8\ub97c \uc774\ud574\ud558\uace0, \ucf54\ub4dc\ub97c \uc791\uc131\ud558\uace0, \uc2e4\ud589\ud569\ub2c8\ub2e4.</div></div>';
+    break;
+  case 'restoreMessages':
+    chat.innerHTML='';
+    if(msg.value&&msg.value.length>0){
+      document.body.classList.remove('init');
+      msg.value.forEach(m=>addMsg(m.text,m.role));
+    } else {
+      document.body.classList.add('init');
+      chat.innerHTML='<div class="welcome"><div class="welcome-logo">\u2726</div><div class="welcome-title">Connect AI</div><div class="welcome-sub">\ubcf4\uc548 \u00b7 \ube44\uc6a9\ucd5c\uc801\ud654 \u00b7 \uc9c0\uc2dd\uc5f0\uacb0<br>\ud504\ub85c\uc81d\ud2b8\ub97c \uc774\ud574\ud558\uace0, \ucf54\ub4dc\ub97c \uc791\uc131\ud558\uace0, \uc2e4\ud589\ud569\ub2c8\ub2e4.</div></div>';
+    }
+    break;
   case 'focusInput':input.focus();break;
   case 'injectPrompt':input.value=msg.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';send();break;
 } });
