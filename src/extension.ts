@@ -2,6 +2,11 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // ============================================================
 // Connect AI — Full Agentic Local AI for VS Code
@@ -16,6 +21,7 @@ function getConfig() {
         defaultModel: cfg.get<string>('defaultModel', 'gemma4:e2b'),
         maxTreeFiles: cfg.get<number>('maxContextFiles', 200),
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
+        secondBrainRepo: cfg.get<string>('secondBrainRepo', ''),
     };
 }
 
@@ -238,6 +244,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                         await this._sendModels();
                     }
                     break;
+                case 'syncBrain':
+                    await this._syncSecondBrain();
+                    break;
             }
         });
 
@@ -274,6 +283,61 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         } catch {
             this._view.webview.postMessage({ type: 'modelsList', value: [defaultModel] });
         }
+    }
+
+    // --------------------------------------------------------
+    // Second Brain (Github Repo Knowledge Sync)
+    // --------------------------------------------------------
+    private async _syncSecondBrain() {
+        if (!this._view) { return; }
+        const { secondBrainRepo } = getConfig();
+        
+        if (!secondBrainRepo) {
+            vscode.window.showErrorMessage('설정에서 Second Brain Github 주소를 먼저 입력해주세요!');
+            return;
+        }
+
+        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        try {
+            this._view.webview.postMessage({ type: 'response', value: '🧠 **Second Brain 동기화 시작 중... 깃허브에서 지식을 복제합니다.**' });
+            
+            if (fs.existsSync(brainDir)) {
+                // 깔끔한 최신화를 위해 기존 폴더 삭제 후 다시 클론
+                fs.rmSync(brainDir, { recursive: true, force: true });
+            }
+            
+            await execAsync(`git clone ${secondBrainRepo} "${brainDir}"`);
+            vscode.window.showInformationMessage('🧠 Second Brain 지식 연동이 완료되었습니다!');
+            this._view.webview.postMessage({ type: 'response', value: '✅ **Second Brain 업데이트 완료! 이제 회원님의 뇌(문서)를 바탕으로 특화된 코딩을 진행합니다.**' });
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Second Brain 동기화 실패: ${error.message}`);
+            this._view.webview.postMessage({ type: 'error', value: `⚠️ 동기화 실패: ${error.message}` });
+        }
+    }
+
+    private _getSecondBrainContext(): string {
+        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        if (!fs.existsSync(brainDir)) return '';
+
+        let combined = '';
+        try {
+            const files = fs.readdirSync(brainDir);
+            for (const file of files) {
+                // 마크다운(.md)과 텍스트 파일만 수집
+                if (file.endsWith('.md') || file.endsWith('.txt')) {
+                    const content = fs.readFileSync(path.join(brainDir, file), 'utf-8');
+                    // 컨텍스트 크기 제한 방지 (각 파일당 최대 5000자 반영)
+                    combined += `\n--- [User Knowledge Base: ${file}] ---\n${content.slice(0, 5000)}\n`;
+                }
+            }
+        } catch (e) {
+            console.error('Brain read error', e);
+        }
+        
+        if (combined.trim().length > 0) {
+            return `\n\n[CRITICAL INSTRUCTION: USER'S SECOND BRAIN - KNOWLEDGE BASE]\nYou MUST strictly read and follow the styling, rules, and knowledges defined in these provided files authored by the user when answering or coding:\n${combined}\n\n`;
+        }
+        return '';
     }
 
     /** 저장된 대화 메시지를 웹뷰에 다시 전송 (복원) */
@@ -379,6 +443,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             // 2. Context: workspace file tree + key file contents
             const workspaceCtx = this._getWorkspaceContext();
+            
+            // 2.5 Inject Second Brain Knowledge
+            const brainCtx = this._getSecondBrainContext();
 
             // 3. Push user message
             this._chatHistory.push({
@@ -398,7 +465,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
                 reqMessages[0] = {
                     role: 'system',
-                    content: `${SYSTEM_PROMPT}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}`
+                    content: `${SYSTEM_PROMPT}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}`
                 };
             }
 
@@ -646,9 +713,9 @@ textarea::placeholder{color:var(--text-dim)}
 .stop-btn.visible{display:flex}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{0%{left:-40px}100%{left:120px}}
-@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}.pulse-btn{animation:pulse 2s infinite}
 </style></head><body>
-<div class="header"><div class="header-left"><div class="logo">✦</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="settingsBtn" title="Engine Settings">⚙️</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
+<div class="header"><div class="header-left"><div class="logo">✦</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="brainBtn" title="Sync Second Brain Github">🧠</button><button class="btn-icon" id="settingsBtn" title="Engine Settings">⚙️</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
 <div class="chat" id="chat">
 <div class="welcome">
 <div class="welcome-logo">\u2726</div>
@@ -663,7 +730,7 @@ textarea::placeholder{color:var(--text-dim)}
 try {
 const vscode=acquireVsCodeApi(),chat=document.getElementById('chat'),input=document.getElementById('input'),
 sendBtn=document.getElementById('sendBtn'),stopBtn=document.getElementById('stopBtn'),
-modelSel=document.getElementById('modelSel'),newChatBtn=document.getElementById('newChatBtn'),settingsBtn=document.getElementById('settingsBtn');
+modelSel=document.getElementById('modelSel'),newChatBtn=document.getElementById('newChatBtn'),settingsBtn=document.getElementById('settingsBtn'),brainBtn=document.getElementById('brainBtn');
 let loader=null,sending=false;
 vscode.postMessage({type:'getModels'});
 setTimeout(()=>vscode.postMessage({type:'ready'}),300);
@@ -702,6 +769,7 @@ sendBtn.addEventListener('click',send);
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 newChatBtn.addEventListener('click',()=>vscode.postMessage({type:'newChat'}));
 settingsBtn.addEventListener('click',()=>vscode.postMessage({type:'openSettings'}));
+brainBtn.addEventListener('click',()=>vscode.postMessage({type:'syncBrain'}));
 window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'response':hideLoader();setSending(false);addMsg(msg.value,'ai');break;
   case 'error':hideLoader();setSending(false);addMsg(msg.value,'error');break;
