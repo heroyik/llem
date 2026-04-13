@@ -131,6 +131,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // 대화 표시용 (system prompt 제외, 유저에게 보여줄 것만 저장)
     private _displayMessages: { text: string; role: string }[] = [];
     private _isSyncingBrain: boolean = false;
+    private _brainEnabled: boolean = true; // 🧠 ON/OFF 토글 상태
 
     constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
         this._ctx = ctx;
@@ -254,7 +255,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 case 'syncBrain':
-                    await this._syncSecondBrain();
+                    await this._handleBrainMenu();
                     break;
             }
         });
@@ -291,6 +292,61 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._view.webview.postMessage({ type: 'modelsList', value: models });
         } catch {
             this._view.webview.postMessage({ type: 'modelsList', value: [defaultModel] });
+        }
+    }
+
+    // --------------------------------------------------------
+    // Second Brain Menu (QuickPick)
+    // --------------------------------------------------------
+    private async _handleBrainMenu() {
+        if (!this._view) { return; }
+        
+        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const isSynced = fs.existsSync(brainDir);
+        const { secondBrainRepo } = getConfig();
+        const statusLabel = this._brainEnabled ? '🟢 ON' : '🔴 OFF';
+        
+        const items: any[] = [];
+
+        if (!isSynced && !secondBrainRepo) {
+            // 아직 한 번도 연동한 적 없음
+            items.push({ label: '🔗 깃허브 연결하기', description: '지식 저장소 GitHub URL 입력', action: 'sync' });
+        } else {
+            items.push(
+                { label: `🧠 지식 모드: ${statusLabel}`, description: '지식 기반 코딩 ON/OFF 전환', action: 'toggle' },
+                { label: '🔄 지식 새로고침', description: `현재: ${secondBrainRepo?.split('/').pop() || '없음'}`, action: 'resync' },
+                { label: '🔗 다른 깃허브로 변경', description: '새로운 지식 저장소 URL 입력', action: 'change' },
+            );
+        }
+
+        const pick = await vscode.window.showQuickPick(items, { placeHolder: '🧠 Second Brain 관리' });
+        if (!pick) return;
+
+        switch (pick.action) {
+            case 'sync':
+                await this._syncSecondBrain();
+                break;
+            case 'toggle':
+                this._brainEnabled = !this._brainEnabled;
+                const state = this._brainEnabled ? '🟢 ON — 지식 기반 코딩 활성화!' : '🔴 OFF — 일반 모드';
+                vscode.window.showInformationMessage(`🧠 Second Brain: ${state}`);
+                this._view.webview.postMessage({ type: 'response', value: `🧠 **지식 모드 ${this._brainEnabled ? 'ON' : 'OFF'}** — ${this._brainEnabled ? '이제부터 회원님의 지식을 바탕으로 모든 답변을 생성합니다.' : '일반 AI 모드로 전환되었습니다.'}` });
+                break;
+            case 'resync':
+                await this._syncSecondBrain();
+                break;
+            case 'change':
+                // 기존 URL을 지우고 새로 입력받기
+                const newUrl = await vscode.window.showInputBox({
+                    prompt: '🧠 새로운 지식 저장소 깃허브 URL을 입력하세요',
+                    placeHolder: '예: https://github.com/사용자/새저장소',
+                    value: secondBrainRepo
+                });
+                if (!newUrl) return;
+                await vscode.workspace.getConfiguration('connectAiLab').update('secondBrainRepo', newUrl, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage('✅ 새로운 깃허브 주소가 저장되었습니다. 동기화를 시작합니다!');
+                await this._syncSecondBrain();
+                break;
         }
     }
 
@@ -520,8 +576,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             // 2. Context: workspace file tree + key file contents
             const workspaceCtx = this._getWorkspaceContext();
             
-            // 2.5 Inject Second Brain Knowledge
-            const brainCtx = this._getSecondBrainContext();
+            // 2.5 Inject Second Brain Knowledge (ON/OFF 토글 반영)
+            const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
 
             // 3. Push user message
             this._chatHistory.push({
@@ -563,6 +619,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 model: modelName || defaultModel,
                 messages: reqMessages,
                 stream: false,
+                ...(isLMStudio ? { max_tokens: 4096 } : { options: { num_predict: 4096 } }),
             }, { timeout });
 
             let aiMessage: string = isLMStudio 
@@ -591,6 +648,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     model: modelName || defaultModel,
                     messages: reqMessages,
                     stream: false,
+                    ...(isLMStudio ? { max_tokens: 4096 } : { options: { num_predict: 4096 } }),
                 }, { timeout });
 
                 aiMessage = isLMStudio
