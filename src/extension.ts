@@ -134,12 +134,17 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _brainEnabled: boolean = true; // 🧠 ON/OFF 토글 상태
 
     // 🏛️ AI 파라미터 튜닝
-    private _temperature: number = 0.8;
-    private _topP: number = 0.9;
-    private _topK: number = 40;
+    private _temperature: number;
+    private _topP: number;
+    private _topK: number;
+    private _systemPrompt: string;
 
     constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
         this._ctx = ctx;
+        this._temperature = ctx.globalState.get<number>('aiTemperature', 0.8);
+        this._topP = ctx.globalState.get<number>('aiTopP', 0.9);
+        this._topK = ctx.globalState.get<number>('aiTopK', 40);
+        this._systemPrompt = ctx.globalState.get<string>('aiSystemPrompt', SYSTEM_PROMPT);
         this._restoreHistory();
         // 두뇌 토글 상태 복원 (세션 뒤에도 유지)
         this._brainEnabled = this._ctx.globalState.get<boolean>('brainEnabled', true);
@@ -165,7 +170,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _initHistory() {
-        this._chatHistory = [{ role: 'system', content: SYSTEM_PROMPT }];
+        this._chatHistory = [{ role: 'system', content: this._systemPrompt }];
         this._displayMessages = [];
     }
 
@@ -267,16 +272,73 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private async _handleSettingsMenu() {
         if (!this._view) return;
 
-        const pick = await vscode.window.showQuickPick([
-            { label: 'Ollama', description: '', action: 'ollama' },
-            { label: 'LM Studio', description: '', action: 'lmstudio' },
-        ], { placeHolder: 'AI 엔진을 선택하세요' });
+        const mainPick = await vscode.window.showQuickPick([
+            { label: '⚙️ AI 엔진 변경', description: '현재: ' + (getConfig().ollamaBase.includes('1234')?'LM Studio':'Ollama'), action: 'engine' },
+            { label: '🎛️ AI 파라미터 튜닝', description: `Temp: ${this._temperature}, Top-P: ${this._topP}, Top-K: ${this._topK}`, action: 'params' },
+            { label: '📝 시스템 프롬프트 설정', description: '에이전트의 기본 역할을 커스텀합니다.', action: 'prompt' }
+        ], { placeHolder: '설정 메뉴' });
 
-        if (!pick) return;
-        const target = (pick as any).action === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234';
-        await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', target, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`AI 엔진이 [${pick.label}] 로 변경되었습니다.`);
-        await this._sendModels();
+        if (!mainPick) return;
+
+        if (mainPick.action === 'engine') {
+            const pick = await vscode.window.showQuickPick([
+                { label: 'Ollama', description: '', action: 'ollama' },
+                { label: 'LM Studio', description: '', action: 'lmstudio' },
+            ], { placeHolder: 'AI 엔진을 선택하세요' });
+
+            if (!pick) return;
+            const target = (pick as any).action === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234';
+            await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', target, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`AI 엔진이 [${pick.label}] 로 변경되었습니다.`);
+            await this._sendModels();
+        } 
+        else if (mainPick.action === 'params') {
+            const paramPick = await vscode.window.showQuickPick([
+                { label: `Temperature (${this._temperature})`, description: '답변의 창의성 (0.0 ~ 2.0)', action: 'temp' },
+                { label: `Top P (${this._topP})`, description: '단어 선택 확률 (0.0 ~ 1.0)', action: 'topp' },
+                { label: `Top K (${this._topK})`, description: '단어 선택 범위 (1 ~ 100)', action: 'topk' },
+            ], { placeHolder: '파라미터를 선택하세요' });
+
+            if (!paramPick) return;
+
+            if (paramPick.action === 'temp') {
+                const val = await vscode.window.showInputBox({ prompt: 'Temperature 값 (0.0~2.0)', value: this._temperature.toString() });
+                if (val && !isNaN(Number(val))) {
+                    this._temperature = Number(val);
+                    this._ctx.globalState.update('aiTemperature', this._temperature);
+                    vscode.window.showInformationMessage(`Temperature가 ${this._temperature}로 변경되었습니다.`);
+                }
+            } else if (paramPick.action === 'topp') {
+                const val = await vscode.window.showInputBox({ prompt: 'Top P 값 (0.0~1.0)', value: this._topP.toString() });
+                if (val && !isNaN(Number(val))) {
+                    this._topP = Number(val);
+                    this._ctx.globalState.update('aiTopP', this._topP);
+                    vscode.window.showInformationMessage(`Top P가 ${this._topP}로 변경되었습니다.`);
+                }
+            } else if (paramPick.action === 'topk') {
+                const val = await vscode.window.showInputBox({ prompt: 'Top K 값 (1~100)', value: this._topK.toString() });
+                if (val && !isNaN(Number(val))) {
+                    this._topK = Number(val);
+                    this._ctx.globalState.update('aiTopK', this._topK);
+                    vscode.window.showInformationMessage(`Top K가 ${this._topK}로 변경되었습니다.`);
+                }
+            }
+        }
+        else if (mainPick.action === 'prompt') {
+            const val = await vscode.window.showInputBox({ 
+                prompt: '시스템 프롬프트 (비워두면 기본값으로 초기화됩니다)', 
+                value: this._systemPrompt === SYSTEM_PROMPT ? '' : this._systemPrompt,
+                ignoreFocusOut: true
+            });
+            if (val !== undefined) {
+                this._systemPrompt = val.trim() || SYSTEM_PROMPT;
+                this._ctx.globalState.update('aiSystemPrompt', this._systemPrompt);
+                this._initHistory();
+                this._saveHistory();
+                vscode.window.showInformationMessage('시스템 프롬프트가 변경되어 새 대화가 시작되었습니다.');
+                if (this._view) this._view.webview.postMessage({ type: 'clearChat' });
+            }
+        }
     }
 
     // --------------------------------------------------------
