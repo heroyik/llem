@@ -361,10 +361,21 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             };
 
             const files = findFilesRecursive(brainDir);
+            let currentLen = 0;
+            const MAX_BRAIN_CHARS = 15000;
+
             for (const file of files) {
+                if (currentLen > MAX_BRAIN_CHARS) break;
                 const content = fs.readFileSync(file, 'utf-8');
-                // 컨텍스트 크기 제한 방지 (각 파일당 최대 3000자 반영)
-                combined += `\n--- [User Knowledge Base: ${path.basename(file)}] ---\n${content.slice(0, 3000)}\n`;
+                
+                // 각 파일당 최대 3000자 반영
+                const snippet = `\n--- [User Knowledge Base: ${path.basename(file)}] ---\n${content.slice(0, 3000)}\n`;
+                combined += snippet;
+                currentLen += snippet.length;
+            }
+
+            if (combined.length > MAX_BRAIN_CHARS) {
+                combined = combined.slice(0, MAX_BRAIN_CHARS) + '\n... (일부 지식만 로드됨 - 컨텍스트 용량 제한)';
             }
         } catch (e) {
             console.error('Brain read error', e);
