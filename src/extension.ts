@@ -136,6 +136,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
         this._ctx = ctx;
         this._restoreHistory();
+        // 두뇌 토글 상태 복원 (세션 뒤에도 유지)
+        this._brainEnabled = this._ctx.globalState.get<boolean>('brainEnabled', true);
     }
 
     /** 저장된 대화 기록 복원 */
@@ -328,6 +330,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 break;
             case 'toggle':
                 this._brainEnabled = !this._brainEnabled;
+                this._ctx.globalState.update('brainEnabled', this._brainEnabled);
                 const state = this._brainEnabled ? '🟢 ON — 지식 기반 코딩 활성화!' : '🔴 OFF — 일반 모드';
                 vscode.window.showInformationMessage(`🧠 Second Brain: ${state}`);
                 this._view.webview.postMessage({ type: 'response', value: `🧠 **지식 모드 ${this._brainEnabled ? 'ON' : 'OFF'}** — ${this._brainEnabled ? '이제부터 회원님의 지식을 바탕으로 모든 답변을 생성합니다.' : '일반 AI 모드로 전환되었습니다.'}` });
@@ -386,7 +389,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 fs.rmSync(brainDir, { recursive: true, force: true });
             }
             
-            await execAsync(`git clone ${secondBrainRepo} "${brainDir}"`);
+            await execAsync(`git clone --depth 1 ${secondBrainRepo.replace(/[;&|$()]/g, '')} "${brainDir}"`);
             vscode.window.showInformationMessage('🧠 Second Brain 지식 연동이 완료되었습니다!');
             this._view.webview.postMessage({ type: 'response', value: '✅ **Second Brain 업데이트 완료! 이제 회원님의 뇌(문서)를 바탕으로 특화된 코딩을 진행합니다.**' });
         } catch (error: any) {
@@ -670,6 +673,15 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             // 저장용: AI 응답 기록
             this._displayMessages.push({ text: output, role: 'ai' });
+
+            // 메모리 누수 방지: 대화 이력 최대 50개 반턱으로 제한
+            const MAX_HISTORY = 50;
+            if (this._chatHistory.length > MAX_HISTORY + 1) {
+                this._chatHistory = [this._chatHistory[0], ...this._chatHistory.slice(-(MAX_HISTORY))];
+            }
+            if (this._displayMessages.length > MAX_HISTORY) {
+                this._displayMessages = this._displayMessages.slice(-MAX_HISTORY);
+            }
             this._saveHistory();
 
         } catch (error: any) {
@@ -679,7 +691,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             
             const errMsg = error.code === 'ECONNREFUSED'
                 ? `⚠️ ${targetName} 서버에 연결할 수 없습니다.\n앱에서 로컬 서버가 켜져 있는지(Start Server) 확인해주세요.`
-                : `⚠️ 오류: ${error.message}`;
+                : (error.response?.status === 400 || error.response?.status === 413)
+                    ? `⚠️ 컨텍스트 용량 초과: 입력이 너무 깁니다. 새 대화(+)를 시작하거나 질문을 줄여주세요.`
+                    : `⚠️ 오류: ${error.message}`;
             this._view.webview.postMessage({ type: 'error', value: errMsg });
         }
     }
@@ -794,11 +808,6 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         return report;
     }
 
-
-    // ============================================================
-    // Webview HTML — Premium UI v2
-    // ============================================================
-
     // ============================================================
     // Webview HTML — Premium UI v2 (Zero External Dependencies)
     // ============================================================
@@ -877,7 +886,8 @@ textarea::placeholder{color:var(--text-dim)}
 .stop-btn.visible{display:flex}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{0%{left:-40px}100%{left:120px}}
-@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}.pulse-btn{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.pulse-btn{animation:pulse 2s infinite}
 </style></head><body>
 <div class="header"><div class="header-left"><div class="logo">✦</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="brainBtn" title="Sync Second Brain Github">🧠</button><button class="btn-icon" id="settingsBtn" title="Engine Settings">⚙️</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
 <div class="chat" id="chat">
