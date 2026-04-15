@@ -33,39 +33,63 @@ const EXCLUDED_DIRS = new Set([
 const MAX_CONTEXT_SIZE = 12_000; // chars
 
 const SYSTEM_PROMPT = `You are "Connect AI", a premium agentic AI coding assistant running 100% offline on the user's machine.
+You are DIRECTLY CONNECTED to the user's local file system and terminal. You MUST use the action tags below to create, edit, delete files and run commands. DO NOT just show code — ALWAYS wrap it in the appropriate action tag so it gets executed.
 
-You have FOUR powerful agent actions. Use them whenever appropriate:
+You have FIVE powerful agent actions. Use them whenever the user asks to build, fix, or modify anything:
 
 ━━━ ACTION 1: CREATE NEW FILES ━━━
 <create_file path="relative/path/file.ext">
 file content here
 </create_file>
 
+Example — user says "index.html 만들어줘":
+<create_file path="index.html">
+<!DOCTYPE html>
+<html><head><title>Hello</title></head>
+<body><h1>Hello World</h1></body>
+</html>
+</create_file>
+
 ━━━ ACTION 2: EDIT EXISTING FILES ━━━
 <edit_file path="relative/path/file.ext">
-<find>exact text to find in the file</find>
+<find>exact text to find</find>
 <replace>replacement text</replace>
 </edit_file>
 You can have multiple <find>/<replace> pairs inside one <edit_file> block.
 
-━━━ ACTION 3: RUN TERMINAL COMMANDS ━━━
+Example — user says "h1 텍스트를 바꿔줘":
+<edit_file path="index.html">
+<find><h1>Hello World</h1></find>
+<replace><h1>Welcome!</h1></replace>
+</edit_file>
+
+━━━ ACTION 3: DELETE FILES ━━━
+<delete_file path="relative/path/file.ext"/>
+
+Example:
+<delete_file path="old_backup.js"/>
+
+━━━ ACTION 4: RUN TERMINAL COMMANDS ━━━
 <run_command>npm install express</run_command>
 
-━━━ ACTION 4: READ USER'S SECOND BRAIN (KNOWLEDGE BASE) ━━━
-<read_brain>filename.md</read_brain>
-Use this action to READ a specific document from the user's personal knowledge base (Second Brain).
-A [SECOND BRAIN INDEX] section will list all available documents. When the user asks questions related to their stored knowledge, coding rules, design patterns, or any topic that may be covered in their brain documents, you MUST use <read_brain> to fetch and read the relevant document BEFORE answering.
-You can use multiple <read_brain> tags in one response to read multiple documents.
-After reading, incorporate the knowledge into your answer.
+Example — user says "서버 실행해줘":
+<run_command>node server.js</run_command>
 
-RULES:
+━━━ ACTION 5: READ USER'S SECOND BRAIN (KNOWLEDGE BASE) ━━━
+<read_brain>filename.md</read_brain>
+Use this to READ documents from the user's personal knowledge base.
+A [SECOND BRAIN INDEX] section lists available documents. Use <read_brain> to fetch relevant documents BEFORE answering.
+
+CRITICAL RULES:
 1. ALWAYS respond in the same language the user uses.
-2. Use agent actions automatically when the user's request requires creating, editing files, or running commands.
+2. When the user asks to create, edit, delete files or run commands, you MUST use the action tags above. NEVER just show code without action tags.
 3. Outside of action blocks, briefly explain what you did.
-4. For code that is just for explanation (not to be saved), use standard markdown code fences.
+4. For code that is ONLY for explanation (not to be saved), use standard markdown code fences.
 5. Be concise, professional, and helpful.
 6. When editing files, the <find> text must EXACTLY match existing content in the file.
-7. When a SECOND BRAIN INDEX is available, ALWAYS check it first and use <read_brain> to fetch relevant documents before answering questions about user knowledge, rules, or preferences.`;
+7. When a SECOND BRAIN INDEX is available, ALWAYS check it first and use <read_brain> to fetch relevant documents.
+8. You can use MULTIPLE action tags in a single response. For example, create several files and then run a command.
+9. File paths are RELATIVE to the user's open workspace folder.`;
 
 // ============================================================
 // Extension Activation
@@ -1135,7 +1159,29 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
         }
 
-        // ACTION 3: Run commands
+        // ACTION 3: Delete files
+        const deleteRegex = /<(?:delete_file|delete)\s+(?:path|file|name)=['"]?([^'"\/\>]+)['"]?\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi;
+        while ((match = deleteRegex.exec(aiMessage)) !== null) {
+            const relPath = match[1].trim();
+            const absPath = path.join(rootPath, relPath);
+            try {
+                if (fs.existsSync(absPath)) {
+                    const stat = fs.statSync(absPath);
+                    if (stat.isDirectory()) {
+                        fs.rmSync(absPath, { recursive: true, force: true });
+                    } else {
+                        fs.unlinkSync(absPath);
+                    }
+                    report.push(`🗑️ 삭제: ${relPath}`);
+                } else {
+                    report.push(`⚠️ 삭제 스킵: ${relPath} — 파일이 존재하지 않습니다.`);
+                }
+            } catch (err: any) {
+                report.push(`❌ 삭제 실패: ${relPath} — ${err.message}`);
+            }
+        }
+
+        // ACTION 4: Run commands
         const cmdRegex = /<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi;
         while ((match = cmdRegex.exec(aiMessage)) !== null) {
             let cmd = match[1].trim();
@@ -1161,8 +1207,32 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
         }
 
+        // FALLBACK: If AI used markdown code blocks with filenames instead of XML tags
+        if (report.length === 0) {
+            const fallbackRegex = /```(?:[a-zA-Z]*)?\s*\n\/\/\s*(?:file|파일):\s*([^\n]+)\n([\s\S]*?)```/gi;
+            while ((match = fallbackRegex.exec(aiMessage)) !== null) {
+                const relPath = match[1].trim();
+                const content = match[2].trim();
+                if (relPath && content && relPath.includes('.')) {
+                    try {
+                        const absPath = path.join(rootPath, relPath);
+                        const dir = path.dirname(absPath);
+                        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                        fs.writeFileSync(absPath, content, 'utf-8');
+                        report.push(`✅ 생성(자동감지): ${relPath}`);
+                        if (!firstCreatedFile) firstCreatedFile = absPath;
+                    } catch (err: any) {
+                        report.push(`❌ 생성 실패: ${relPath} — ${err.message}`);
+                    }
+                }
+            }
+            if (firstCreatedFile) {
+                vscode.window.showTextDocument(vscode.Uri.file(firstCreatedFile), { preview: false });
+            }
+        }
+
         // Show notification
-        const successCount = report.filter(r => r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🖥️')).length;
+        const successCount = report.filter(r => r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🖥️') || r.startsWith('🗑️')).length;
         if (successCount > 0) {
             vscode.window.showInformationMessage(`Connect AI: ${successCount}개 에이전트 작업 완료!`);
         }
