@@ -78,6 +78,10 @@ Example — user says "서버 실행해줘":
 <read_brain>filename.md</read_brain>
 Use this to READ documents from the user's personal knowledge base.
 
+━━━ ACTION 8: READ WEBSITES ━━━
+<read_url>https://example.com</read_url>
+Use this to read the textual content of any website on the internet.
+
 CRITICAL RULES:
 1. ALWAYS respond in the same language the user uses.
 2. When the user asks to create, edit, delete files or run commands, you MUST use the action tags above. NEVER just show code without action tags.
@@ -817,7 +821,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._view.webview.postMessage({ type: 'streamEnd' });
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
 
-            const report = this._executeActions(aiMessage);
+            const report = await this._executeActions(aiMessage);
             if (report.length > 0) {
                 const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
                 this._view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
@@ -1006,7 +1010,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
 
             // 5. Execute agent actions
-            const report = this._executeActions(aiMessage);
+            const report = await this._executeActions(aiMessage);
 
             // 6. Agent report 추가 (있을 때만)
             if (report.length > 0) {
@@ -1065,7 +1069,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     // Execute ALL agent actions from AI response
     // --------------------------------------------------------
-    private _executeActions(aiMessage: string): string[] {
+    private async _executeActions(aiMessage: string): Promise<string[]> {
         const report: string[] = [];
         let rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
@@ -1244,6 +1248,32 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 report.push(`🖥️ 실행: ${cmd}`);
             } catch (err: any) {
                 report.push(`❌ 명령 실패: ${cmd} — ${err.message}`);
+            }
+        }
+
+        // ACTION 8: Read Urls (Web Scraping)
+        const urlRegex = /<(?:read_url|url|fetch_url)>([\s\S]*?)<\/(?:read_url|url|fetch_url)>/gi;
+        while ((match = urlRegex.exec(aiMessage)) !== null) {
+            const url = match[1].trim();
+            try {
+                // Fetch the HTML content
+                const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 10000 });
+                // Strip scripts and styles first
+                let cleaned = data.toString()
+                    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+                    // Strip remaining HTML tags
+                    .replace(/<[^>]+>/g, ' ')
+                    // Consolidate whitespaces
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                
+                const preview = cleaned.slice(0, 500);
+                report.push(`🌐 웹사이트 읽기: ${url} (${cleaned.length}자)\n\`\`\`\n${preview}...\n\`\`\``);
+                this._chatHistory.push({ role: 'user', content: `[시스템: read_url 결과]\nURL: ${url}\n\`\`\`\n${cleaned.slice(0, 15000)}\n\`\`\`` });
+            } catch (err: any) {
+                report.push(`❌ 웹사이트 접속 실패: ${url} — ${err.message}`);
+                this._chatHistory.push({ role: 'user', content: `[시스템: read_url 실패]\n${err.message}` });
             }
         }
 
