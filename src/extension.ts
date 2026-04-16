@@ -685,7 +685,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             execSync(`git push`, { cwd: rootPath });
             
             setTimeout(() => {
-                const hiddenPrompt = `[A.U 백그라운드 지시 사항]\n마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (클라우드 동기화 완료)\n\n너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:\n만약 마스터가 동의하면, 절대로 유저에게 '무엇을 할까요?'라고 묻지 말고 즉시 지체 없이 <read_file>로 해당 파일 내용을 읽은 뒤, P-Reinforce 룰에 따라 분석하여 \`10_Wiki\` 하위에 적절히 <create_file>로 문서를 재배치해라.`;
+                const hiddenPrompt = `[A.U 시스템 지시]\n새로운 비정형 데이터('${safeTitles}')가 로컬 두뇌 \`00_Raw/${dateStr}\` 폴더에 입수(클라우드 백업 완료)되었습니다.\n\n여기서부터 중요합니다! 마스터가 '응'이나 '진행해' 등으로 동의할 경우, 당신은 절대 질문으로 대답하지 말고 다음 작업을 Tool을 사용해 강제로 즉각 실행하십시오:\n1. \`<read_file path="...">\` 명령을 사용하여 방금 입수된 원본 파일의 내용을 읽어옵니다.\n2. 원본 내용을 모두 이해했다면, 즉시 당신의 지식 구조화 능력(P-Reinforce)을 발휘하여 그 내용을 여러 주제별로 나누어 \`.secondbrain/10_Wiki/\` 하위의 적절한 폴더 경로에 \`<create_file>\`을 사용해 새로 저장(재배치)하십시오.\n무언가를 묻지 말고 Tool 권한을 발동하는 데에만 집중하십시오.`;
                 this._chatHistory.push({ role: 'system', content: hiddenPrompt });
                 
                 const uiMsg = "🧠 데이터가 완벽하게 입수되었습니다! 즉시 P-Reinforce 구조화를 시작할까요?";
@@ -693,7 +693,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }, 3000);
         } catch(err) {
             setTimeout(() => {
-                const hiddenPrompt = `[A.U 백그라운드 지시 사항]\n마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (원격 푸시 보류됨)\n\n너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:\n만약 마스터가 동의하면, 즉시 <read_file>로 해당 파일 내용을 읽고 P-Reinforce 규칙에 따라 스스로 \`10_Wiki\` 폴더 하위에 분류된 마크다운 템플릿으로 <create_file> 작업을 유저 질문 없이 수행해라.`;
+                const hiddenPrompt = `[A.U 시스템 지시]\n새로운 비정형 데이터('${safeTitles}')가 로컬 두뇌 \`00_Raw/${dateStr}\` 폴더에 입수되었습니다.\n\n여기서부터 중요합니다! 마스터가 동의할 경우, 당신은 절대 질문으로 대답하지 말고 다음 작업을 Tool을 사용해 강제로 즉각 실행하십시오:\n1. \`<read_file path="...">\` 명령을 사용하여 방금 입수된 원본 파일의 내용을 읽어옵니다.\n2. 내용을 이해했다면, 지식 구조화 능력을 발휘하여 그 내용을 여러 주제별로 나누어 \`.secondbrain/10_Wiki/\` 하위의 적절한 폴더 경로에 \`<create_file>\`을 여러 번 사용하여 구조화된 마크다운으로 저장하십시오.\n다시 한번 강조하지만 질문하지 말고 곧바로 Tool을 발동하십시오.`;
                 this._chatHistory.push({ role: 'system', content: hiddenPrompt });
                 
                 const uiMsg = "🧠 로컬 데이터가 입수되었습니다! 곧바로 P-Reinforce 구조화를 시작할까요?";
