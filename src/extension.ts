@@ -483,8 +483,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     public injectSystemMessage(message: string) {
         if(this._view) {
             this._view.webview.postMessage({ type: 'response', value: message });
-            // Add to history so it persists
             this._chatHistory.push({ role: 'assistant', content: message });
+            this._displayMessages.push({ role: 'ai', text: message });
+            this._saveHistory();
         }
     }
 
@@ -684,23 +685,19 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             execSync(`git push`, { cwd: rootPath });
             
             setTimeout(() => {
-                this.sendPromptFromExtension(`[A.U 백그라운드 지시 사항]
-마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (클라우드 동기화 완료)
-
-너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:
-만약 마스터가 "응", "시작해" 등으로 동의하면, 너는 지체 없이 즉시 <read_file>을 사용해 \`00_Raw/${dateStr}/${safeTitles}\` 파일 내용을 읽은 뒤, P-Reinforce (지식 분류 아키텍처) 룰에 따라 해당 내용을 분석하여 \`10_Wiki\` 하위 폴더들에 적절히 <create_file>을 통해 구조화된 마크다운으로 문서를 작성하고 재배치해야 한다. 절대로 유저에게 '무엇을 할까요?'라고 묻지 말고, 곧바로 스스로 행동(Action 태그 사용)하라.
-
-위 지시를 숙지했다면 마스터에게 "데이터가 완벽하게 입수되었습니다. 즉시 P-Reinforce 구조화를 시작할까요?" 라고만 짧게 대답하며 승인을 대기해라.`);
+                const hiddenPrompt = `[A.U 백그라운드 지시 사항]\n마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (클라우드 동기화 완료)\n\n너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:\n만약 마스터가 동의하면, 절대로 유저에게 '무엇을 할까요?'라고 묻지 말고 즉시 지체 없이 <read_file>로 해당 파일 내용을 읽은 뒤, P-Reinforce 룰에 따라 분석하여 \`10_Wiki\` 하위에 적절히 <create_file>로 문서를 재배치해라.`;
+                this._chatHistory.push({ role: 'system', content: hiddenPrompt });
+                
+                const uiMsg = "🧠 데이터가 완벽하게 입수되었습니다! 즉시 P-Reinforce 구조화를 시작할까요?";
+                this.injectSystemMessage(uiMsg);
             }, 3000);
         } catch(err) {
             setTimeout(() => {
-                this.sendPromptFromExtension(`[A.U 백그라운드 지시 사항]
-마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (원격 푸시 보류됨)
-
-너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:
-만약 마스터가 동의하면, 즉시 <read_file> 권한으로 \`00_Raw/${dateStr}/${safeTitles}\` 내용을 읽고 P-Reinforce 규칙에 따라 스스로 \`10_Wiki\` 폴더 하위에 분류된 마크다운 템플릿으로 <create_file> 작업을 수행해라. 유저에게 구체적인 목표를 묻지 말고 알아서 파일을 읽고 판단해서 실행하라.
-
-위 내용을 숙지했다면 마스터에게 "데이터가 완벽하게 입수되었습니다. 즉시 P-Reinforce 구조화를 시작할까요?" 라고만 대답하라.`);
+                const hiddenPrompt = `[A.U 백그라운드 지시 사항]\n마스터가 방금 '${safeTitles}' 파일을 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 입수시켰습니다. (원격 푸시 보류됨)\n\n너는 지금 당장 다음 작업의 대기 상태(Stand-by)로 진입한다:\n만약 마스터가 동의하면, 즉시 <read_file>로 해당 파일 내용을 읽고 P-Reinforce 규칙에 따라 스스로 \`10_Wiki\` 폴더 하위에 분류된 마크다운 템플릿으로 <create_file> 작업을 유저 질문 없이 수행해라.`;
+                this._chatHistory.push({ role: 'system', content: hiddenPrompt });
+                
+                const uiMsg = "🧠 로컬 데이터가 입수되었습니다! 곧바로 P-Reinforce 구조화를 시작할까요?";
+                this.injectSystemMessage(uiMsg);
             }, 3000);
         }
     }
