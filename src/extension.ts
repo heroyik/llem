@@ -688,7 +688,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     } catch(e) {}
                 }
 
-                const hiddenPrompt = `[A.U 시스템 지시]\n새로운 비정형 데이터('${safeTitles}')가 글로벌 두뇌(Second Brain)에 입수 및 클라우드 백업 완료되었습니다.\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 '응'이나 '진행해' 등으로 동의할 경우, 당신은 절대 대화만으로 대답하지 말고 다음 작업을 Tool을 사용해 강제로 즉각 실행하십시오:\n위 원본 내용을 지식 구조화(P-Reinforce) 규칙에 따라 분석하고, 여러 주제별로 나누어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 폴더 경로에 \`<create_file>\`을 사용해 여러 개의 마크다운 파일로 저장(재배치)하십시오.\n반드시 \`<create_file path="${brainDir}/10_Wiki/카테고리/파일명.md">\` 처럼 절대 경로를 사용하십시오. 무언가를 묻지 말고 즉시 Tool을 발동하십시오.`;
+                const hiddenPrompt = `[A.U 시스템 지시: P-Reinforce Architect 모드 활성화]\n새로운 비정형 데이터('${safeTitles}')가 글로벌 두뇌(Second Brain)에 입수 및 클라우드 백업 완료되었습니다.\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 '응'이나 '진행해' 등으로 동의할 경우, 당신은 절대 대화만으로 대답하지 말고 아래의 [P-Reinforce 구조화 규격]에 따라 곧바로 <create_file> Tool들을 사용하십시오.\n\n[P-Reinforce 구조화 규격]\n1. 폴더 생성: 원본 데이터를 주제별로 쪼개어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 폴더(예: 🛠️ Projects, 💡 Topics, ⚖️ Decisions, 🚀 Skills)에 저장하십시오.\n2. 마크다운 양식 준수: 생성되는 각 문서 파일은 반드시 아래 포맷을 따라야 합니다.\n---\nid: {{UUID}}\ncategory: "[[10_Wiki/설정한_폴더]]"\nconfidence_score: 0.9\ntags: [관련태그]\nlast_reinforced: ${dateStr}\n---\n# [[문서 제목]]\n## 📌 한 줄 통찰\n> (핵심 요약)\n## 📖 구조화된 지식\n- (세부 내용 불렛 포인트)\n## 🔗 지식 연결\n- Parent: [[상위_카테고리]]\n- Related: [[연관_개념]]\n- Raw Source: [[00_Raw/${dateStr}/${safeTitles}]]\n\n지시를 숙지했다면 묻지 말고 즉각 \`<create_file path="${brainDir}/10_Wiki/새폴더/새문서.md">\`를 사용하여 지식을 분해 후 생성하십시오. 완료 후 잘라낸 결과를 보고하십시오.`;
                 this._chatHistory.push({ role: 'system', content: hiddenPrompt });
                 
                 const uiMsg = "🧠 데이터가 완벽하게 입수되었습니다! 즉시 P-Reinforce 구조화를 시작할까요?";
@@ -704,7 +704,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     } catch(e) {}
                 }
 
-                const hiddenPrompt = `[A.U 시스템 지시]\n새로운 비정형 데이터('${safeTitles}')가 글로벌 두뇌에 다운로드 되었습니다.(원격 푸시 보류됨)\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 동의할 경우, 당신은 절대 대화만으로 대답하지 말고 다음 작업을 Tool을 사용해 강제로 즉각 실행하십시오:\n위 원본 내용을 지식 구조화(P-Reinforce) 규칙에 따라 분석하고, 여러 주제별로 나누어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 경로에 \`<create_file>\`을 사용해 구조화된 마크다운으로 여러 개 저장하십시오.\n반드시 \`<create_file path="${brainDir}/10_Wiki/카테고리/파일명.md">\` 처럼 절대 경로를 사용하십시오. 절대 질문하지 마십시오.`;
+                const hiddenPrompt = `[A.U 시스템 지시: P-Reinforce Architect 모드 활성화]\n새로운 비정형 데이터('${safeTitles}')가 글로벌 두뇌에 다운로드 되었습니다.(원격 푸시 보류됨)\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 동의할 경우, 절대 대화만으로 대답하지 말고 아래의 [P-Reinforce 구조화 규격]에 따라 곧바로 <create_file> Tool들을 사용하십시오.\n\n[P-Reinforce 구조화 규격]\n1. 폴더 생성: 원본 데이터를 주제별로 쪼개어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 폴더(예: 🛠️ Projects, 💡 Topics, ⚖️ Decisions, 🚀 Skills)에 저장하십시오.\n2. 마크다운 양식 준수: 생성되는 각 문서 파일은 반드시 아래 포맷을 따라야 합니다.\n---\nid: {{UUID}}\ncategory: "[[10_Wiki/설정한_폴더]]"\nconfidence_score: 0.9\ntags: [관련태그]\nlast_reinforced: ${dateStr}\n---\n# [[문서 제목]]\n## 📌 한 줄 통찰\n> (핵심 요약)\n## 📖 구조화된 지식\n- (세부 내용 불렛 포인트)\n## 🔗 지식 연결\n- Parent: [[상위_카테고리]]\n- Related: [[연관_개념]]\n- Raw Source: [[00_Raw/${dateStr}/${safeTitles}]]\n\n지시를 숙지했다면 묻지 말고 즉각 \`<create_file path="${brainDir}/10_Wiki/새폴더/새문서.md">\`를 사용하여 지식을 분해 후 생성하십시오.`;
                 this._chatHistory.push({ role: 'system', content: hiddenPrompt });
                 
                 const uiMsg = "🧠 로컬 데이터가 입수되었습니다! 곧바로 P-Reinforce 구조화를 시작할까요?";
