@@ -1587,6 +1587,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
   --input-bg:rgba(14,14,18,.9);--code-bg:#08080c;
   --green:#00e676;--yellow:#ffab40;--cyan:#00e5ff;--red:#ff5252;
 }
+body.vscode-light {
+  --bg:#fafafa;--bg2:#ffffff;--surface:rgba(255,255,255,.8);--surface2:rgba(240,240,245,.8);
+  --border:rgba(0,0,0,.08);--border2:rgba(0,0,0,.15);
+  --text:#454555;--text-bright:#111118;--text-dim:#888899;
+  --accent-glow:rgba(124,106,255,.1);--accent2-glow:rgba(224,64,251,.08);
+  --input-bg:rgba(255,255,255,.9);--code-bg:#f5f5f7;
+}
 html,body{height:100%;font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:13px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
 
 /* AURORA BACKGROUND */
