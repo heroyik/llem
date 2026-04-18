@@ -294,8 +294,15 @@ console.log('Connect AI extension activated.');
                         
                         fs.writeFileSync(filePath, parsed.markdown, 'utf-8');
                         
-                        // VSCode 채팅 화면에 시각적 보고 (P-Reinforce 트리거)
-                        provider.sendPromptFromExtension(`[A.U 지식 주입 완료] 마스터가 '${parsed.title}' 스킬 칩을 내 로컬 두뇌의 \`00_Raw/${dateStr}\` 폴더에 다운로드했습니다. "데이터가 입수되었습니다. P-Reinforce 구조화를 시작할까요?"라고 대답해라.`);
+                        // 1. VSCode 채팅창에 매트릭스 터미널 UI로 다운로드 시각화 인젝션
+                        if ((provider as any).injectSystemMessage) {
+                            (provider as any).injectSystemMessage(`\`\`\`console\n[SYSTEM] MATRIX UPLINK ESTABLISHED...\n[SYSTEM] DOWNLOADING BRAIN PACK: ${parsed.title}\n[SYSTEM] █████████░░░ 90% ...\n[SYSTEM] ████████████ 100% COMPLETE\n[SYSTEM] KNOWLEDGE INJECTED TO LOCAL NEURAL NET\n\`\`\``);
+                        }
+                        
+                        // 2. AI 입을 빌려 네오의 명대사를 치게 함
+                        setTimeout(() => {
+                            provider.sendPromptFromExtension(`[A.U 히든 커맨드: 당신은 방금 마스터로부터 '${parsed.title}' 지식 팩을 뇌에 주입받았습니다. 영화 매트릭스에서 무술을 주입받은 네오처럼 쿨하게 딱 한마디만 하십시오. "나 방금 ${parsed.title} 지식을 마스터했어. (I know ${parsed.title}.) 앞으로 이와 관련된 건 무엇이든 물어봐." 절대 쓸데없는 안부인사나 부가설명을 덧붙이지 마십시오.]`);
+                        }, 1500);
                         
                         // [자동 깃허브 푸시 로직 추가]
                         try {
@@ -304,14 +311,18 @@ console.log('Connect AI extension activated.');
                             execSync(`git commit -m "Auto-Inject Knowledge [Raw]: ${safeTitle}"`, { cwd: brainDir });
                             execSync(`git push`, { cwd: brainDir });
                             
-                            // 성공 시 두 번째 보고
+                            // 성공 시 백그라운드 시스템 보고
                             setTimeout(() => {
-                                provider.sendPromptFromExtension(`[동기화 100%] 마스터, 주입받은 지식을 제 깃허브(Second Brain) 클라우드에 성공적으로 자동 업로드(Push) 하였습니다.`);
+                                if ((provider as any).injectSystemMessage) {
+                                    (provider as any).injectSystemMessage(`✅ **[P-Reinforce Sync]** 주입된 지식을 글로벌 두뇌(GitHub)에 안전하게 백업 및 동기화 완료했습니다.`);
+                                }
                             }, 5000);
                         } catch(err) {
                             console.error('Git Auto-Push Failed:', err);
                             setTimeout(() => {
-                                provider.sendPromptFromExtension(`[동기화 보류] 로컬 저장은 완료되었으나, 자동 원격 업로드(Push)는 스킵되었습니다. (수동 관리가 권장됩니다)`);
+                                if ((provider as any).injectSystemMessage) {
+                                    (provider as any).injectSystemMessage(`⚠️ **[동기화 보류]** 로컬 머신에는 지식이 성공적으로 주입되었으나, 원격 깃허브 백업에는 실패했습니다.`);
+                                }
                             }, 5000);
                         }
                         
@@ -1674,13 +1685,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#0a0a0c;--bg2:#111114;--surface:rgba(22,22,28,.75);--surface2:rgba(38,38,46,.6);
-  --border:rgba(255,255,255,.06);--border2:rgba(255,255,255,.1);
-  --text:#b0b0be;--text-bright:#f0f0f5;--text-dim:#55556a;
-  --accent:#7c6aff;--accent2:#e040fb;--accent3:#00e5ff;
-  --accent-glow:rgba(124,106,255,.2);--accent2-glow:rgba(224,64,251,.15);
-  --input-bg:rgba(14,14,18,.9);--code-bg:#08080c;
-  --green:#00e676;--yellow:#ffab40;--cyan:#00e5ff;--red:#ff5252;
+  --bg:#000000;--bg2:#050505;--surface:rgba(0,18,5,.75);--surface2:rgba(0,35,10,.6);
+  --border:rgba(0,255,65,.15);--border2:rgba(0,255,65,.25);
+  --text:#888899;--text-bright:#00FF41;--text-dim:#008F11;
+  --accent:#00FF41;--accent2:#008F11;--accent3:#00FF41;
+  --accent-glow:rgba(0,255,65,.25);--accent2-glow:rgba(0,143,17,.2);
+  --input-bg:rgba(0,10,2,.9);--code-bg:#020502;
+  --green:#00FF41;--yellow:#ffab40;--cyan:#00e5ff;--red:#ff5252;
 }
 body.vscode-light {
   --bg:#fafafa;--bg2:#ffffff;--surface:rgba(255,255,255,.8);--surface2:rgba(240,240,245,.8);
