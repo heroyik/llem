@@ -465,13 +465,17 @@ function showBrainNetwork(context: vscode.ExtensionContext) {
         })
         .nodeRelSize(3)
         .linkColor(link => link.isNew ? 'rgba(0, 255, 65, 0.8)' : 'rgba(0, 255, 65, 0.15)') 
-        .linkWidth(link => link.isNew ? 2 : 0.5)
-        .linkDirectionalParticles(link => link.isNew ? 4 : 0)
-        .linkDirectionalParticleWidth(2.5)
-        .linkDirectionalParticleColor(() => '#FFFFFF')
-        .linkDirectionalParticleSpeed(0.015)
-        .d3VelocityDecay(0.12)
+        .linkWidth(link => link.isNew ? 1.5 : 0.5)
+        .linkDirectionalParticles(link => link.isNew ? 2 : 0)
+        .linkDirectionalParticleWidth(1.5)
+        .linkDirectionalParticleColor(() => '#00FF41')
+        .linkDirectionalParticleSpeed(0.01)
+        .d3VelocityDecay(0.4) // High friction stops the jiggling, making it structurally stable
         .graphData(gData);
+
+    // Apply strict mathematical structural distances
+    Graph.d3Force('charge').strength(-250);
+    Graph.d3Force('link').distance(45);
 
     Graph.onNodeClick(node => {
         Graph.centerAt(node.x, node.y, 1000);
@@ -495,11 +499,11 @@ function showBrainNetwork(context: vscode.ExtensionContext) {
             newDataNodes.push({ id: packCoreId, group: 1, name: 'MrBeast Master Node', val: 7 });
             newLinks.push({ source: packCoreId, target: 0, isNew: true });
             
-            for(let i = 0; i < 100; i++) {
+            for(let i = 0; i < 40; i++) {
                 const newId = nodeCountId++;
                 newDataNodes.push({ id: newId, group: 1, name: 'Algorithm Fragment', val: Math.random() * 2 + 1 });
                 newLinks.push({ source: newId, target: packCoreId, isNew: true });
-                if(Math.random() < 0.2) newLinks.push({ source: newId, target: 0, isNew: true });
+                if(Math.random() < 0.1) newLinks.push({ source: newId, target: 0, isNew: true });
             }
 
             const updatedData = {
