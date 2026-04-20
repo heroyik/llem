@@ -281,7 +281,7 @@ console.log('Connect AI extension activated.');
                         const parsed = JSON.parse(body);
                         const brainDir = path.join(os.homedir(), '.connect-ai-brain');
                         if (!fs.existsSync(brainDir)) {
-                            throw new Error("로컬 환경에 Second Brain 클론 폴더(~/.connect-ai-brain)가 존재하지 않습니다. 확장 프로그램에서 먼저 연동하세요.");
+                            fs.mkdirSync(brainDir, { recursive: true });
                         }
                         
                         // P-Reinforce 아키텍처 호환: 00_Raw 폴더 내 날짜별 분류
