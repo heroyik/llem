@@ -953,6 +953,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 { label: `🧠 지식 모드: ${statusLabel}`, description: '지식 기반 코딩 ON/OFF 전환', action: 'toggle' },
                 { label: '🔄 지식 새로고침', description: `현재: ${secondBrainRepo?.split('/').pop() || '없음'}`, action: 'resync' },
                 { label: '🔗 다른 깃허브로 변경', description: '새로운 지식 저장소 URL 입력', action: 'change' },
+                { label: '❌ 깃허브 연결 끊기', description: '로컬 지식을 삭제하고 연결 해제', action: 'disconnect' }
             );
         }
 
@@ -987,6 +988,20 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 await vscode.workspace.getConfiguration('connectAiLab').update('secondBrainRepo', newUrl, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage('✅ 새로운 깃허브 주소가 저장되었습니다. 동기화를 시작합니다!');
                 await this._syncSecondBrain();
+                break;
+            case 'disconnect':
+                const confirm = await vscode.window.showWarningMessage('정말로 Second Brain 연결을 끊고 다운로드된 지식을 모두 삭제하시겠습니까?', '연결 끊기', '취소');
+                if (confirm === '연결 끊기') {
+                    const dir = path.join(os.homedir(), '.connect-ai-brain');
+                    if (fs.existsSync(dir)) {
+                        fs.rmSync(dir, { recursive: true, force: true });
+                    }
+                    await vscode.workspace.getConfiguration('connectAiLab').update('secondBrainRepo', '', vscode.ConfigurationTarget.Global);
+                    this._brainEnabled = false;
+                    this._ctx.globalState.update('brainEnabled', false);
+                    vscode.window.showInformationMessage('✅ Second Brain 연결이 해제되고 로컬 지식이 삭제되었습니다.');
+                    this._view.webview.postMessage({ type: 'response', value: `❌ **지식 무장 해제** — Second Brain 연결이 제거되었습니다.` });
+                }
                 break;
         }
     }
