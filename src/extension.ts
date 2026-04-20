@@ -693,10 +693,10 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     await this._sendModels();
                     break;
                 case 'prompt':
-                    await this._handlePrompt(msg.value, msg.model);
+                    await this._handlePrompt(msg.value, msg.model, msg.internet);
                     break;
                 case 'promptWithFile':
-                    await this._handlePromptWithFile(msg.value, msg.model, msg.files);
+                    await this._handlePromptWithFile(msg.value, msg.model, msg.files, msg.internet);
                     break;
                 case 'newChat':
                     this.resetChat();
@@ -1192,7 +1192,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     // Handle prompt with file attachments (multimodal)
     // --------------------------------------------------------
-    private async _handlePromptWithFile(prompt: string, modelName: string, files: {name: string, type: string, data: string}[]) {
+    private async _handlePromptWithFile(prompt: string, modelName: string, files: {name: string, type: string, data: string}[], internetEnabled?: boolean) {
         if (!this._view) { return; }
 
         try {
@@ -1235,9 +1235,12 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
                 const workspaceCtx = this._getWorkspaceContext();
                 const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
+                const internetCtx = internetEnabled 
+                    ? `\n\n[INTERNET SYNC ON]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have internet access toggled ON. When the user asks for realtime info, search queries, or the latest data, you MUST use the <read_url>url</read_url> action to search the web or fetch information via a search engine query link.`
+                    : '';
                 reqMessages[0] = {
                     role: 'system',
-                    content: `${this._systemPrompt}\n\n[BACKGROUND CONTEXT]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}`
+                    content: `${this._systemPrompt}\n\n[BACKGROUND CONTEXT]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
                 };
             }
 
@@ -1368,7 +1371,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     // Handle user prompt → Ollama → agent actions → response
     // --------------------------------------------------------
-    private async _handlePrompt(prompt: string, modelName: string) {
+    private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
         if (!this._view) { return; }
 
         try {
@@ -1405,9 +1408,12 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             const reqMessages = [...this._chatHistory];
             // 시스템 프롬프트(0번 인덱스)에 현재 작업 환경 정보를 주입
             if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
+                const internetCtx = internetEnabled 
+                    ? `\n\n[INTERNET SYNC ON]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have internet access toggled ON. When the user asks for realtime info, search queries, or the latest data, you MUST use the <read_url>url</read_url> action to search the web or fetch information.`
+                    : '';
                 reqMessages[0] = {
                     role: 'system',
-                    content: `${SYSTEM_PROMPT}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}`
+                    content: `${SYSTEM_PROMPT}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
                 };
             }
 
@@ -2049,7 +2055,7 @@ body.init .input-wrap{max-width:680px;width:100%;margin:0 auto;transform:none;tr
 .msg-body pre .op{color:#89ddff}
 .msg-body pre .type{color:#ffcb6b}
 </style></head><body class="init">
-<div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="brainBtn" title="Neural Construct 🧠">\ud83e\udde0</button><button class="btn-icon" id="settingsBtn" title="Settings">\u2699\ufe0f</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
+<div class="header"><div class="header-left"><div class="logo">\u2726</div><span class="brand">Connect AI</span></div><div class="header-right"><select id="modelSel"></select><button class="btn-icon" id="internetBtn" title="Internet Access: OFF (Click to toggle)" style="opacity: 0.4; filter: grayscale(1);">🌐</button><button class="btn-icon" id="brainBtn" title="Neural Construct 🧠">\ud83e\udde0</button><button class="btn-icon" id="settingsBtn" title="Settings">\u2699\ufe0f</button><button class="btn-icon" id="newChatBtn" title="New Chat">+</button></div></div>
 <div class="thinking-bar" id="thinkingBar"></div>
 <div class="main-view" id="mainView">
 <div class="chat" id="chat">
@@ -2076,9 +2082,21 @@ try {
 const vscode=acquireVsCodeApi(),chat=document.getElementById('chat'),input=document.getElementById('input'),
 sendBtn=document.getElementById('sendBtn'),stopBtn=document.getElementById('stopBtn'),
 modelSel=document.getElementById('modelSel'),newChatBtn=document.getElementById('newChatBtn'),settingsBtn=document.getElementById('settingsBtn'),brainBtn=document.getElementById('brainBtn'),
-attachBtn=document.getElementById('attachBtn'),injectLocalBtn=document.getElementById('injectLocalBtn'),fileInput=document.getElementById('fileInput'),attachPreview=document.getElementById('attachPreview'),
+internetBtn=document.getElementById('internetBtn'),attachBtn=document.getElementById('attachBtn'),injectLocalBtn=document.getElementById('injectLocalBtn'),fileInput=document.getElementById('fileInput'),attachPreview=document.getElementById('attachPreview'),
 thinkingBar=document.getElementById('thinkingBar');
-let loader=null,sending=false,pendingFiles=[];
+let loader=null,sending=false,pendingFiles=[],internetEnabled=false;
+
+internetBtn.addEventListener('click', ()=>{
+  internetEnabled=!internetEnabled;
+  internetBtn.style.opacity=internetEnabled?'1':'0.4';
+  internetBtn.style.filter=internetEnabled?'none':'grayscale(1)';
+  internetBtn.title=`Internet & Time Sync: ${internetEnabled?'ON':'OFF'} (Click to toggle)`;
+  const msg = document.createElement('div');
+  msg.className='msg';
+  msg.innerHTML=`<div class="msg-body" style="color:#00bdff;font-size:12px;opacity:0.8;">🌐 인터넷 및 시간 동기화 모드가 ${internetEnabled?'ON':'OFF'} 되었습니다.</div>`;
+  chat.appendChild(msg);
+  chat.scrollTop=chat.scrollHeight;
+});
 
 /* Syntax Highlighting (lightweight) */
 function highlight(code,lang){
@@ -2162,10 +2180,10 @@ function send(){
   addMsg(displayText,'user');
   input.value='';input.style.height='auto';setSending(true);showLoader();
   if(pendingFiles.length>0){
-    vscode.postMessage({type:'promptWithFile',value:text||'\uc774 \ud30c\uc77c\uc744 \ubd84\uc11d\ud574\uc8fc\uc138\uc694.',model:modelSel.value,files:pendingFiles});
+    vscode.postMessage({type:'promptWithFile',value:text||'\uc774 \ud30c\uc77c\uc744 \ubd84\uc11d\ud574\uc8fc\uc138\uc694.',model:modelSel.value,files:pendingFiles,internet:internetEnabled});
     pendingFiles=[];attachPreview.innerHTML='';attachPreview.classList.remove('visible');
   } else {
-    vscode.postMessage({type:'prompt',value:text,model:modelSel.value});
+    vscode.postMessage({type:'prompt',value:text,model:modelSel.value,internet:internetEnabled});
   }
 }
 
