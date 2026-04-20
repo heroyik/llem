@@ -441,7 +441,7 @@ async function showBrainNetwork(context: vscode.ExtensionContext) {
   <meta charset="UTF-8">
   <title>Connect AI - Neural Construct</title>
   <style>
-    body { margin: 0; padding: 0; background: #0a0a0a; overflow: hidden; font-family: 'SF Pro Display', -apple-system, sans-serif; }
+    body { margin: 0; padding: 0; background: #0a0a0a; overflow: hidden; width: 100vw; height: 100vh; font-family: 'SF Pro Display', -apple-system, sans-serif; }
     #ui-layer { position: absolute; top: 20px; left: 24px; z-index: 10; pointer-events: none; }
     #ui-layer h1 { font-size: 22px; margin: 0 0 4px 0; font-weight: 800; letter-spacing: -0.5px; color: #e0e0e0; }
     #ui-layer h1 span { color: #00cc44; }
@@ -544,6 +544,11 @@ async function showBrainNetwork(context: vscode.ExtensionContext) {
         Graph.zoomToFit(1500, 40);
         document.getElementById('titleSpan').innerText = "Live Workspace Topology";
     }, 500);
+
+    // Make sure graph expands dynamically on window resize
+    window.addEventListener('resize', () => {
+        Graph.width(window.innerWidth).height(window.innerHeight);
+    });
   </script>
 </body>
 </html>`;
