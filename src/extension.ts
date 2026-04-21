@@ -832,7 +832,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
 
         // 리스너를 붙인 후 HTML을 렌더링합니다.
-        webviewView.webview.html = this._getHtml();
+        webviewView.webview.html = this._getHtml(webviewView.webview);
     }
 
     // --------------------------------------------------------
@@ -2113,7 +2113,10 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     // ============================================================
     // Webview HTML — CINEMATIC UI v3 (Content-Grade Visuals)
     // ============================================================
-    private _getHtml(): string {
+    private _getHtml(webview: vscode.Webview): string {
+        const markdownItUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'node_modules', 'markdown-it', 'dist', 'markdown-it.min.js')
+        );
         return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Connect AI</title>
@@ -2177,12 +2180,14 @@ select:hover,select:focus{border-color:var(--accent);box-shadow:0 0 12px var(--a
 .msg-user .msg-body{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:10px 14px;margin-left:29px;color:var(--text-bright);backdrop-filter:blur(8px);white-space:pre-wrap}
 .msg-body p{margin:0 0 8px}
 .msg-body p:last-child{margin-bottom:0}
-.msg-body h1,.msg-body h2,.msg-body h3{color:var(--text-bright);line-height:1.25;margin:14px 0 8px;font-weight:800}
+.msg-body h1,.msg-body h2,.msg-body h3,.msg-body h4,.msg-body h5,.msg-body h6{color:var(--text-bright);line-height:1.25;margin:14px 0 8px;font-weight:800}
 .msg-body h1{font-size:20px;border-bottom:1px solid var(--border2);padding-bottom:6px}
 .msg-body h2{font-size:17px}.msg-body h3{font-size:15px}
+.msg-body h4{font-size:14px}.msg-body h5,.msg-body h6{font-size:13px}
 .msg-body ul,.msg-body ol{margin:6px 0 10px 20px;padding:0}
 .msg-body li{margin:3px 0}
 .msg-body blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--accent);background:rgba(0,255,65,.04);color:var(--text-bright)}
+.msg-body img{max-width:100%;height:auto;border-radius:8px;border:1px solid var(--border2);margin:8px 0}
 .msg-body table{width:100%;border-collapse:collapse;margin:10px 0;display:block;overflow-x:auto;border:1px solid var(--border2);border-radius:8px}
 .msg-body th,.msg-body td{border:1px solid var(--border2);padding:7px 9px;text-align:left;vertical-align:top;white-space:normal}
 .msg-body th{color:var(--text-bright);background:rgba(0,255,65,.06);font-weight:700}
@@ -2316,6 +2321,7 @@ body.init .input-wrap{max-width:680px;width:100%;margin:0 auto;transform:none;tr
 <div class="input-btns"><button class="attach-btn" id="attachBtn" title="\ud30c\uc77c \ucca8\ubd80">+</button><button class="attach-btn" id="injectLocalBtn" title="Inject Brain Pack \ud83d\udc89">⚡</button><button class="stop-btn" id="stopBtn">\u25a0</button><button class="send-btn" id="sendBtn">\u2191</button></div></div></div>
 <input type="file" id="fileInput" multiple accept="image/*,audio/*,.txt,.md,.csv,.json,.js,.ts,.html,.css,.py,.java,.rs,.go,.yaml,.yml,.xml,.toml" hidden></div>
 </div>
+<script src="${markdownItUri}"></script>
 <script>
 window.onerror = function(msg, url, line, col, error) {
   document.body.innerHTML += '<div style="position:absolute;z-index:9999;background:red;color:white;padding:10px;top:0;left:0;right:0">ERROR: ' + msg + ' at line ' + line + '</div>';
@@ -2387,135 +2393,46 @@ function fmt(t){
   if(t.lastIndexOf('<create_file') > t.lastIndexOf('</create_file>')) t += '</create_file>';
   if(t.lastIndexOf('<edit_file') > t.lastIndexOf('</edit_file>')) t += '</edit_file>';
   if(t.lastIndexOf('<run_command') > t.lastIndexOf('</run_command>')) t += '</run_command>';
-  if((t.match(/\x60\x60\x60/g)||[]).length % 2 !== 0) t += '\\\\n\x60\x60\x60';
+  if((t.match(/\x60\x60\x60/g)||[]).length % 2 !== 0) t += '\\n\x60\x60\x60';
 
   const blocks = [];
-  function pushB(h){ blocks.push(h); return '__B' + (blocks.length-1) + '__'; }
-  function inlineMd(s){
-    let out='', i=0;
-    while(i<s.length){
-      if(s.startsWith('**',i)){
-        const end=s.indexOf('**',i+2);
-        if(end>-1){out+='<strong>'+inlineMd(s.slice(i+2,end))+'</strong>';i=end+2;continue;}
-      }
-      if(s[i]==='*'){
-        const end=s.indexOf('*',i+1);
-        if(end>-1){out+='<em>'+inlineMd(s.slice(i+1,end))+'</em>';i=end+1;continue;}
-      }
-      if(s[i]==='['){
-        const mid=s.indexOf('](',i);
-        const end=mid>-1?s.indexOf(')',mid+2):-1;
-        if(mid>-1&&end>-1){
-          const label=inlineMd(s.slice(i+1,mid));
-          const href=s.slice(mid+2,end).replace(/"/g,'&quot;');
-          out+='<a href="'+href+'" target="_blank">'+label+'</a>';i=end+1;continue;
-        }
-      }
-      out+=s[i++];
-    }
-    return out;
+  function pushB(h){ const token='@@CONNECT_BLOCK_'+blocks.length+'@@'; blocks.push({token:token, html:h}); return '\\n\\n'+token+'\\n\\n'; }
+  function langLabel(info){ const raw=(info||'').trim().split(/\\s+/)[0]||'code'; return raw.replace(/[{}()[\\]"'<>]/g,'')||'code'; }
+  function codeBlock(code,info){
+    const lang=langLabel(info);
+    return '<div class="code-wrap"><span class="code-lang">'+esc(lang)+'</span><pre><code>'+highlight(code,lang)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>';
   }
-  function splitRow(r){
-    r=r.trim();
-    if(r.startsWith('|'))r=r.slice(1);
-    if(r.endsWith('|'))r=r.slice(0,-1);
-    return r.split('|').map(c=>inlineMd(c.trim()));
+  function escapeRegExp(s){return s.replace(/[|\\\\{}()[\\]^$+*?.]/g,'\\\\$&')}
+
+  t=t.replace(/<create_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/create_file>/gi,(_,p,c)=>pushB('<div class="file-badge">\ud83d\udcc1 '+esc(p)+' \u2014 \uc790\ub3d9 \uc0dd\uc131\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
+  t=t.replace(/<edit_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/edit_file>/gi,(_,p,c)=>pushB('<div class="edit-badge">\u270f\ufe0f '+esc(p)+' \u2014 \ud3b8\uc9d1\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
+  t=t.replace(/<run_command>([\\s\\S]*?)<\\/run_command>/gi,(_,c)=>pushB('<div class="cmd-badge"><span>\u25b6 '+esc(c.trim())+'</span><button class="btn-open" onclick="openTerminal()">Open \u2197</button></div>'));
+
+  if(!window.markdownit){
+    let fallback=esc(t).replace(/\\n/g,'<br>');
+    blocks.forEach(b=>{fallback=fallback.split(esc(b.token)).join(b.html);});
+    return fallback;
   }
-  function isTableSeparator(line){
-    const cells=splitRow(line);
-    return cells.length>1&&cells.every(c=>{
-      const raw=c.replace(/<[^>]*>/g,'').trim();
-      let hyphens=0;
-      for(const ch of raw){if(ch==='-')hyphens++;else if(ch!==':'&&ch!==' ')return false;}
-      return hyphens>=3;
-    });
-  }
-  function renderTable(lines){
-    const head=splitRow(lines[0]);
-    const rows=lines.slice(2).map(splitRow);
-    let h='<table><thead><tr>'+head.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
-    h+=rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('');
-    return h+'</tbody></table>';
-  }
-  function placeholderLine(line){
-    return line.startsWith('__B')&&line.endsWith('__')&&line.slice(3,-2).split('').every(ch=>ch>='0'&&ch<='9');
-  }
-  function headingLevel(line){
-    let n=0;
-    while(n<line.length&&line[n]==='#')n++;
-    return n>0&&n<=6&&line[n]===' '?Math.min(n,3):0;
-  }
-  function isHr(line){
-    const x=line.trim();
-    return x.length>=3&&x.split('').every(ch=>ch==='-');
-  }
-  function unorderedItem(line){
-    const x=line.trimStart();
-    return (x.startsWith('- ')||x.startsWith('* '))?x.slice(2):null;
-  }
-  function orderedItem(line){
-    const x=line.trimStart();
-    let i=0;
-    while(i<x.length&&x[i]>='0'&&x[i]<='9')i++;
-    return i>0&&x[i]==='.'&&x[i+1]===' '?x.slice(i+2):null;
-  }
-  function renderMarkdown(text){
-    const lines=text.split('\\n');
-    const html=[], para=[];
-    const flush=()=>{if(para.length){html.push('<p>'+para.map(inlineMd).join('<br>')+'</p>');para.length=0;}};
-    for(let i=0;i<lines.length;i++){
-      const line=lines[i], trimmed=line.trim();
-      if(!trimmed){flush();continue;}
-      if(placeholderLine(trimmed)){flush();html.push(trimmed);continue;}
-      if(i+1<lines.length&&line.includes('|')&&isTableSeparator(lines[i+1])){
-        flush();
-        const tableLines=[line,lines[i+1]];
-        i+=2;
-        while(i<lines.length&&lines[i].includes('|')&&lines[i].trim()){tableLines.push(lines[i]);i++;}
-        i--;
-        html.push(renderTable(tableLines));
-        continue;
-      }
-      const h=headingLevel(line);
-      if(h){flush();html.push('<h'+h+'>'+inlineMd(line.trim().slice(h+1))+'</h'+h+'>');continue;}
-      if(isHr(line)){flush();html.push('<hr>');continue;}
-      if(trimmed.startsWith('&gt;')){
-        flush();
-        html.push('<blockquote>'+inlineMd(trimmed.slice(4).trimStart())+'</blockquote>');
-        continue;
-      }
-      const ul=unorderedItem(line);
-      if(ul!==null){
-        flush();
-        const items=[ul];let j=i+1,next;
-        while(j<lines.length&&(next=unorderedItem(lines[j]))!==null){items.push(next);j++;}
-        i=j-1;
-        html.push('<ul>'+items.map(x=>'<li>'+inlineMd(x)+'</li>').join('')+'</ul>');
-        continue;
-      }
-      const ol=orderedItem(line);
-      if(ol!==null){
-        flush();
-        const items=[ol];let j=i+1,next;
-        while(j<lines.length&&(next=orderedItem(lines[j]))!==null){items.push(next);j++;}
-        i=j-1;
-        html.push('<ol>'+items.map(x=>'<li>'+inlineMd(x)+'</li>').join('')+'</ol>');
-        continue;
-      }
-      para.push(line);
-    }
-    flush();
-    return html.join('');
-  }
-  t=t.replace(/<create_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/create_file>/g,(_,p,c)=>pushB('<div class="file-badge">\ud83d\udcc1 '+esc(p)+' \u2014 \uc790\ub3d9 \uc0dd\uc131\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
-  t=t.replace(/<edit_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/edit_file>/g,(_,p,c)=>pushB('<div class="edit-badge">\u270f\ufe0f '+esc(p)+' \u2014 \ud3b8\uc9d1\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
-  t=t.replace(/<run_command>([\\s\\S]*?)<\\/run_command>/g,(_,c)=>pushB('<div class="cmd-badge"><span>\u25b6 '+esc(c)+'</span><button class="btn-open" onclick="openTerminal()">Open \u2197</button></div>'));
-  t=t.replace(/\x60\x60\x60(\\w*)\\n([\\s\\S]*?)\x60\x60\x60/g,(_,lang,c)=>{const l=lang||'code';return pushB('<div class="code-wrap"><span class="code-lang">'+esc(l)+'</span><pre><code>'+highlight(c,l)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');});
-  t=t.replace(/\x60([^\x60]+)\x60/g,(_,c)=>pushB('<code>'+esc(c)+'</code>'));
-  t=esc(t);
-  t=renderMarkdown(t);
-  blocks.forEach((b,i)=>{t=t.split('__B'+i+'__').join(b);});
-  return t;
+
+  const md=window.markdownit({html:false,linkify:true,typographer:true,breaks:false,highlight:(code,lang)=>highlight(code,lang||'')});
+  md.renderer.rules.fence=(tokens,idx)=>codeBlock(tokens[idx].content,tokens[idx].info);
+  md.renderer.rules.code_block=(tokens,idx)=>codeBlock(tokens[idx].content,'');
+  const defaultLinkOpen=md.renderer.rules.link_open||function(tokens,idx,options,env,self){return self.renderToken(tokens,idx,options)};
+  md.renderer.rules.link_open=function(tokens,idx,options,env,self){
+    const token=tokens[idx];
+    const target=token.attrIndex('target');
+    if(target<0) token.attrPush(['target','_blank']); else token.attrs[target][1]='_blank';
+    const rel=token.attrIndex('rel');
+    if(rel<0) token.attrPush(['rel','noopener noreferrer']); else token.attrs[rel][1]='noopener noreferrer';
+    return defaultLinkOpen(tokens,idx,options,env,self);
+  };
+
+  let html=md.render(t);
+  blocks.forEach(b=>{
+    const wrapped=new RegExp('<p>\\\\s*'+escapeRegExp(b.token)+'\\\\s*<\\\\/p>','g');
+    html=html.replace(wrapped,b.html).split(b.token).join(b.html);
+  });
+  return html;
 }
 function copyCode(btn){const code=btn.parentElement.querySelector('code');if(!code)return;navigator.clipboard.writeText(code.innerText).then(()=>{btn.textContent='\u2713 Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1500)})}
 function openTerminal(){vscode.postMessage({type:'showTerminal'})}
