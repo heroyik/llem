@@ -1015,7 +1015,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 { label: `📂 내 두뇌 파일 목록 (${brainFiles.length}개)`, description: '주입된 지식 파일 확인', action: 'listFiles' },
                 { label: '🔄 지식 새로고침', description: `현재: ${secondBrainRepo?.split('/').pop() || '없음'}`, action: 'resync' },
                 { label: '🔗 다른 깃허브로 변경', description: '새로운 지식 저장소 URL 입력', action: 'change' },
-                { label: '❌ 깃허브 연결 끊기', description: '로컬 지식을 삭제하고 연결 해제', action: 'disconnect' }
+                { label: '🔌 브레인 팩 연결 해제', description: '내 컴퓨터에 임시 복사된 지식만 비웁니다 (원본 깃허브 안전)', action: 'disconnect' }
             );
         }
 
