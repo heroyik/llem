@@ -44,6 +44,14 @@ const EXCLUDED_DIRS = new Set([
 ]);
 const MAX_CONTEXT_SIZE = 12_000; // chars
 
+async function openDocument(uri: vscode.Uri): Promise<void> {
+    if (uri.fsPath.toLowerCase().endsWith('.md')) {
+        await vscode.commands.executeCommand('markdown.showPreview', uri);
+        return;
+    }
+    await vscode.window.showTextDocument(uri, { preview: false });
+}
+
 const SYSTEM_PROMPT = `You are "Connect AI", a premium agentic AI coding assistant running 100% offline on the user's machine.
 You are DIRECTLY CONNECTED to the user's local file system and terminal. You MUST use the action tags below to create, edit, delete, read files and run commands. DO NOT just show code — ALWAYS wrap it in the appropriate action tag so it gets executed.
 
@@ -640,7 +648,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _ctx: vscode.ExtensionContext;
 
     // 대화 표시용 (system prompt 제외, 유저에게 보여줄 것만 저장)
-    private _displayMessages: { text: string; role: string }[] = [];
+    private _displayMessages: { text: string; role: string; files?: { name: string; type: string; data?: string }[] }[] = [];
     private _isSyncingBrain: boolean = false;
     public _brainEnabled: boolean = true; // 🧠 ON/OFF 토글 상태
     private _abortController?: AbortController;
@@ -811,6 +819,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                             this._displayMessages.pop();
                         }
                         await this._handlePrompt(this._lastPrompt, this._lastModel || '');
+                    }
+                    break;
+                case 'showTerminal':
+                    if (this._terminal) {
+                        this._terminal.show();
+                    } else {
+                        vscode.window.showInformationMessage('Connect AI: 실행 중인 터미널 세션이 없습니다.');
                     }
                     break;
             }
@@ -1382,7 +1397,15 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             const userContent = prompt + fileContext;
             this._chatHistory.push({ role: 'user', content: userContent });
-            this._displayMessages.push({ text: prompt + (files.length > 0 ? `\n📎 ${files.map(f=>f.name).join(', ')}` : ''), role: 'user' });
+            this._displayMessages.push({
+                text: prompt,
+                role: 'user',
+                files: files.map(f => ({
+                    name: f.name,
+                    type: f.type,
+                    data: f.type.startsWith('image/') ? f.data : undefined
+                }))
+            });
 
             // Build messages
             const reqMessages = [...this._chatHistory];
@@ -1408,7 +1431,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
 
             // Build image payload for vision models
-            const images = imageFiles.map(f => f.data); // already base64
+            const images = imageFiles.map(f => ({ data: f.data, type: f.type || 'image/png' })); // already base64
 
             let aiMessage = '';
             this._view.webview.postMessage({ type: 'streamStart' });
@@ -1418,7 +1441,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 const lastUserMsg = reqMessages[reqMessages.length - 1];
                 const contentParts: any[] = [{ type: 'text', text: lastUserMsg.content }];
                 for (const img of images) {
-                    contentParts.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img}` } });
+                    contentParts.push({ type: 'image_url', image_url: { url: `data:${img.type};base64,${img.data}` } });
                 }
                 reqMessages[reqMessages.length - 1] = { role: 'user', content: contentParts as any };
 
@@ -1461,8 +1484,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 };
                 // Attach images to the last user message for Ollama
                 if (images.length > 0) {
+                    const ollamaImages = images.map(img => img.data);
                     streamBody.messages = reqMessages.map((m: any, i: number) => 
-                        i === reqMessages.length - 1 ? { ...m, images } : m
+                        i === reqMessages.length - 1 ? { ...m, images: ollamaImages } : m
                     );
                 }
                 const response = await axios.post(apiUrl, streamBody, { timeout, responseType: 'stream' });
@@ -1865,7 +1889,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         // Open first created file
         if (firstCreatedFile) {
-            vscode.window.showTextDocument(vscode.Uri.file(firstCreatedFile), { preview: false });
+            await openDocument(vscode.Uri.file(firstCreatedFile));
         }
 
         // ACTION 2: Edit files
@@ -1902,7 +1926,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     if (absPath.startsWith(_getBrainDir())) brainModified = true;
                     report.push(`✏️ 편집 완료: ${relPath} (${editCount}건 수정)`);
                     // Open edited file
-                    vscode.window.showTextDocument(vscode.Uri.file(absPath), { preview: false });
+                    await openDocument(vscode.Uri.file(absPath));
                 }
             } catch (err: any) {
                 report.push(`❌ 편집 실패: ${relPath} — ${err.message}`);
@@ -2045,7 +2069,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
             }
             if (firstCreatedFile) {
-                vscode.window.showTextDocument(vscode.Uri.file(firstCreatedFile), { preview: false });
+                await openDocument(vscode.Uri.file(firstCreatedFile));
             }
         }
 
@@ -2149,8 +2173,20 @@ select:hover,select:focus{border-color:var(--accent);box-shadow:0 0 12px var(--a
 .av{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
 .av-user{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
 .av-ai{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 0 10px rgba(124,106,255,.3)}
-.msg-body{padding-left:29px;line-height:1.75;color:var(--text);white-space:pre-wrap;word-break:break-word;font-size:13px}
-.msg-user .msg-body{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:10px 14px;margin-left:29px;color:var(--text-bright);backdrop-filter:blur(8px)}
+.msg-body{padding-left:29px;line-height:1.75;color:var(--text);white-space:normal;word-break:break-word;font-size:13px}
+.msg-user .msg-body{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:10px 14px;margin-left:29px;color:var(--text-bright);backdrop-filter:blur(8px);white-space:pre-wrap}
+.msg-body p{margin:0 0 8px}
+.msg-body p:last-child{margin-bottom:0}
+.msg-body h1,.msg-body h2,.msg-body h3{color:var(--text-bright);line-height:1.25;margin:14px 0 8px;font-weight:800}
+.msg-body h1{font-size:20px;border-bottom:1px solid var(--border2);padding-bottom:6px}
+.msg-body h2{font-size:17px}.msg-body h3{font-size:15px}
+.msg-body ul,.msg-body ol{margin:6px 0 10px 20px;padding:0}
+.msg-body li{margin:3px 0}
+.msg-body blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--accent);background:rgba(0,255,65,.04);color:var(--text-bright)}
+.msg-body table{width:100%;border-collapse:collapse;margin:10px 0;display:block;overflow-x:auto;border:1px solid var(--border2);border-radius:8px}
+.msg-body th,.msg-body td{border:1px solid var(--border2);padding:7px 9px;text-align:left;vertical-align:top;white-space:normal}
+.msg-body th{color:var(--text-bright);background:rgba(0,255,65,.06);font-weight:700}
+.msg-body hr{border:0;border-top:1px solid var(--border2);margin:14px 0}
 .msg-body pre{background:var(--code-bg);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.6;color:#c9d1d9;position:relative}
 .msg-body pre::-webkit-scrollbar{height:6px}
 .msg-body pre::-webkit-scrollbar-track{background:rgba(0,0,0,.2);border-radius:4px}
@@ -2169,7 +2205,9 @@ select:hover,select:focus{border-color:var(--accent);box-shadow:0 0 12px var(--a
 /* BADGES */
 .file-badge{background:rgba(255,171,64,.05);border:1px solid rgba(255,171,64,.2);border-radius:10px 10px 0 0;border-bottom:none;padding:8px 14px;font-size:11px;font-weight:700;color:var(--yellow);display:flex;align-items:center;gap:6px;backdrop-filter:blur(8px)}
 .edit-badge{background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.2);border-radius:10px 10px 0 0;border-bottom:none;padding:8px 14px;font-size:11px;font-weight:700;color:var(--cyan);display:flex;align-items:center;gap:6px;backdrop-filter:blur(8px)}
-.cmd-badge{background:rgba(124,106,255,.05);border:1px solid rgba(124,106,255,.25);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:12px;color:var(--accent);font-family:'SF Mono','Menlo',monospace;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px)}
+.cmd-badge{background:rgba(124,106,255,.05);border:1px solid rgba(124,106,255,.25);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:12px;color:var(--accent);font-family:'SF Mono','Menlo',monospace;display:flex;align-items:center;justify-content:space-between;gap:8px;backdrop-filter:blur(8px);position:relative;overflow:hidden}
+.cmd-badge .btn-open{background:rgba(124,106,255,0.15);border:1px solid rgba(124,106,255,0.3);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:10px;cursor:pointer;transition:all 0.2s;font-family:inherit}
+.cmd-badge .btn-open:hover{background:var(--accent);color:#fff;box-shadow:0 0 10px var(--accent-glow)}
 .msg-error .msg-body{color:var(--red);text-shadow:0 0 20px rgba(255,82,82,.2)}
 
 /* WELCOME */
@@ -2241,6 +2279,11 @@ body.init .input-wrap{max-width:680px;width:100%;margin:0 auto;transform:none;tr
 .attach-chip .chip-remove{cursor:pointer;color:var(--text-dim);font-size:12px;margin-left:2px;transition:color .2s}
 .attach-chip .chip-remove:hover{color:var(--red)}
 .attach-thumb{width:28px;height:28px;border-radius:5px;object-fit:cover;border:1px solid var(--border2)}
+.msg-attachments{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:8px;max-width:420px}
+.msg-attachment{background:rgba(0,255,65,.04);border:1px solid var(--border2);border-radius:8px;overflow:hidden;min-width:0}
+.msg-attachment-img{display:block;width:100%;aspect-ratio:1.35;object-fit:cover;background:#050805}
+.msg-attachment-file{display:flex;align-items:center;gap:7px;padding:8px 10px;color:var(--text);font-size:11px;min-width:0}
+.msg-attachment-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* REGENERATE BUTTON */
 .regen-btn{display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:var(--text-dim);padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;transition:color 0.2s;font-family:inherit;margin-top:6px;margin-left:29px;opacity:0.7}
@@ -2348,25 +2391,161 @@ function fmt(t){
 
   const blocks = [];
   function pushB(h){ blocks.push(h); return '__B' + (blocks.length-1) + '__'; }
+  function inlineMd(s){
+    let out='', i=0;
+    while(i<s.length){
+      if(s.startsWith('**',i)){
+        const end=s.indexOf('**',i+2);
+        if(end>-1){out+='<strong>'+inlineMd(s.slice(i+2,end))+'</strong>';i=end+2;continue;}
+      }
+      if(s[i]==='*'){
+        const end=s.indexOf('*',i+1);
+        if(end>-1){out+='<em>'+inlineMd(s.slice(i+1,end))+'</em>';i=end+1;continue;}
+      }
+      if(s[i]==='['){
+        const mid=s.indexOf('](',i);
+        const end=mid>-1?s.indexOf(')',mid+2):-1;
+        if(mid>-1&&end>-1){
+          const label=inlineMd(s.slice(i+1,mid));
+          const href=s.slice(mid+2,end).replace(/"/g,'&quot;');
+          out+='<a href="'+href+'" target="_blank">'+label+'</a>';i=end+1;continue;
+        }
+      }
+      out+=s[i++];
+    }
+    return out;
+  }
+  function splitRow(r){
+    r=r.trim();
+    if(r.startsWith('|'))r=r.slice(1);
+    if(r.endsWith('|'))r=r.slice(0,-1);
+    return r.split('|').map(c=>inlineMd(c.trim()));
+  }
+  function isTableSeparator(line){
+    const cells=splitRow(line);
+    return cells.length>1&&cells.every(c=>{
+      const raw=c.replace(/<[^>]*>/g,'').trim();
+      let hyphens=0;
+      for(const ch of raw){if(ch==='-')hyphens++;else if(ch!==':'&&ch!==' ')return false;}
+      return hyphens>=3;
+    });
+  }
+  function renderTable(lines){
+    const head=splitRow(lines[0]);
+    const rows=lines.slice(2).map(splitRow);
+    let h='<table><thead><tr>'+head.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+    h+=rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('');
+    return h+'</tbody></table>';
+  }
+  function placeholderLine(line){
+    return line.startsWith('__B')&&line.endsWith('__')&&line.slice(3,-2).split('').every(ch=>ch>='0'&&ch<='9');
+  }
+  function headingLevel(line){
+    let n=0;
+    while(n<line.length&&line[n]==='#')n++;
+    return n>0&&n<=6&&line[n]===' '?Math.min(n,3):0;
+  }
+  function isHr(line){
+    const x=line.trim();
+    return x.length>=3&&x.split('').every(ch=>ch==='-');
+  }
+  function unorderedItem(line){
+    const x=line.trimStart();
+    return (x.startsWith('- ')||x.startsWith('* '))?x.slice(2):null;
+  }
+  function orderedItem(line){
+    const x=line.trimStart();
+    let i=0;
+    while(i<x.length&&x[i]>='0'&&x[i]<='9')i++;
+    return i>0&&x[i]==='.'&&x[i+1]===' '?x.slice(i+2):null;
+  }
+  function renderMarkdown(text){
+    const lines=text.split('\\n');
+    const html=[], para=[];
+    const flush=()=>{if(para.length){html.push('<p>'+para.map(inlineMd).join('<br>')+'</p>');para.length=0;}};
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i], trimmed=line.trim();
+      if(!trimmed){flush();continue;}
+      if(placeholderLine(trimmed)){flush();html.push(trimmed);continue;}
+      if(i+1<lines.length&&line.includes('|')&&isTableSeparator(lines[i+1])){
+        flush();
+        const tableLines=[line,lines[i+1]];
+        i+=2;
+        while(i<lines.length&&lines[i].includes('|')&&lines[i].trim()){tableLines.push(lines[i]);i++;}
+        i--;
+        html.push(renderTable(tableLines));
+        continue;
+      }
+      const h=headingLevel(line);
+      if(h){flush();html.push('<h'+h+'>'+inlineMd(line.trim().slice(h+1))+'</h'+h+'>');continue;}
+      if(isHr(line)){flush();html.push('<hr>');continue;}
+      if(trimmed.startsWith('&gt;')){
+        flush();
+        html.push('<blockquote>'+inlineMd(trimmed.slice(4).trimStart())+'</blockquote>');
+        continue;
+      }
+      const ul=unorderedItem(line);
+      if(ul!==null){
+        flush();
+        const items=[ul];let j=i+1,next;
+        while(j<lines.length&&(next=unorderedItem(lines[j]))!==null){items.push(next);j++;}
+        i=j-1;
+        html.push('<ul>'+items.map(x=>'<li>'+inlineMd(x)+'</li>').join('')+'</ul>');
+        continue;
+      }
+      const ol=orderedItem(line);
+      if(ol!==null){
+        flush();
+        const items=[ol];let j=i+1,next;
+        while(j<lines.length&&(next=orderedItem(lines[j]))!==null){items.push(next);j++;}
+        i=j-1;
+        html.push('<ol>'+items.map(x=>'<li>'+inlineMd(x)+'</li>').join('')+'</ol>');
+        continue;
+      }
+      para.push(line);
+    }
+    flush();
+    return html.join('');
+  }
   t=t.replace(/<create_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/create_file>/g,(_,p,c)=>pushB('<div class="file-badge">\ud83d\udcc1 '+esc(p)+' \u2014 \uc790\ub3d9 \uc0dd\uc131\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
   t=t.replace(/<edit_file\\s+path="([^"]+)">([\\s\\S]*?)<\\/edit_file>/g,(_,p,c)=>pushB('<div class="edit-badge">\u270f\ufe0f '+esc(p)+' \u2014 \ud3b8\uc9d1\ub428</div><div class="code-wrap"><pre><code>'+esc(c)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>'));
-  t=t.replace(/<run_command>([\\s\\S]*?)<\\/run_command>/g,(_,c)=>pushB('<div class="cmd-badge">\u25b6 '+esc(c)+'</div>'));
+  t=t.replace(/<run_command>([\\s\\S]*?)<\\/run_command>/g,(_,c)=>pushB('<div class="cmd-badge"><span>\u25b6 '+esc(c)+'</span><button class="btn-open" onclick="openTerminal()">Open \u2197</button></div>'));
   t=t.replace(/\x60\x60\x60(\\w*)\\n([\\s\\S]*?)\x60\x60\x60/g,(_,lang,c)=>{const l=lang||'code';return pushB('<div class="code-wrap"><span class="code-lang">'+esc(l)+'</span><pre><code>'+highlight(c,l)+'</code></pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>');});
   t=t.replace(/\x60([^\x60]+)\x60/g,(_,c)=>pushB('<code>'+esc(c)+'</code>'));
   t=esc(t);
-  t=t.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
-  t=t.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank">$1</a>');
-  t=t.replace(/__B(\\d+)__/g, (_,i)=>blocks[i]);
+  t=renderMarkdown(t);
+  blocks.forEach((b,i)=>{t=t.split('__B'+i+'__').join(b);});
   return t;
 }
 function copyCode(btn){const code=btn.parentElement.querySelector('code');if(!code)return;navigator.clipboard.writeText(code.innerText).then(()=>{btn.textContent='\u2713 Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1500)})}
-function addMsg(text,role){
+function openTerminal(){vscode.postMessage({type:'showTerminal'})}
+function renderAttachments(files){
+  if(!files||files.length===0)return null;
+  const wrap=document.createElement('div');wrap.className='msg-attachments';
+  files.forEach(f=>{
+    const item=document.createElement('div');item.className='msg-attachment';
+    const isImg=f.type&&f.type.startsWith('image/')&&f.data;
+    if(isImg){
+      const img=document.createElement('img');img.className='msg-attachment-img';img.src='data:'+f.type+';base64,'+f.data;img.alt=f.name||'attached image';img.title=f.name||'attached image';item.appendChild(img);
+    } else {
+      const fileBox=document.createElement('div');fileBox.className='msg-attachment-file';
+      const icon=document.createElement('span');icon.textContent=f.type&&f.type.startsWith('audio/')?'\ud83c\udfa7':'\ud83d\udcc4';
+      const name=document.createElement('span');name.className='msg-attachment-name';name.textContent=f.name||'\ucca8\ubd80 \ud30c\uc77c';
+      fileBox.appendChild(icon);fileBox.appendChild(name);item.appendChild(fileBox);
+    }
+    wrap.appendChild(item);
+  });
+  return wrap;
+}
+function addMsg(text,role,files){
   const isUser=role==='user',isErr=role==='error';
   const el=document.createElement('div');el.className='msg'+(isUser?' msg-user':'')+(isErr?' msg-error':'');
   const head=document.createElement('div');head.className='msg-head';
   head.innerHTML=(isUser?'<div class="av av-user">\ud83d\udc64</div><span>You</span>':'<div class="av av-ai">\u2726</div><span>Connect AI</span>')+'<span class="msg-time">'+getTime()+'</span>';
   const body=document.createElement('div');body.className='msg-body';
-  if(isUser){body.innerText=text}else{body.innerHTML=fmt(text)}
+  if(isUser){body.innerText=text||''}else{body.innerHTML=fmt(text||'')}
+  const attachments=renderAttachments(files);
+  if(attachments)body.appendChild(attachments);
   el.appendChild(head);el.appendChild(body);chat.appendChild(el);chat.scrollTop=chat.scrollHeight;
 }
 function showLoader(){loader=document.createElement('div');loader.className='msg';loader.innerHTML='<div class="msg-head"><div class="av av-ai">\u2726</div><span>Connect AI</span><span class="msg-time">'+getTime()+'</span></div><div class="loading-wrap"><div class="loading-dots"><span></span><span></span><span></span></div><span class="loading-text">\uc0dd\uac01\ud558\ub294 \uc911...</span></div>';chat.appendChild(loader);chat.scrollTop=chat.scrollHeight;thinkingBar.classList.add('active')}
@@ -2375,14 +2554,14 @@ function setSending(v){sending=v;sendBtn.disabled=v;stopBtn.classList.toggle('vi
 function send(){
   const text=input.value.trim();
   if((!text&&pendingFiles.length===0)||sending)return;
+  const attachedFiles=pendingFiles.slice();
   document.body.classList.remove('init');
   const w=document.querySelector('.welcome');if(w)w.remove();
   document.querySelectorAll('.quick-actions').forEach(e=>e.remove());
-  const displayText=text+(pendingFiles.length>0?'\\\\n\\ud83d\\udcce '+pendingFiles.map(f=>f.name).join(', '):'');
-  addMsg(displayText,'user');
+  addMsg(text,'user',attachedFiles);
   input.value='';input.style.height='auto';setSending(true);showLoader();
-  if(pendingFiles.length>0){
-    vscode.postMessage({type:'promptWithFile',value:text||'\uc774 \ud30c\uc77c\uc744 \ubd84\uc11d\ud574\uc8fc\uc138\uc694.',model:modelSel.value,files:pendingFiles,internet:internetEnabled});
+  if(attachedFiles.length>0){
+    vscode.postMessage({type:'promptWithFile',value:text||'\uc774 \ud30c\uc77c\uc744 \ubd84\uc11d\ud574\uc8fc\uc138\uc694.',model:modelSel.value,files:attachedFiles,internet:internetEnabled});
     pendingFiles=[];attachPreview.innerHTML='';attachPreview.classList.remove('visible');
   } else {
     vscode.postMessage({type:'prompt',value:text,model:modelSel.value,internet:internetEnabled});
@@ -2473,7 +2652,7 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     chat.innerHTML='';
     if(msg.value&&msg.value.length>0){
       document.body.classList.remove('init');
-      msg.value.forEach(m=>addMsg(m.text,m.role));
+      msg.value.forEach(m=>addMsg(m.text,m.role,m.files));
     } else {
       document.body.classList.add('init');
       chat.innerHTML='<div class="welcome"><div class="welcome-logo">\u2726</div><div class="welcome-title">Connect AI</div><div class="welcome-sub">\ubcf4\uc548 \u00b7 \ube44\uc6a9\ucd5c\uc801\ud654 \u00b7 \uc9c0\uc2dd\uc5f0\uacb0<br>\ud504\ub85c\uc81d\ud2b8\ub97c \uc774\ud574\ud558\uace0, \ucf54\ub4dc\ub97c \uc791\uc131\ud558\uace0, \uc2e4\ud589\ud569\ub2c8\ub2e4.</div></div>';

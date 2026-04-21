@@ -2,7 +2,7 @@
   "name": "connect-ai-lab",
   "displayName": "Connect AI",
   "description": "100% 로컬 AI 코딩 에이전트 — 파일 생성, 코드 편집, 터미널 실행을 오프라인으로. Ollama + Gemma/Llama/DeepSeek 지원.",
-  "version": "2.2.13",
+  "version": "2.2.15",
   "publisher": "connectailab",
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -32,7 +32,12 @@
     "copilot"
   ],
   "activationEvents": [
-    "*"
+    "onView:connect-ai-lab-v2-view",
+    "onCommand:connect-ai-lab.newChat",
+    "onCommand:connect-ai-lab.exportChat",
+    "onCommand:connect-ai-lab.explainSelection",
+    "onCommand:connect-ai-lab.focusChat",
+    "onCommand:connect-ai-lab.showBrainNetwork"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -122,6 +127,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
+    "package:vsix": "vsce package",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile"
   },
@@ -129,6 +135,7 @@
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
     "@vercel/ncc": "^0.38.4",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
     "typescript": "^5.1.3"
   },

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.1.30-blue" alt="version" />
+  <img src="https://img.shields.io/badge/version-2.2.15-blue" alt="version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/integration-Agent_University-purple" alt="integration" />
   <img src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-orange" alt="engine" />
@@ -20,7 +20,7 @@
 
 ## 🌟 Overview: The P-Reinforce Architecture
 
-Connect AI v2.1.30은 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
+Connect AI v2.2.15는 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
 
 ---
 
@@ -61,7 +61,7 @@ Ollama 또는 LM Studio에 설치된 모델을 내부 API(`v1/models`)를 호출
 
 ### A.U 멤버십 유저 (Recommended)
 1. 상단 탭의 [Releases](https://github.com/wonseokjung/connect-ai/releases) 메뉴로 진입.
-2. 최신 `v2.1.30.vsix` 파일을 다운로드.
+2. 최신 `connect-ai-lab-2.2.15.vsix` 파일을 다운로드.
 3. VS Code 에서 `Cmd+Shift+P` → **Extensions: Install from VSIX** → 다운받은 파일 선택
 
 ### 개발자 빌드 (Build from Source)
@@ -70,8 +70,52 @@ git clone https://github.com/wonseokjung/connect-ai.git
 cd connect-ai
 npm install
 npm run compile
-npx vsce package
+npm run package:vsix
 ```
+
+---
+
+## 📦 VSIX Release Rule (필수)
+
+앞으로 VSIX 파일을 빌드할 때마다 반드시 아래 규칙을 지킵니다.
+
+1. **버전 자동 증가:** VSIX 빌드 전 `package.json`과 `package-lock.json`의 버전을 항상 `0.0.1`씩 올립니다. 예: `2.2.14` → `2.2.15`.
+2. **README 기록:** 버전을 올린 이유와 포함된 변경사항을 이 README의 `Release Notes` 섹션에 자세히 기록합니다.
+3. **빌드 순서:** 버전 수정 후 `npm run compile`을 실행하고, 이어서 `npm run package:vsix`로 VSIX를 생성합니다.
+4. **파일명 확인:** 생성된 파일명은 버전과 일치해야 합니다. 예: `connect-ai-lab-2.2.15.vsix`.
+5. **기존 변경 보호:** 작업 중인 다른 파일 변경사항이 있으면 되돌리지 않고, 릴리스에 필요한 버전/문서/빌드 산출물만 갱신합니다.
+
+권장 명령:
+
+```bash
+npm version patch --no-git-tag-version
+npm run compile
+npm run package:vsix
+```
+
+`npm version patch --no-git-tag-version`은 `package.json`과 `package-lock.json`의 패치 버전을 함께 올립니다. 단, README의 배지, 설치 안내, 릴리스 노트는 직접 최신 버전에 맞춰 갱신해야 합니다.
+
+패키징 경고를 줄이기 위해 `npx vsce package` 대신 로컬 devDependency인 `@vscode/vsce` 기반의 `npm run package:vsix`를 사용합니다. 또한 `activationEvents`는 `*`를 쓰지 않고 실제 뷰와 명령 진입점만 명시합니다.
+
+---
+
+## 📝 Release Notes
+
+### v2.2.15
+
+- VSIX 빌드 버전을 `2.2.14`에서 `2.2.15`로 올렸습니다.
+- 패키징 시 `'*' activation` 성능 경고가 나오지 않도록 `activationEvents`를 실제 진입점 기준으로 구체화했습니다.
+- 구버전 `vsce` 패키지 deprecation 경고를 피하기 위해 `@vscode/vsce`를 devDependency로 추가하고 `npm run package:vsix` 스크립트를 도입했습니다.
+- README의 개발자 빌드 절차와 VSIX 릴리스 규칙을 새 패키징 명령 기준으로 갱신했습니다.
+
+### v2.2.14
+
+- VSIX 빌드 버전을 `2.2.13`에서 `2.2.14`로 올렸습니다.
+- `connect-ai-lab-2.2.14.vsix` 패키지를 생성했습니다.
+- 첨부 이미지 전송 시 채팅 말풍선 안에 실제 이미지 썸네일 카드가 표시되도록 개선했습니다.
+- 텍스트/일반 파일 첨부는 별도 파일 카드로 표시되도록 정리했습니다.
+- 대화 복원 시에도 첨부 이미지와 파일 카드가 다시 표시되도록 저장 구조에 첨부 메타데이터를 추가했습니다.
+- Vision 모델로 이미지를 보낼 때 `image/png`로 고정하지 않고 실제 MIME 타입을 사용하도록 개선했습니다.
 
 ---
 
