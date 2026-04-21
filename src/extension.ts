@@ -1116,7 +1116,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._isSyncingBrain = true;
         const brainDir = _getBrainDir();
         try {
-            this._view.webview.postMessage({ type: 'response', value: '🧠 **Second Brain 동기화 시작 중... 깃허브에서 지식을 복제합니다.**' });
+            this._view.webview.postMessage({ type: 'response', value: '🔄 **지식 동기화 진행 중...** 내 지식 폴더와 깃허브를 가장 최신 상태로 조율하고 있습니다.' });
             
             if (!fs.existsSync(brainDir)) {
                 fs.mkdirSync(brainDir, { recursive: true });
@@ -1167,7 +1167,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._ctx.globalState.update('brainEnabled', true);
             
             vscode.window.showInformationMessage('✅ 깃허브 지식과 내 지식 폴더가 완벽히 동기화(병합) 되었습니다!');
-            this._view.webview.postMessage({ type: 'response', value: '✅ **지식 동기화 완전 완료!** 이제 내 PC의 지식 폴더 내용과 깃허브가 서로 최신 상태로 병합되었습니다.\n\n해당 지식을 바탕으로 맞춤형 답변을 생성합니다. (지식 모드: 🟢 ON)' });
+            this._view.webview.postMessage({ type: 'response', value: '✅ **지식 동기화 완료!** 이제 내 PC의 폴더와 깃허브가 완벽하게 동일한 최신 상태가 되었습니다.\n\n지금부터 이 지식들을 바탕으로 맥락에 맞는 스마트한 답변을 제공합니다. (지식 모드: 🟢 ON)' });
         } catch (error: any) {
             // 사용자 친화적 에러 메시지 분기
             const errMsg = error.message || '';
