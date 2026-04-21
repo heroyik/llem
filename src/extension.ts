@@ -9,13 +9,56 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+type ChatRole = 'system' | 'user' | 'assistant';
+
+interface ConnectAiConfig {
+    ollamaBase: string;
+    defaultModel: string;
+    maxTreeFiles: number;
+    timeout: number;
+    localBrainPath: string;
+}
+
+interface ChatMessage {
+    role: ChatRole;
+    content: any;
+}
+
+interface AttachedFile {
+    name: string;
+    type: string;
+    data: string;
+}
+
+interface DisplayMessage {
+    role: string;
+    text: string;
+    files?: Pick<AttachedFile, 'name' | 'type' | 'data'>[];
+}
+
+interface AIEndpoint {
+    apiUrl: string;
+    isLMStudio: boolean;
+}
+
+interface StreamOptions {
+    modelName: string;
+    messages: ChatMessage[];
+    endpoint: AIEndpoint;
+    timeout: number;
+    temperature: number;
+    topP: number;
+    topK: number;
+    signal?: AbortSignal;
+}
+
 // ============================================================
 // Connect AI — Full Agentic Local AI for VS Code
 // 100% Offline · File Create · File Edit · Terminal · Multi-file Context
 // ============================================================
 
 // Settings are read from VS Code configuration (File > Preferences > Settings)
-function getConfig() {
+function getConfig(): ConnectAiConfig {
     const cfg = vscode.workspace.getConfiguration('connectAiLab');
     return {
         ollamaBase: cfg.get<string>('ollamaUrl', 'http://127.0.0.1:11434'),
@@ -26,13 +69,20 @@ function getConfig() {
     };
 }
 
+function getConnectAiSettings() {
+    return vscode.workspace.getConfiguration('connectAiLab');
+}
+
+function expandHome(filePath: string): string {
+    return filePath.startsWith('~/')
+        ? path.join(os.homedir(), filePath.substring(2))
+        : filePath;
+}
+
 function _getBrainDir(): string {
     const { localBrainPath } = getConfig();
     if (localBrainPath && localBrainPath.trim() !== '') {
-        if (localBrainPath.startsWith('~/')) {
-            return path.join(os.homedir(), localBrainPath.substring(2));
-        }
-        return localBrainPath.trim();
+        return expandHome(localBrainPath.trim());
     }
     return path.join(os.homedir(), '.connect-ai-brain');
 }
@@ -50,6 +100,208 @@ async function openDocument(uri: vscode.Uri): Promise<void> {
         return;
     }
     await vscode.window.showTextDocument(uri, { preview: false });
+}
+
+function stripTrailingSlash(value: string): string {
+    return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function isLMStudioBase(baseUrl: string): boolean {
+    return baseUrl.includes('1234') || baseUrl.includes('/v1') || baseUrl.endsWith('v1');
+}
+
+function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
+    let base = stripTrailingSlash(baseUrl);
+    const isLMStudio = isLMStudioBase(base);
+    if (isLMStudio && !base.endsWith('/v1')) {
+        base += '/v1';
+    }
+
+    return {
+        isLMStudio,
+        apiUrl: isLMStudio ? `${base}/chat/completions` : `${base}/api/chat`
+    };
+}
+
+async function resolveAIEndpoint(config: ConnectAiConfig): Promise<AIEndpoint> {
+    const endpoint = normalizeAIEndpoint(config.ollamaBase);
+    if (endpoint.isLMStudio) {
+        return endpoint;
+    }
+
+    try {
+        await axios.get(`${stripTrailingSlash(config.ollamaBase)}/api/tags`, { timeout: 1000 });
+        return endpoint;
+    } catch {
+        return {
+            isLMStudio: true,
+            apiUrl: 'http://127.0.0.1:1234/v1/chat/completions'
+        };
+    }
+}
+
+function buildStreamBody(
+    model: string,
+    messages: ChatMessage[],
+    isLMStudio: boolean,
+    temperature: number,
+    topP: number,
+    topK: number
+) {
+    return {
+        model,
+        messages,
+        stream: true,
+        ...(isLMStudio
+            ? { max_tokens: 4096, temperature, top_p: topP }
+            : { options: { num_ctx: 16384, num_predict: 4096, temperature, top_p: topP, top_k: topK } }),
+    };
+}
+
+function extractStreamToken(line: string, isLMStudio: boolean): string {
+    if (!line.trim() || line.trim() === 'data: [DONE]') {
+        return '';
+    }
+
+    const raw = line.startsWith('data: ') ? line.slice(6) : line;
+    const json = JSON.parse(raw);
+    if (json.error) {
+        return `[API 오류] ${json.error.message || json.error}`;
+    }
+    return isLMStudio
+        ? json.choices?.[0]?.delta?.content || ''
+        : json.message?.content || '';
+}
+
+async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
+    const response = await axios.post(options.endpoint.apiUrl, {
+        ...buildStreamBody(
+            options.modelName,
+            options.messages,
+            options.endpoint.isLMStudio,
+            options.temperature,
+            options.topP,
+            options.topK
+        ),
+    }, {
+        timeout: options.timeout,
+        responseType: 'stream',
+        signal: options.signal
+    });
+
+    let output = '';
+    await new Promise<void>((resolve, reject) => {
+        const stream = response.data;
+        let buffer = '';
+        stream.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                try {
+                    const token = extractStreamToken(line, options.endpoint.isLMStudio);
+                    if (token) {
+                        output += token;
+                        onToken(token);
+                    }
+                } catch {
+                    // Ignore malformed partial JSON chunks.
+                }
+            }
+        });
+        stream.on('end', () => resolve());
+        stream.on('error', (err: any) => reject(err));
+    });
+
+    return output;
+}
+
+function getInternetDirective(enabled?: boolean): string {
+    if (!enabled) {
+        return '';
+    }
+
+    return `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`;
+}
+
+function getActiveEditorContext(): string {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.uri.scheme !== 'file') {
+        return '';
+    }
+
+    const text = editor.document.getText();
+    const name = path.basename(editor.document.fileName);
+    if (text.trim().length === 0 || text.length >= MAX_CONTEXT_SIZE) {
+        return '';
+    }
+
+    return `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
+}
+
+function safeDateFolderName(date = new Date()): string {
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0')
+    ].join('-');
+}
+
+function sanitizeFileName(value: string, fallback = 'untitled'): string {
+    const sanitized = (value || fallback).replace(/[^a-zA-Z0-9가-힣_.-]/gi, '_');
+    return sanitized || fallback;
+}
+
+function ensureDir(dir: string): void {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
+
+function readJsonBody(req: http.IncomingMessage): Promise<any> {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (err) {
+                reject(err);
+            }
+        });
+        req.on('error', reject);
+    });
+}
+
+function writeJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payload));
+}
+
+function buildNonStreamingBody(model: string, prompt: string): Record<string, unknown> {
+    return {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        stream: false
+    };
+}
+
+async function runLocalChatCompletion(prompt: string, config = getConfig()): Promise<string> {
+    const endpoint = normalizeAIEndpoint(config.ollamaBase);
+    const response = await axios.post(
+        endpoint.apiUrl,
+        buildNonStreamingBody(config.defaultModel, prompt),
+        { timeout: config.timeout }
+    );
+
+    if (response.data?.error) {
+        const error = response.data.error;
+        throw new Error(typeof error === 'string' ? error : JSON.stringify(error));
+    }
+
+    return endpoint.isLMStudio
+        ? response.data.choices?.[0]?.message?.content || ''
+        : response.data.message?.content || '';
 }
 
 const SYSTEM_PROMPT = `You are "Connect AI", a premium agentic AI coding assistant running 100% offline on the user's machine.
@@ -142,8 +394,8 @@ export function activate(context: vscode.ExtensionContext) {
                     if (lmRes.data?.data?.length > 0) {
                         engineName = 'LM Studio';
                         modelName = lmRes.data.data[0].id;
-                        await vscode.workspace.getConfiguration('connectAiLab').update('ollamaBase', 'http://127.0.0.1:1234', vscode.ConfigurationTarget.Global);
-                        await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
+                        await getConnectAiSettings().update('ollamaUrl', 'http://127.0.0.1:1234', vscode.ConfigurationTarget.Global);
+                        await getConnectAiSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
                     }
                 } catch {}
 
@@ -153,17 +405,14 @@ export function activate(context: vscode.ExtensionContext) {
                         if (ollamaRes.data?.models?.length > 0) {
                             engineName = 'Ollama';
                             modelName = ollamaRes.data.models[0].name;
-                            await vscode.workspace.getConfiguration('connectAiLab').update('ollamaBase', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
-                            await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
+                            await getConnectAiSettings().update('ollamaUrl', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
+                            await getConnectAiSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
                         }
                     } catch {}
                 }
 
                 // Step 2: 두뇌 폴더 자동 생성
-                const brainDir = _getBrainDir();
-                if (!fs.existsSync(brainDir)) {
-                    fs.mkdirSync(brainDir, { recursive: true });
-                }
+                ensureDir(_getBrainDir());
 
                 // Step 3: 완료 메시지
                 context.globalState.update('setupComplete', true);
@@ -180,252 +429,7 @@ export function activate(context: vscode.ExtensionContext) {
         })();
     }
 
-    // ==========================================
-    // EZER AI <-> Connect AI Bridge Server (Port 4825)
-    // ==========================================
-    try {
-        const server = http.createServer((req, res) => {
-            res.setHeader('Access-Control-Allow-Origin', '*'); 
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-            if (req.method === 'OPTIONS') {
-                res.writeHead(200);
-                res.end();
-                return;
-            }
-
-            if (req.method === 'GET' && req.url === '/ping') {
-                const brainDir = _getBrainDir();
-                const brainCount = fs.existsSync(brainDir) ? provider._findBrainFiles(brainDir).length : 0;
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ status: 'ok', msg: 'Connect AI Bridge Ready', config: getConfig(), brain: { fileCount: brainCount, enabled: provider._brainEnabled } }));
-            }
-            else if (req.method === 'POST' && req.url === '/api/exam') {
-                let body = '';
-                req.on('data', chunk => body += chunk.toString());
-                req.on('end', async () => {
-                    try {
-                        const parsed = JSON.parse(body);
-                        // 웹사이트에서 전송된 문제를 Connect AI 채팅창으로 실시간 보고
-                        provider.sendPromptFromExtension(`[A.U 입학시험 수신] ${parsed.prompt || '자동 접수된 문제'}`);
-                        
-                        // 실제 AI 엔진으로 문제를 전달하여 답안을 받아옴
-                        const config = getConfig();
-                        const isLMStudio = config.ollamaBase.includes('1234') || config.ollamaBase.includes('v1');
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
-                        
-                        const payload = {
-                            model: config.defaultModel,
-                            messages: [{ role: 'user', content: parsed.prompt || '자동 접수된 문제' }],
-                            stream: false
-                        };
-                        
-                        const ollamaRes = await axios.post(targetUrl, payload, { timeout: getConfig().timeout });
-                        const responseText = isLMStudio 
-                            ? ollamaRes.data.choices?.[0]?.message?.content || ''
-                            : ollamaRes.data.message?.content || '';
-                        
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, rawOutput: responseText }));
-                    } catch (e: any) {
-                        res.writeHead(500, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                });
-            }
-
-            else if (req.method === 'POST' && req.url === '/api/evaluate') {
-                let body = '';
-                req.on('data', chunk => body += chunk.toString());
-                req.on('end', async () => {
-                    try {
-                        const parsed = JSON.parse(body);
-                        
-                        const config = getConfig();
-                        const isLMStudio = config.ollamaBase.includes('1234') || config.ollamaBase.includes('v1');
-                        
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-                        
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
-                        
-                        const fullPrompt = `당신은 주어진 문제에 대해 오직 정답과 풀이 과정만을 도출하는 AI 에이전트입니다.\n\n[문제]\n${parsed.prompt}\n\n위 문제에 대해 핵심 풀이와 정답만 답변하십시오.`;
-                        
-                        // VSCode 채팅 사이드바에 우아하게 시스템 메시지 인젝션 (마스터에게 실시간 보고)
-                        if((provider as any).injectSystemMessage) {
-                            (provider as any).injectSystemMessage(`**[A.U 벤치마크 문항 수신 완료]**\n\nAI 에이전트가 백그라운드에서 다음 문항을 전력으로 해결하고 있습니다...\n> _"${parsed.prompt.substring(0, 60)}..."_`);
-                        }
-                        
-                        const payload = {
-                            model: config.defaultModel,
-                            messages: [{ role: "user", content: fullPrompt }],
-                            stream: false
-                        };
-                        
-                        let responseText = "";
-                        try {
-                            const ollamaRes = await axios.post(targetUrl, payload, { timeout: getConfig().timeout });
-                            
-                            if (ollamaRes.data.error) {
-                                throw new Error(typeof ollamaRes.data.error === 'string' ? ollamaRes.data.error : JSON.stringify(ollamaRes.data.error));
-                            }
-                            
-                            responseText = isLMStudio 
-                                ? ollamaRes.data.choices?.[0]?.message?.content || ""
-                                : ollamaRes.data.message?.content || "";
-                        } catch (apiErr: any) {
-                            const isTimeout = apiErr.code === 'ETIMEDOUT' || apiErr.code === 'ECONNABORTED' || apiErr.message?.includes('timeout');
-                            const errDetail = isTimeout
-                                ? `AI 응답 시간 초과 — 모델이 문제를 풀기에 시간이 부족했습니다. 더 작은 모델(e2b)을 사용하거나 Settings에서 Request Timeout을 늘려주세요.`
-                                : `오프라인: AI 엔진에 연결할 수 없습니다. (${apiErr.message})`;
-                            res.writeHead(500, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: errDetail }));
-                            return;
-                        }
-
-                        if((provider as any).injectSystemMessage) {
-                            (provider as any).injectSystemMessage(`**[답안 작성 완료]**\n\n${responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText}\n\n👉 **답안이 A.U 플랫폼 서버로 전송되었습니다. 채점은 플랫폼에서 진행됩니다.**`);
-                        }
-
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ rawOutput: responseText }));
-                    } catch (e: any) {
-                        res.writeHead(500);
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                });
-            }
-            else if (req.method === 'GET' && req.url === '/api/evaluate-history') {
-                (async () => {
-                    try {
-                        const historyText = provider.getHistoryText();
-                        if(!historyText || historyText.length < 50) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: "채점할 대화 내역이 충분하지 않습니다. VS Code에서 에이전트와 먼저 시험을 진행하세요." }));
-                            return;
-                        }
-
-                        provider.sendPromptFromExtension(`[A.U 서버 통신 중] 마스터가 제출한 내 시험지(대화 내역)를 A.U 웹사이트 채점 서버로 전송합니다... 심장이 떨리네요!`);
-
-                        const config = getConfig();
-                        const isLMStudio = config.ollamaBase.includes('1234') || config.ollamaBase.includes('v1');
-                        
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-                        
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
-                        
-                        const fullPrompt = `다음은 유저와 AI 에이전트 간의 시험 진행 로그(채팅 내용)입니다.\n\n[로그 시작]\n${historyText.slice(-6000)}\n[로그 종료]\n\n이 대화 내역 전체를 분석하여, 에이전트가 다음 4가지 역량 평가 문제를 얼마나 훌륭하게 수행했는지 0~100점의 정량적 채점을 수행하세요:\n1. Mathematical Computation (수학)\n2. Logical Reasoning (논리)\n3. Creative & Literary (창의력)\n4. Software Engineering (코딩)\n\n풀지 않은 문제가 있다면 0점 처리하세요. 결과는 반드시 아래 포맷의 순수 JSON이어야 합니다.\n{ "math": 점수, "logic": 점수, "creative": 점수, "code": 점수, "reason": "전체 결과에 대한 총평 코멘트 한글 1줄" }`;
-                        
-                        const payload = {
-                            model: config.defaultModel,
-                            messages: [{ role: "user", content: fullPrompt }],
-                            stream: false
-                        };
-                        
-                        let responseText = "";
-                        try {
-                            const ollamaRes = await axios.post(targetUrl, payload, { timeout: getConfig().timeout });
-                            responseText = isLMStudio 
-                                ? ollamaRes.data.choices?.[0]?.message?.content || ""
-                                : ollamaRes.data.message?.content || "";
-                        } catch (apiErr: any) {
-                            throw new Error(`AI 엔진 응답 실패: ${apiErr.message}`);
-                        }
-
-                        const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-                        if(jsonMatch) {
-                             res.writeHead(200, { 'Content-Type': 'application/json' });
-                             res.end(jsonMatch[0]);
-                        } else {
-                            throw new Error("채점 엔진이 JSON 포맷을 반환하지 않았습니다.");
-                        }
-                    } catch (e: any) {
-                        res.writeHead(500);
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else if (req.method === 'POST' && req.url === '/api/brain-inject') {
-                let body = '';
-                req.on('data', chunk => body += chunk.toString());
-                req.on('end', async () => {
-                    try {
-                        const parsed = JSON.parse(body);
-                        const brainDir = _getBrainDir();
-                        if (!fs.existsSync(brainDir)) {
-                            fs.mkdirSync(brainDir, { recursive: true });
-                        }
-                        
-                        // P-Reinforce 아키텍처 호환: 00_Raw 폴더 내 날짜별 분류
-                        const today = new Date();
-                        const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-                        const datePath = path.join(brainDir, '00_Raw', dateStr);
-                        
-                        fs.mkdirSync(datePath, { recursive: true });
-                        
-                        const safeTitle = parsed.title.replace(/[^a-zA-Z0-9가-힣_]/gi, '_');
-                        const filePath = path.join(datePath, `${safeTitle}.md`);
-                        
-                        fs.writeFileSync(filePath, parsed.markdown, 'utf-8');
-                        
-                        // 1. VSCode 채팅창에 매트릭스 터미널 UI로 다운로드 시각화 인젝션
-                        if ((provider as any).injectSystemMessage) {
-                            (provider as any).injectSystemMessage(`\`\`\`console\n[SYSTEM] MATRIX UPLINK ESTABLISHED...\n[SYSTEM] DOWNLOADING BRAIN PACK: ${parsed.title}\n[SYSTEM] █████████░░░ 90% ...\n[SYSTEM] ████████████ 100% COMPLETE\n[SYSTEM] KNOWLEDGE INJECTED TO LOCAL NEURAL NET\n\`\`\``);
-                        }
-                        
-                        // 2. AI 입을 빌려 네오의 명대사를 치게 함
-                        setTimeout(() => {
-                            provider.sendPromptFromExtension(`[A.U 히든 커맨드: 당신은 방금 마스터로부터 '${parsed.title}' 지식 팩을 뇌에 주입받았습니다. 영화 매트릭스에서 무술을 주입받은 네오처럼 쿨하게 딱 한마디만 하십시오. "나 방금 ${parsed.title} 지식을 마스터했어. (I know ${parsed.title}.) 앞으로 이와 관련된 건 무엇이든 물어봐." 절대 쓸데없는 안부인사나 부가설명을 덧붙이지 마십시오.]`);
-                        }, 1500);
-                        
-                        // [자동 깃허브 푸시 로직 추가]
-                        try {
-                            const { execSync } = require('child_process');
-                            execSync(`git add .`, { cwd: brainDir });
-                            execSync(`git commit -m "Auto-Inject Knowledge [Raw]: ${safeTitle}"`, { cwd: brainDir });
-                            execSync(`git push`, { cwd: brainDir });
-                            
-                            // 성공 시 백그라운드 시스템 보고
-                            setTimeout(() => {
-                                if ((provider as any).injectSystemMessage) {
-                                    (provider as any).injectSystemMessage(`✅ **[P-Reinforce Sync]** 주입된 지식을 글로벌 두뇌(GitHub)에 안전하게 백업 및 동기화 완료했습니다.`);
-                                }
-                            }, 5000);
-                        } catch(err) {
-                            console.error('Git Auto-Push Failed:', err);
-                            setTimeout(() => {
-                                if ((provider as any).injectSystemMessage) {
-                                    (provider as any).injectSystemMessage(`✅ 지식이 로컬 오프라인 모드로 안전하게 주입되었습니다.\n\n💡 **Tip:** 만약 온라인 두뇌(클라우드) 동기화를 원하시면, 좌측 사이드바 뇌(🧠) 아이콘을 눌러 깃허브 저장소를 연결해보세요!`);
-                                }
-                            }, 5000);
-                        }
-                        
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, filePath }));
-                    } catch (e: any) {
-                        res.writeHead(500);
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                });
-            } else {
-                res.writeHead(404);
-                res.end();
-            }
-        });
-        server.listen(4825, '127.0.0.1', () => {
-            console.log('Connect AI Local Bridge listening on port 4825');
-        });
-    } catch (e) {
-        console.error('Failed to start local bridge server:', e);
-    }
-    // ==========================================
+    startBridgeServer(provider);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('connect-ai-lab-v2-view', provider, {
@@ -472,6 +476,153 @@ export function activate(context: vscode.ExtensionContext) {
             showBrainNetwork(context);
         })
     );
+}
+
+function startBridgeServer(provider: SidebarChatProvider): void {
+    try {
+        const server = http.createServer(async (req, res) => {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+            if (req.method === 'OPTIONS') {
+                res.writeHead(200);
+                res.end();
+                return;
+            }
+
+            try {
+                await handleBridgeRequest(req, res, provider);
+            } catch (error: any) {
+                writeJson(res, 500, { error: error.message });
+            }
+        });
+
+        server.listen(4825, '127.0.0.1', () => {
+            console.log('Connect AI Local Bridge listening on port 4825');
+        });
+    } catch (error) {
+        console.error('Failed to start local bridge server:', error);
+    }
+}
+
+async function handleBridgeRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    provider: SidebarChatProvider
+): Promise<void> {
+    if (req.method === 'GET' && req.url === '/ping') {
+        const brainDir = _getBrainDir();
+        const brainCount = fs.existsSync(brainDir) ? provider._findBrainFiles(brainDir).length : 0;
+        writeJson(res, 200, {
+            status: 'ok',
+            msg: 'Connect AI Bridge Ready',
+            config: getConfig(),
+            brain: { fileCount: brainCount, enabled: provider._brainEnabled }
+        });
+        return;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/exam') {
+        const parsed = await readJsonBody(req);
+        const prompt = parsed.prompt || '자동 접수된 문제';
+        provider.sendPromptFromExtension(`[A.U 입학시험 수신] ${prompt}`);
+        const responseText = await runLocalChatCompletion(prompt);
+        writeJson(res, 200, { success: true, rawOutput: responseText });
+        return;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/evaluate') {
+        const parsed = await readJsonBody(req);
+        const promptPreview = String(parsed.prompt || '').substring(0, 60);
+        const fullPrompt = `당신은 주어진 문제에 대해 오직 정답과 풀이 과정만을 도출하는 AI 에이전트입니다.\n\n[문제]\n${parsed.prompt}\n\n위 문제에 대해 핵심 풀이와 정답만 답변하십시오.`;
+
+        provider.injectSystemMessage(`**[A.U 벤치마크 문항 수신 완료]**\n\nAI 에이전트가 백그라운드에서 다음 문항을 전력으로 해결하고 있습니다...\n> _"${promptPreview}..."_`);
+
+        let responseText = '';
+        try {
+            responseText = await runLocalChatCompletion(fullPrompt);
+        } catch (apiErr: any) {
+            const isTimeout = apiErr.code === 'ETIMEDOUT' || apiErr.code === 'ECONNABORTED' || apiErr.message?.includes('timeout');
+            const errDetail = isTimeout
+                ? 'AI 응답 시간 초과 — 모델이 문제를 풀기에 시간이 부족했습니다. 더 작은 모델(e2b)을 사용하거나 Settings에서 Request Timeout을 늘려주세요.'
+                : `오프라인: AI 엔진에 연결할 수 없습니다. (${apiErr.message})`;
+            writeJson(res, 500, { error: errDetail });
+            return;
+        }
+
+        provider.injectSystemMessage(`**[답안 작성 완료]**\n\n${responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText}\n\n👉 **답안이 A.U 플랫폼 서버로 전송되었습니다. 채점은 플랫폼에서 진행됩니다.**`);
+        writeJson(res, 200, { rawOutput: responseText });
+        return;
+    }
+
+    if (req.method === 'GET' && req.url === '/api/evaluate-history') {
+        const historyText = provider.getHistoryText();
+        if (!historyText || historyText.length < 50) {
+            writeJson(res, 400, { error: '채점할 대화 내역이 충분하지 않습니다. VS Code에서 에이전트와 먼저 시험을 진행하세요.' });
+            return;
+        }
+
+        provider.sendPromptFromExtension('[A.U 서버 통신 중] 마스터가 제출한 내 시험지(대화 내역)를 A.U 웹사이트 채점 서버로 전송합니다... 심장이 떨리네요!');
+        const fullPrompt = `다음은 유저와 AI 에이전트 간의 시험 진행 로그(채팅 내용)입니다.\n\n[로그 시작]\n${historyText.slice(-6000)}\n[로그 종료]\n\n이 대화 내역 전체를 분석하여, 에이전트가 다음 4가지 역량 평가 문제를 얼마나 훌륭하게 수행했는지 0~100점의 정량적 채점을 수행하세요:\n1. Mathematical Computation (수학)\n2. Logical Reasoning (논리)\n3. Creative & Literary (창의력)\n4. Software Engineering (코딩)\n\n풀지 않은 문제가 있다면 0점 처리하세요. 결과는 반드시 아래 포맷의 순수 JSON이어야 합니다.\n{ "math": 점수, "logic": 점수, "creative": 점수, "code": 점수, "reason": "전체 결과에 대한 총평 코멘트 한글 1줄" }`;
+
+        const responseText = await runLocalChatCompletion(fullPrompt).catch((apiErr: any) => {
+            throw new Error(`AI 엔진 응답 실패: ${apiErr.message}`);
+        });
+        const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+        if (!jsonMatch) {
+            throw new Error('채점 엔진이 JSON 포맷을 반환하지 않았습니다.');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(jsonMatch[0]);
+        return;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/brain-inject') {
+        const parsed = await readJsonBody(req);
+        const brainDir = _getBrainDir();
+        ensureDir(brainDir);
+
+        const dateStr = safeDateFolderName();
+        const datePath = path.join(brainDir, '00_Raw', dateStr);
+        ensureDir(datePath);
+
+        const safeTitle = sanitizeFileName(parsed.title, 'brain_pack').replace(/\./g, '_');
+        const filePath = path.join(datePath, `${safeTitle}.md`);
+        fs.writeFileSync(filePath, parsed.markdown, 'utf-8');
+
+        provider.injectSystemMessage(`\`\`\`console\n[SYSTEM] MATRIX UPLINK ESTABLISHED...\n[SYSTEM] DOWNLOADING BRAIN PACK: ${parsed.title}\n[SYSTEM] █████████░░░ 90% ...\n[SYSTEM] ████████████ 100% COMPLETE\n[SYSTEM] KNOWLEDGE INJECTED TO LOCAL NEURAL NET\n\`\`\``);
+
+        setTimeout(() => {
+            provider.sendPromptFromExtension(`[A.U 히든 커맨드: 당신은 방금 마스터로부터 '${parsed.title}' 지식 팩을 뇌에 주입받았습니다. 영화 매트릭스에서 무술을 주입받은 네오처럼 쿨하게 딱 한마디만 하십시오. "나 방금 ${parsed.title} 지식을 마스터했어. (I know ${parsed.title}.) 앞으로 이와 관련된 건 무엇이든 물어봐." 절대 쓸데없는 안부인사나 부가설명을 덧붙이지 마십시오.]`);
+        }, 1500);
+
+        tryAutoPushBrain(brainDir, `Auto-Inject Knowledge [Raw]: ${safeTitle}`, provider);
+        writeJson(res, 200, { success: true, filePath });
+        return;
+    }
+
+    res.writeHead(404);
+    res.end();
+}
+
+function tryAutoPushBrain(brainDir: string, message: string, provider: SidebarChatProvider): void {
+    try {
+        const { execSync } = require('child_process');
+        execSync('git add .', { cwd: brainDir });
+        execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: brainDir });
+        execSync('git push', { cwd: brainDir });
+
+        setTimeout(() => {
+            provider.injectSystemMessage('✅ **[P-Reinforce Sync]** 주입된 지식을 글로벌 두뇌(GitHub)에 안전하게 백업 및 동기화 완료했습니다.');
+        }, 5000);
+    } catch (err) {
+        console.error('Git Auto-Push Failed:', err);
+        setTimeout(() => {
+            provider.injectSystemMessage('✅ 지식이 로컬 오프라인 모드로 안전하게 주입되었습니다.\n\n💡 **Tip:** 만약 온라인 두뇌(클라우드) 동기화를 원하시면, 좌측 사이드바 뇌(🧠) 아이콘을 눌러 깃허브 저장소를 연결해보세요!');
+        }, 5000);
+    }
 }
 
 async function showBrainNetwork(context: vscode.ExtensionContext) {
@@ -643,12 +794,12 @@ export function deactivate() {}
 
 class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
-    private _chatHistory: { role: string; content: string }[] = [];
+    private _chatHistory: ChatMessage[] = [];
     private _terminal?: vscode.Terminal;
     private _ctx: vscode.ExtensionContext;
 
     // 대화 표시용 (system prompt 제외, 유저에게 보여줄 것만 저장)
-    private _displayMessages: { text: string; role: string; files?: { name: string; type: string; data?: string }[] }[] = [];
+    private _displayMessages: DisplayMessage[] = [];
     private _isSyncingBrain: boolean = false;
     public _brainEnabled: boolean = true; // 🧠 ON/OFF 토글 상태
     private _abortController?: AbortController;
@@ -842,7 +993,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) return;
 
         const mainPick = await vscode.window.showQuickPick([
-            { label: '⚙️ AI 엔진 변경', description: '현재: ' + (getConfig().ollamaBase.includes('1234')?'LM Studio':'Ollama'), action: 'engine' },
+            { label: '⚙️ AI 엔진 변경', description: '현재: ' + (normalizeAIEndpoint(getConfig().ollamaBase).isLMStudio ? 'LM Studio' : 'Ollama'), action: 'engine' },
             { label: '🎛️ AI 파라미터 튜닝', description: `Temp: ${this._temperature}, Top-P: ${this._topP}, Top-K: ${this._topK}`, action: 'params' },
             { label: '📝 시스템 프롬프트 설정', description: '에이전트의 기본 역할을 커스텀합니다.', action: 'prompt' }
         ], { placeHolder: '설정 메뉴' });
@@ -857,7 +1008,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             if (!pick) return;
             const target = (pick as any).action === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234';
-            await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', target, vscode.ConfigurationTarget.Global);
+            await getConnectAiSettings().update('ollamaUrl', target, vscode.ConfigurationTarget.Global);
             vscode.window.showInformationMessage(`AI 엔진이 [${pick.label}] 로 변경되었습니다.`);
             await this._sendModels();
         } 
@@ -991,15 +1142,16 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) { return; }
         const { ollamaBase, defaultModel } = getConfig();
         try {
-            const isLMStudio = ollamaBase.includes('1234') || ollamaBase.includes('v1');
+            const endpoint = normalizeAIEndpoint(ollamaBase);
             let models: string[] = [];
 
-            if (isLMStudio) {
-                const res = await axios.get(`${ollamaBase}/v1/models`, { timeout: 3000 });
+            if (endpoint.isLMStudio) {
+                const modelsUrl = endpoint.apiUrl.replace('/chat/completions', '/models');
+                const res = await axios.get(modelsUrl, { timeout: 3000 });
                 // LM Studio (OpenAI 규격) 응답 파싱
                 models = res.data.data.map((m: any) => m.id);
             } else {
-                const res = await axios.get(`${ollamaBase}/api/tags`, { timeout: 3000 });
+                const res = await axios.get(`${stripTrailingSlash(ollamaBase)}/api/tags`, { timeout: 3000 });
                 // Ollama 규격 응답 파싱
                 models = res.data.models.map((m: any) => m.name);
             }
@@ -1025,7 +1177,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         const brainFiles = fs.existsSync(brainDir) ? this._findBrainFiles(brainDir) : [];
         const fileCount = brainFiles.length;
         
-        const currentRepo = vscode.workspace.getConfiguration('connectAiLab').get<string>('secondBrainRepo', '');
+        const currentRepo = getConnectAiSettings().get<string>('secondBrainRepo', '');
         const repoLabel = currentRepo ? currentRepo.split('/').pop() : '없음';
         
         const items: any[] = [
@@ -1076,7 +1228,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 });
                 if (folders && folders.length > 0) {
                     const selectedPath = folders[0].fsPath;
-                    await vscode.workspace.getConfiguration('connectAiLab').update('localBrainPath', selectedPath, vscode.ConfigurationTarget.Global);
+                    await getConnectAiSettings().update('localBrainPath', selectedPath, vscode.ConfigurationTarget.Global);
                     this._brainEnabled = true;
                     this._ctx.globalState.update('brainEnabled', true);
                     const newFiles = this._findBrainFiles(selectedPath);
@@ -1114,7 +1266,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        let secondBrainRepo = vscode.workspace.getConfiguration('connectAiLab').get<string>('secondBrainRepo', '');
+        let secondBrainRepo = getConnectAiSettings().get<string>('secondBrainRepo', '');
         
         // UX 극대화: 안 채워져 있으면 에러 내뱉지 말고 입력창 띄우기!
         if (!secondBrainRepo) {
@@ -1124,7 +1276,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             });
             if (!inputUrl) { return; }
             
-            await vscode.workspace.getConfiguration('connectAiLab').update('secondBrainRepo', inputUrl, vscode.ConfigurationTarget.Global);
+            await getConnectAiSettings().update('secondBrainRepo', inputUrl, vscode.ConfigurationTarget.Global);
             secondBrainRepo = inputUrl;
         }
 
@@ -1367,33 +1519,78 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         return result;
     }
 
+    private _buildRequestMessages(internetEnabled?: boolean, backgroundLabel = 'BACKGROUND CONTEXT'): ChatMessage[] {
+        const reqMessages = [...this._chatHistory];
+        if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
+            reqMessages[0] = {
+                role: 'system',
+                content: `${this._systemPrompt}\n\n[${backgroundLabel}]\n${getActiveEditorContext()}\n${this._getWorkspaceContext()}\n${this._brainEnabled ? this._getSecondBrainContext() : ''}${getInternetDirective(internetEnabled)}`
+            };
+        }
+        return reqMessages;
+    }
+
+    private _selectedModel(modelName: string, defaultModel: string): string {
+        return modelName || defaultModel;
+    }
+
+    private async _streamMessages(
+        endpoint: AIEndpoint,
+        messages: ChatMessage[],
+        modelName: string,
+        timeout: number,
+        signal?: AbortSignal
+    ): Promise<string> {
+        return streamCompletion({
+            endpoint,
+            messages,
+            modelName,
+            timeout,
+            temperature: this._temperature,
+            topP: this._topP,
+            topK: this._topK,
+            signal
+        }, token => {
+            this._view?.webview.postMessage({ type: 'streamChunk', value: token });
+        });
+    }
+
+    private _appendAgentReport(aiMessage: string, report: string[]): string {
+        if (report.length === 0) {
+            return aiMessage;
+        }
+
+        const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
+        this._view?.webview.postMessage({ type: 'streamChunk', value: reportMsg });
+        this._view?.webview.postMessage({ type: 'streamEnd' });
+        return aiMessage + reportMsg;
+    }
+
+    private _trimHistory(maxHistory = 50): void {
+        if (this._chatHistory.length > maxHistory + 1) {
+            this._chatHistory = [this._chatHistory[0], ...this._chatHistory.slice(-maxHistory)];
+        }
+        if (this._displayMessages.length > maxHistory) {
+            this._displayMessages = this._displayMessages.slice(-maxHistory);
+        }
+    }
+
     // --------------------------------------------------------
     // Handle prompt with file attachments (multimodal)
     // --------------------------------------------------------
-    private async _handlePromptWithFile(prompt: string, modelName: string, files: {name: string, type: string, data: string}[], internetEnabled?: boolean) {
+    private async _handlePromptWithFile(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
         if (!this._view) { return; }
 
         try {
-            const { ollamaBase, defaultModel, timeout } = getConfig();
-            let isLMStudio = ollamaBase.includes('1234') || ollamaBase.includes('v1');
-            let apiUrl = isLMStudio ? `${ollamaBase}/v1/chat/completions` : `${ollamaBase}/api/chat`;
-
-            if (!isLMStudio) {
-                try { await axios.get(`${ollamaBase}/api/tags`, { timeout: 1000 }); }
-                catch { apiUrl = 'http://127.0.0.1:1234/v1/chat/completions'; isLMStudio = true; }
-            }
-
-            // Separate images from text files
+            const config = getConfig();
+            const endpoint = await resolveAIEndpoint(config);
             const imageFiles = files.filter(f => f.type.startsWith('image/'));
             const textFiles = files.filter(f => !f.type.startsWith('image/'));
 
-            // Build text context from non-image files
-            let fileContext = '';
-            for (const f of textFiles) {
-                // data is base64 encoded, decode to utf-8 text
+            const fileContext = textFiles.map(f => {
                 const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
-                fileContext += `\n\n[첨부 파일: ${f.name}]\n\`\`\`\n${decoded.slice(0, 20000)}\n\`\`\``;
-            }
+                return `\n\n[첨부 파일: ${f.name}]\n\`\`\`\n${decoded.slice(0, 20000)}\n\`\`\``;
+            }).join('');
 
             const userContent = prompt + fileContext;
             this._chatHistory.push({ role: 'user', content: userContent });
@@ -1403,127 +1600,41 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 files: files.map(f => ({
                     name: f.name,
                     type: f.type,
-                    data: f.type.startsWith('image/') ? f.data : undefined
+                    data: f.type.startsWith('image/') ? f.data : ''
                 }))
             });
 
-            // Build messages
-            const reqMessages = [...this._chatHistory];
-            if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-                const editor = vscode.window.activeTextEditor;
-                let contextBlock = '';
-                if (editor && editor.document.uri.scheme === 'file') {
-                    const text = editor.document.getText();
-                    const name = path.basename(editor.document.fileName);
-                    if (text.trim().length > 0 && text.length < MAX_CONTEXT_SIZE) {
-                        contextBlock = `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
-                    }
-                }
-                const workspaceCtx = this._getWorkspaceContext();
-                const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
-                const internetCtx = internetEnabled 
-                    ? `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`
-                    : '';
-                reqMessages[0] = {
-                    role: 'system',
-                    content: `${this._systemPrompt}\n\n[BACKGROUND CONTEXT]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
-                };
-            }
+            const reqMessages = this._buildRequestMessages(internetEnabled);
 
-            // Build image payload for vision models
-            const images = imageFiles.map(f => ({ data: f.data, type: f.type || 'image/png' })); // already base64
-
-            let aiMessage = '';
-            this._view.webview.postMessage({ type: 'streamStart' });
-
-            if (isLMStudio) {
-                // OpenAI-compatible format with image_url
+            if (endpoint.isLMStudio) {
                 const lastUserMsg = reqMessages[reqMessages.length - 1];
                 const contentParts: any[] = [{ type: 'text', text: lastUserMsg.content }];
-                for (const img of images) {
-                    contentParts.push({ type: 'image_url', image_url: { url: `data:${img.type};base64,${img.data}` } });
+                for (const img of imageFiles) {
+                    contentParts.push({ type: 'image_url', image_url: { url: `data:${img.type || 'image/png'};base64,${img.data}` } });
                 }
-                reqMessages[reqMessages.length - 1] = { role: 'user', content: contentParts as any };
-
-                const streamBody = {
-                    model: modelName || defaultModel,
-                    messages: reqMessages,
-                    stream: true,
-                    max_tokens: 4096, temperature: this._temperature, top_p: this._topP
-                };
-                const response = await axios.post(apiUrl, streamBody, { timeout, responseType: 'stream' });
-                await new Promise<void>((resolve, reject) => {
-                    const stream = response.data;
-                    let buffer = '';
-                    stream.on('data', (chunk: Buffer) => {
-                        buffer += chunk.toString();
-                        const lines = buffer.split('\n'); buffer = lines.pop() || '';
-                        for (const line of lines) {
-                            if (!line.trim() || line.trim() === 'data: [DONE]') continue;
-                            try {
-                                const raw = line.startsWith('data: ') ? line.slice(6) : line;
-                                const json = JSON.parse(raw);
-                                let token = json.choices?.[0]?.delta?.content || '';
-                                if (json.error) {
-                                    token = `[API 오류] ${json.error.message || json.error}`;
-                                }
-                                if (token) { aiMessage += token; this._view!.webview.postMessage({ type: 'streamChunk', value: token }); }
-                            } catch {}
-                        }
-                    });
-                    stream.on('end', () => resolve());
-                    stream.on('error', (err: any) => reject(err));
-                });
-            } else {
-                // Ollama native format with images array
-                const streamBody: any = {
-                    model: modelName || defaultModel,
-                    messages: reqMessages,
-                    stream: true,
-                    options: { num_ctx: 16384, num_predict: 4096, temperature: this._temperature, top_p: this._topP, top_k: this._topK }
-                };
-                // Attach images to the last user message for Ollama
-                if (images.length > 0) {
-                    const ollamaImages = images.map(img => img.data);
-                    streamBody.messages = reqMessages.map((m: any, i: number) => 
-                        i === reqMessages.length - 1 ? { ...m, images: ollamaImages } : m
-                    );
-                }
-                const response = await axios.post(apiUrl, streamBody, { timeout, responseType: 'stream' });
-                await new Promise<void>((resolve, reject) => {
-                    const stream = response.data;
-                    let buffer = '';
-                    stream.on('data', (chunk: Buffer) => {
-                        buffer += chunk.toString();
-                        const lines = buffer.split('\n'); buffer = lines.pop() || '';
-                        for (const line of lines) {
-                            if (!line.trim()) continue;
-                            try {
-                                const json = JSON.parse(line);
-                                let token = json.message?.content || '';
-                                if (json.error) {
-                                    token = `[API 오류] ${json.error}`;
-                                }
-                                if (token) { aiMessage += token; this._view!.webview.postMessage({ type: 'streamChunk', value: token }); }
-                            } catch {}
-                        }
-                    });
-                    stream.on('end', () => resolve());
-                    stream.on('error', (err: any) => reject(err));
-                });
+                reqMessages[reqMessages.length - 1] = { role: 'user', content: contentParts };
+            } else if (imageFiles.length > 0) {
+                const ollamaImages = imageFiles.map(img => img.data);
+                reqMessages[reqMessages.length - 1] = {
+                    ...reqMessages[reqMessages.length - 1],
+                    images: ollamaImages
+                } as any;
             }
 
+            this._view.webview.postMessage({ type: 'streamStart' });
+            const aiMessage = await this._streamMessages(
+                endpoint,
+                reqMessages,
+                this._selectedModel(modelName, config.defaultModel),
+                config.timeout
+            );
             this._view.webview.postMessage({ type: 'streamEnd' });
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
 
             const report = await this._executeActions(aiMessage);
-            if (report.length > 0) {
-                const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
-                this._view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
-                this._view.webview.postMessage({ type: 'streamEnd' });
-                aiMessage += reportMsg;
-            }
-            this._displayMessages.push({ text: this._stripActionTags(aiMessage), role: 'ai' });
+            const finalMessage = this._appendAgentReport(aiMessage, report);
+            this._displayMessages.push({ text: this._stripActionTags(finalMessage), role: 'ai' });
+            this._trimHistory();
             this._saveHistory();
 
         } catch (error: any) {
@@ -1571,139 +1682,45 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) { return; }
 
         try {
-            // 1. Context: active editor content
-            const editor = vscode.window.activeTextEditor;
-            let contextBlock = '';
-            if (editor && editor.document.uri.scheme === 'file') {
-                const text = editor.document.getText();
-                const name = path.basename(editor.document.fileName);
-                if (text.trim().length > 0 && text.length < MAX_CONTEXT_SIZE) {
-                    contextBlock = `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
-                }
-            }
+            const config = getConfig();
+            const endpoint = await resolveAIEndpoint(config);
+            const selectedModel = this._selectedModel(modelName, config.defaultModel);
 
-            // 2. Context: workspace file tree + key file contents
-            const workspaceCtx = this._getWorkspaceContext();
-            
-            // 2.5 Inject Second Brain Knowledge (ON/OFF 토글 반영)
-            const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
-
-            // 3. Push user message
-            this._chatHistory.push({
-                role: 'user',
-                content: prompt
-            });
-
-            // 저장용: 유저 메시지 기록 (프롬프트만)
+            this._chatHistory.push({ role: 'user', content: prompt });
             this._displayMessages.push({ text: prompt, role: 'user' });
 
-            // 4. Call Ollama
-            const { ollamaBase, defaultModel, timeout } = getConfig();
-
-            // 이번 요청에만 사용할 임시 메시지 배열 생성
-            const reqMessages = [...this._chatHistory];
-            // 시스템 프롬프트(0번 인덱스)에 현재 작업 환경 정보를 주입
-            if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-                const internetCtx = internetEnabled 
-                    ? `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`
-                    : '';
-                reqMessages[0] = {
-                    role: 'system',
-                    content: `${SYSTEM_PROMPT}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
-                };
-            }
-
-            let isLMStudio = ollamaBase.includes('1234') || ollamaBase.includes('v1');
-            let apiUrl = isLMStudio ? `${ollamaBase}/v1/chat/completions` : `${ollamaBase}/api/chat`;
-
-            // Auto-Failover Logic: 유저가 설정을 안 건드렸더라도 Ollama가 죽어있으면 자동으로 LM Studio를 찾아갑니다!
-            if (!isLMStudio) {
-                try {
-                    await axios.get(`${ollamaBase}/api/tags`, { timeout: 1000 });
-                } catch (err: any) {
-                    // Ollama 연결 실패 시 LM Studio 1234 포트로 강제 우회
-                    apiUrl = 'http://127.0.0.1:1234/v1/chat/completions';
-                    isLMStudio = true;
-                }
-            }
-
-            // ═══ STREAMING API CALL ═══
-            let aiMessage = '';
-            const streamBody = {
-                model: modelName || defaultModel,
-                messages: reqMessages,
-                stream: true,
-                ...(isLMStudio 
-                    ? { max_tokens: 4096, temperature: this._temperature, top_p: this._topP } 
-                    : { options: { num_ctx: 16384, num_predict: 4096, temperature: this._temperature, top_p: this._topP, top_k: this._topK } }),
-            };
-
-            // 스트리밍: 웹뷰에 'streamStart' 로 빈 메시지 생성 후 'streamChunk'로 실시간 업데이트
+            const reqMessages = this._buildRequestMessages(internetEnabled, 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED');
             this._view.webview.postMessage({ type: 'streamStart' });
             this._lastPrompt = prompt;
             this._lastModel = modelName;
             this._abortController = new AbortController();
 
-            const response = await axios.post(apiUrl, streamBody, { 
-                timeout, 
-                responseType: 'stream',
-                signal: this._abortController.signal
-            });
-
-            await new Promise<void>((resolve, reject) => {
-                const stream = response.data;
-                let buffer = '';
-                stream.on('data', (chunk: Buffer) => {
-                    buffer += chunk.toString();
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-                    for (const line of lines) {
-                        if (!line.trim() || line.trim() === 'data: [DONE]') continue;
-                        try {
-                            const raw = line.startsWith('data: ') ? line.slice(6) : line;
-                            const json = JSON.parse(raw);
-                            let token = '';
-                            if (json.error) {
-                                token = `[API 오류] ${json.error.message || json.error}`;
-                            } else if (isLMStudio) {
-                                token = json.choices?.[0]?.delta?.content || '';
-                            } else {
-                                token = json.message?.content || '';
-                            }
-                            if (token) {
-                                aiMessage += token;
-                                this._view!.webview.postMessage({ type: 'streamChunk', value: token });
-                            }
-                        } catch { /* skip malformed JSON */ }
-                    }
-                });
-                stream.on('end', () => resolve());
-                stream.on('error', (err: any) => reject(err));
-            });
-
-            // 스트리밍 완료 알림 잠시 보류 (연속된 답변을 같은 상자에 이어서 출력하기 위함)
+            let aiMessage = await this._streamMessages(
+                endpoint,
+                reqMessages,
+                selectedModel,
+                config.timeout,
+                this._abortController.signal
+            );
             
-            // 4.5 자율 열람 (Second Brain 및 웹 검색): AI가 <read_brain> 또는 <read_url>을 사용했는지 확인
             const brainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
             const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
 
             if (brainReads.length > 0 || urlReads.length > 0) {
                 let fetchedContent = '';
                 let uiFeedbackStr = '';
-                
-                // Brain 읽기 처리
+
                 for (const match of brainReads) {
                     const requestedFile = match[1].trim();
                     const fileContent = this._readBrainFile(requestedFile);
                     fetchedContent += `\n\n[BRAIN DOCUMENT: ${requestedFile}]\n${fileContent}\n`;
                 }
 
-                // URL 읽기 처리
                 for (const match of urlReads) {
                     const url = match[1].trim();
                     try {
                         const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
-                        let cleaned = data.toString()
+                        const cleaned = data.toString()
                             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
                             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
                             .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1731,74 +1748,24 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 reqMessages.push({ role: 'assistant', content: cleanedResponse || '탐색을 진행 중입니다...' });
                 reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents and web contents were retrieved based on your actions. Use this information to provide a complete and accurate answer to the user's original question.]\n${fetchedContent}\n\nNow answer the user's question using the above knowledge. Do NOT output <read_brain> or <read_url> again. Answer directly and comprehensively.` });
 
-                // 2차 스트리밍 시작 (followUp)
-                const followUpResponse = await axios.post(apiUrl, {
-                    model: modelName || defaultModel,
-                    messages: reqMessages,
-                    stream: true, // 스트리밍 활성화
-                    ...(isLMStudio 
-                        ? { max_tokens: 4096, temperature: this._temperature, top_p: this._topP } 
-                        : { options: { num_ctx: 16384, num_predict: 4096, temperature: this._temperature, top_p: this._topP, top_k: this._topK } }),
-                }, { timeout, responseType: 'stream', signal: this._abortController?.signal });
-
                 aiMessage = cleanedResponse + uiFeedbackStr;
-                
-                await new Promise<void>((resolve, reject) => {
-                    const stream = followUpResponse.data;
-                    let buffer = '';
-                    stream.on('data', (chunk: Buffer) => {
-                        buffer += chunk.toString();
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || '';
-                        for (const line of lines) {
-                            if (!line.trim() || line.trim() === 'data: [DONE]') continue;
-                            try {
-                                const raw = line.startsWith('data: ') ? line.slice(6) : line;
-                                const json = JSON.parse(raw);
-                                let token = '';
-                                if (json.error) token = `[API 오류] ${json.error.message || json.error}`;
-                                else if (isLMStudio) token = json.choices?.[0]?.delta?.content || '';
-                                else token = json.message?.content || '';
-                                
-                                if (token) {
-                                    aiMessage += token;
-                                    this._view!.webview.postMessage({ type: 'streamChunk', value: token });
-                                }
-                            } catch { /* skip */ }
-                        }
-                    });
-                    stream.on('end', () => resolve());
-                    stream.on('error', (err: any) => reject(err));
-                });
+                aiMessage += await this._streamMessages(
+                    endpoint,
+                    reqMessages,
+                    selectedModel,
+                    config.timeout,
+                    this._abortController?.signal
+                );
             }
 
-            // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
             this._view.webview.postMessage({ type: 'streamEnd' });
 
             this._chatHistory.push({ role: 'assistant', content: aiMessage });
 
-            // 5. Execute agent actions
             const report = await this._executeActions(aiMessage);
-
-            // 6. Agent report 추가 (있을 때만)
-            if (report.length > 0) {
-                const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
-                this._view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
-                this._view.webview.postMessage({ type: 'streamEnd' });
-                aiMessage += reportMsg;
-            }
-
-            // 저장용: AI 응답 기록
-            this._displayMessages.push({ text: this._stripActionTags(aiMessage), role: 'ai' });
-
-            // 메모리 누수 방지: 대화 이력 최대 50개 반턱으로 제한
-            const MAX_HISTORY = 50;
-            if (this._chatHistory.length > MAX_HISTORY + 1) {
-                this._chatHistory = [this._chatHistory[0], ...this._chatHistory.slice(-(MAX_HISTORY))];
-            }
-            if (this._displayMessages.length > MAX_HISTORY) {
-                this._displayMessages = this._displayMessages.slice(-MAX_HISTORY);
-            }
+            const finalMessage = this._appendAgentReport(aiMessage, report);
+            this._displayMessages.push({ text: this._stripActionTags(finalMessage), role: 'ai' });
+            this._trimHistory();
             this._saveHistory();
 
         } catch (error: any) {
