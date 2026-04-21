@@ -23,7 +23,19 @@ function getConfig() {
         maxTreeFiles: cfg.get<number>('maxContextFiles', 200),
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
         secondBrainRepo: cfg.get<string>('secondBrainRepo', ''),
+        localBrainPath: cfg.get<string>('localBrainPath', '')
     };
+}
+
+function _getBrainDir(): string {
+    const { localBrainPath } = getConfig();
+    if (localBrainPath && localBrainPath.trim() !== '') {
+        if (localBrainPath.startsWith('~/')) {
+            return path.join(os.homedir(), localBrainPath.substring(2));
+        }
+        return localBrainPath.trim();
+    }
+    return path.join(os.homedir(), '.connect-ai-brain');
 }
 
 const EXCLUDED_DIRS = new Set([
@@ -141,7 +153,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Step 2: 두뇌 폴더 자동 생성
-                const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+                const brainDir = _getBrainDir();
                 if (!fs.existsSync(brainDir)) {
                     fs.mkdirSync(brainDir, { recursive: true });
                 }
@@ -177,7 +189,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             if (req.method === 'GET' && req.url === '/ping') {
-                const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+                const brainDir = _getBrainDir();
                 const brainCount = fs.existsSync(brainDir) ? provider._findBrainFiles(brainDir).length : 0;
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok', msg: 'Connect AI Bridge Ready', config: getConfig(), brain: { fileCount: brainCount, enabled: provider._brainEnabled } }));
@@ -339,7 +351,7 @@ export function activate(context: vscode.ExtensionContext) {
                 req.on('end', async () => {
                     try {
                         const parsed = JSON.parse(body);
-                        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+                        const brainDir = _getBrainDir();
                         if (!fs.existsSync(brainDir)) {
                             fs.mkdirSync(brainDir, { recursive: true });
                         }
@@ -464,7 +476,7 @@ async function showBrainNetwork(context: vscode.ExtensionContext) {
     );
 
     // Scan real Second Brain files locally instead of current workspace
-    const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+    const brainDir = _getBrainDir();
     const realClusters: Record<string, string[]> = {};
     let filesFound = 0;
 
@@ -479,7 +491,7 @@ async function showBrainNetwork(context: vscode.ExtensionContext) {
                     walkDir(fullPath);
                 } else if (entry.isFile() && fullPath.endsWith('.md')) {
                     const folderName = path.basename(dir);
-                    const groupName = folderName === '.connect-ai-brain' ? 'Brain Root' : folderName;
+                    const groupName = folderName === path.basename(_getBrainDir()) ? 'Brain Root' : folderName;
                     if (!realClusters[groupName]) realClusters[groupName] = [];
                     realClusters[groupName].push(entry.name.replace('.md', ''));
                     filesFound++;
@@ -887,7 +899,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private async _handleInjectLocalBrain(files: any[]) {
         if (!this._view) return;
         
-        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const brainDir = _getBrainDir();
         if (!fs.existsSync(brainDir)) {
             vscode.window.showErrorMessage("Second Brain이 연동되지 않았습니다. 채팅창 ⚙버튼이나 헤더에서 🧠버튼을 누른 후 깃허브 레포지토리를 먼저 연동해주세요.");
             return;
@@ -995,7 +1007,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private async _handleBrainMenu() {
         if (!this._view) { return; }
         
-        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const brainDir = _getBrainDir();
         const isSynced = fs.existsSync(brainDir);
         const { secondBrainRepo } = getConfig();
         const statusLabel = this._brainEnabled ? '🟢 ON' : '🔴 OFF';
@@ -1112,7 +1124,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         this._isSyncingBrain = true;
-        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const brainDir = _getBrainDir();
         try {
             this._view.webview.postMessage({ type: 'response', value: '🧠 **Second Brain 동기화 시작 중... 깃허브에서 지식을 복제합니다.**' });
             
@@ -1211,7 +1223,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     // 목차(인덱스)만 생성 — 내용은 AI가 <read_brain>으로 직접 열람
     private _getSecondBrainContext(): string {
-        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const brainDir = _getBrainDir();
         if (!fs.existsSync(brainDir)) return '';
 
         const files = this._findBrainFiles(brainDir);
@@ -1246,7 +1258,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     // AI가 <read_brain>태그로 요청한 파일의 실제 내용을 읽어서 반환
     private _readBrainFile(filename: string): string {
-        const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+        const brainDir = _getBrainDir();
         if (!fs.existsSync(brainDir)) return '[ERROR] Second Brain이 동기화되지 않았습니다. 🧠 버튼을 먼저 눌러주세요.';
 
         // 정확한 경로 매칭 시도
@@ -1858,7 +1870,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     fs.mkdirSync(dir, { recursive: true });
                 }
                 fs.writeFileSync(absPath, content, 'utf-8');
-                if (absPath.includes('.connect-ai-brain')) brainModified = true;
+                if (absPath.startsWith(_getBrainDir())) brainModified = true;
                 report.push(`✅ 생성: ${relPath}`);
                 if (!firstCreatedFile) { firstCreatedFile = absPath; }
             } catch (err: any) {
@@ -1902,7 +1914,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
                 if (editCount > 0) {
                     fs.writeFileSync(absPath, fileContent, 'utf-8');
-                    if (absPath.includes('.connect-ai-brain')) brainModified = true;
+                    if (absPath.startsWith(_getBrainDir())) brainModified = true;
                     report.push(`✏️ 편집 완료: ${relPath} (${editCount}건 수정)`);
                     // Open edited file
                     vscode.window.showTextDocument(vscode.Uri.file(absPath), { preview: false });
@@ -1925,7 +1937,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     } else {
                         fs.unlinkSync(absPath);
                     }
-                    if (absPath.includes('.connect-ai-brain')) brainModified = true;
+                    if (absPath.startsWith(_getBrainDir())) brainModified = true;
                     report.push(`🗑️ 삭제: ${relPath}`);
                 } else {
                     report.push(`⚠️ 삭제 스킵: ${relPath} — 파일이 존재하지 않습니다.`);
@@ -2061,7 +2073,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
         // Auto-Push Second Brain changes to Cloud
         if (brainModified) {
             try {
-                const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+                const brainDir = _getBrainDir();
                 const { execSync } = require('child_process');
                 execSync(`git add .`, { cwd: brainDir });
                 execSync(`git commit -m "[P-Reinforce] Auto-synced structured knowledge"`, { cwd: brainDir });
