@@ -2,7 +2,7 @@
   "name": "connect-ai-lab",
   "displayName": "Connect AI",
   "description": "100% 로컬 AI 코딩 에이전트 — 파일 생성, 코드 편집, 터미널 실행을 오프라인으로. Ollama + Gemma/Llama/DeepSeek 지원.",
-  "version": "2.2.17",
+  "version": "2.2.19",
   "publisher": "connectailab",
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -31,17 +31,14 @@
     "connect-ai-lab",
     "copilot"
   ],
-  "activationEvents": [
-    "onView:connect-ai-lab-v2-view",
-    "onCommand:connect-ai-lab.newChat",
-    "onCommand:connect-ai-lab.exportChat",
-    "onCommand:connect-ai-lab.explainSelection",
-    "onCommand:connect-ai-lab.focusChat",
-    "onCommand:connect-ai-lab.showBrainNetwork"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "connect-ai-lab.openChat",
+        "title": "Connect AI: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
       {
         "command": "connect-ai-lab.newChat",
         "title": "Connect AI: New Chat",
@@ -80,24 +77,6 @@
         }
       ]
     },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "connect-ai-lab-sidebar",
-          "title": "Connect AI",
-          "icon": "$(hubot)"
-        }
-      ]
-    },
-    "views": {
-      "connect-ai-lab-sidebar": [
-        {
-          "type": "webview",
-          "id": "connect-ai-lab-v2-view",
-          "name": "Chat"
-        }
-      ]
-    },
     "configuration": {
       "title": "Connect AI",
       "properties": {
@@ -127,7 +106,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
-    "package:vsix": "vsce package",
+    "package:vsix": "node scripts/package-vsix.mjs",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile"
   },
@@ -141,7 +120,6 @@
   },
   "dependencies": {
     "axios": "^1.15.0",
-    "jsdom": "^29.0.2",
     "markdown-it": "^14.1.1"
   }
 }

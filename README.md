@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.2.17-blue" alt="version" />
+  <img src="https://img.shields.io/badge/version-2.2.19-blue" alt="version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/integration-Agent_University-purple" alt="integration" />
   <img src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-orange" alt="engine" />
@@ -20,7 +20,7 @@
 
 ## 🌟 Overview: The P-Reinforce Architecture
 
-Connect AI v2.2.17는 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
+Connect AI v2.2.19는 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
 
 ---
 
@@ -61,7 +61,7 @@ Ollama 또는 LM Studio에 설치된 모델을 내부 API(`v1/models`)를 호출
 
 ### A.U 멤버십 유저 (Recommended)
 1. 상단 탭의 [Releases](https://github.com/wonseokjung/connect-ai/releases) 메뉴로 진입.
-2. 최신 `connect-ai-lab-2.2.17.vsix` 파일을 다운로드.
+2. 최신 `connect-ai-lab-2.2.19.vsix` 파일을 다운로드.
 3. VS Code 에서 `Cmd+Shift+P` → **Extensions: Install from VSIX** → 다운받은 파일 선택
 
 ### 개발자 빌드 (Build from Source)
@@ -70,36 +70,72 @@ git clone https://github.com/wonseokjung/connect-ai.git
 cd connect-ai
 npm install
 npm run compile
-npm run package:vsix
+npm run package:vsix -- --notes "이번 VSIX에 포함된 주요 변경사항을 자세히 적습니다"
 ```
 
 ---
 
 ## 📦 VSIX Release Rule (필수)
 
-앞으로 VSIX 파일을 빌드할 때마다 반드시 아래 규칙을 지킵니다.
+앞으로 VSIX 파일을 빌드할 때마다 `npm run package:vsix` 스크립트가 아래 규칙을 강제합니다.
 
-1. **버전 자동 증가:** VSIX 빌드 전 `package.json`과 `package-lock.json`의 버전을 항상 `0.0.1`씩 올립니다. 예: `2.2.14` → `2.2.15`.
-2. **README 기록:** 버전을 올린 이유와 포함된 변경사항을 이 README의 `Release Notes` 섹션에 자세히 기록합니다.
-3. **빌드 순서:** 버전 수정 후 `npm run compile`을 실행하고, 이어서 `npm run package:vsix`로 VSIX를 생성합니다.
-4. **파일명 확인:** 생성된 파일명은 버전과 일치해야 합니다. 예: `connect-ai-lab-2.2.15.vsix`.
-5. **기존 변경 보호:** 작업 중인 다른 파일 변경사항이 있으면 되돌리지 않고, 릴리스에 필요한 버전/문서/빌드 산출물만 갱신합니다.
+1. **버전 자동 증가:** VSIX 빌드 시 `package.json`과 `package-lock.json`의 패치 버전을 항상 `0.0.1`씩 올립니다. 예: `2.2.17` → `2.2.18`.
+2. **README 기록 필수:** `--notes`, `--notes-file`, 또는 `RELEASE_NOTES`가 없으면 빌드를 중단합니다.
+3. **릴리스 노트 자동 삽입:** 전달된 변경 내용을 `Release Notes` 최상단에 새 버전 항목으로 기록합니다.
+4. **문서 버전 동기화:** README의 버전 배지, Overview 버전, 설치용 VSIX 파일명을 새 버전에 맞춰 갱신합니다.
+5. **빌드 순서:** 스크립트가 먼저 `npm run compile`로 사전 검증한 뒤 버전을 올리고, 로컬 `@vscode/vsce`로 VSIX를 생성합니다.
+6. **저장 위치:** 생성된 VSIX는 항상 `release/` 폴더에 저장합니다. 예: `release/connect-ai-lab-2.2.18.vsix`.
+7. **파일명 확인:** 생성된 파일명은 버전과 일치해야 합니다. 예: `connect-ai-lab-2.2.18.vsix`.
+8. **기존 변경 보호:** 작업 중인 다른 파일 변경사항이 있으면 되돌리지 않고, 릴리스에 필요한 버전/문서/빌드 산출물만 갱신합니다.
 
 권장 명령:
 
 ```bash
-npm version patch --no-git-tag-version
-npm run compile
-npm run package:vsix
+npm run package:vsix -- --notes "에디터 영역 채팅 패널 전환; README 릴리스 규칙 자동화"
 ```
 
-`npm version patch --no-git-tag-version`은 `package.json`과 `package-lock.json`의 패치 버전을 함께 올립니다. 단, README의 배지, 설치 안내, 릴리스 노트는 직접 최신 버전에 맞춰 갱신해야 합니다.
+여러 줄로 자세히 기록해야 할 때는 아래처럼 사용합니다.
+
+```bash
+RELEASE_NOTES=$'- 에디터 영역 WebviewPanel로 채팅 위치를 이동했습니다.\n- VSIX 빌드 시 README 릴리스 노트 작성을 강제합니다.' npm run package:vsix
+```
+
+또는 별도 파일을 사용할 수 있습니다.
+
+```bash
+npm run package:vsix -- --notes-file release-notes.md
+```
+
+`scripts/package-vsix.mjs`는 패치 버전 증가, `package-lock.json` 동기화, README 배지/설치 안내/릴리스 노트 갱신, `release/` 폴더 VSIX 생성을 한 번에 수행합니다. 릴리스 노트가 비어 있거나 너무 짧으면 빌드하지 않습니다.
+필요하면 `Release Notes` 아래 `### 다음 VSIX 예정` 섹션에 미리 변경사항을 적어둘 수 있으며, 패키징 시 이 항목은 새 버전 릴리스 노트로 합쳐진 뒤 제거됩니다.
 
 패키징 경고를 줄이기 위해 `npx vsce package` 대신 로컬 devDependency인 `@vscode/vsce` 기반의 `npm run package:vsix`를 사용합니다. 또한 `activationEvents`는 `*`를 쓰지 않고 실제 뷰와 명령 진입점만 명시합니다.
 
 ---
 
 ## 📝 Release Notes
+
+### 다음 VSIX 예정
+
+- VSIX 빌드 산출물이 프로젝트 루트가 아니라 `release/` 폴더에 저장되도록 `scripts/package-vsix.mjs`의 `vsce package --out` 경로를 변경했습니다.
+- 패키징 스캔에 기존 릴리스 산출물이 섞이지 않도록 `.vscodeignore`에 `release/**` 제외 규칙을 추가했습니다.
+- README의 VSIX 릴리스 규칙에 `release/connect-ai-lab-x.y.z.vsix` 저장 위치를 명시했습니다.
+
+### v2.2.19
+
+- VSIX 빌드 버전을 `2.2.18`에서 `2.2.19`로 올렸습니다.
+- VSIX 패키지에서 빌드 전용 scripts 폴더를 제외
+- v2.2.18 릴리스 노트의 중복 문구를 정리
+- 릴리스 스크립트가 `connect-ai-lab-2.2.19.vsix` 패키지를 생성합니다.
+
+### v2.2.18
+
+- VSIX 빌드 버전을 `2.2.17`에서 `2.2.18`로 올렸습니다.
+- 채팅 UI를 Activity Bar/Secondary Side Bar 뷰에서 에디터 영역 `WebviewPanel`로 이동해 Codex처럼 코드 편집기 옆에서 열리도록 변경했습니다.
+- `Connect AI: Open Chat`, `Cmd+L` 포커스, 선택 코드 설명 명령이 채팅 패널을 자동으로 열고 재사용하도록 정리했습니다.
+- VSIX 빌드 시 패치 버전을 `0.0.1`씩 자동 증가시키고, README 릴리스 노트 입력을 강제하는 `scripts/package-vsix.mjs`를 추가했습니다.
+- `package:vsix`가 더 이상 단순 `vsce package`를 직접 호출하지 않고, 컴파일 사전 검증과 문서 동기화를 거친 뒤 패키징하도록 변경했습니다.
+- 릴리스 스크립트가 `connect-ai-lab-2.2.18.vsix` 패키지를 생성합니다.
 
 ### v2.2.17
 
