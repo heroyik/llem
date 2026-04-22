@@ -4,8 +4,8 @@ import type { SidebarChatProvider } from './sidebarChatProvider';
 
 export function registerExtensionCommands(context: vscode.ExtensionContext, provider: SidebarChatProvider): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.openChat', () => {
-            provider.openChatPanel();
+        vscode.commands.registerCommand('connect-ai-lab.openChat', async () => {
+            await provider.openChatPanel();
         })
     );
 
@@ -22,8 +22,8 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('connect-ai-lab.focusChat', () => {
-            provider.focusInput();
+        vscode.commands.registerCommand('connect-ai-lab.focusChat', async () => {
+            await provider.focusInput();
         })
     );
 
@@ -34,7 +34,7 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
 
             const selection = editor.document.getText(editor.selection);
             if (selection.trim()) {
-                provider.sendPromptFromExtension(`이 코드를 분석하고 설명해줘:\n\`\`\`\n${selection}\n\`\`\``);
+                void provider.sendPromptFromExtension(`이 코드를 분석하고 설명해줘:\n\`\`\`\n${selection}\n\`\`\``);
             }
         })
     );

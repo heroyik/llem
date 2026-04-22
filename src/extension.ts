@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { startBridgeServer } from './bridgeServer';
 import { registerExtensionCommands } from './extensionCommands';
-import { SidebarChatProvider } from './sidebarChatProvider';
+import { CONNECT_AI_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 
 // ============================================================
 // Connect AI — Full Agentic Local AI for VS Code
@@ -12,6 +12,14 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Connect AI extension activated.');
 
     const provider = new SidebarChatProvider(context.extensionUri, context);
+
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(CONNECT_AI_VIEW_ID, provider, {
+            webviewOptions: {
+                retainContextWhenHidden: true
+            }
+        })
+    );
 
     startBridgeServer(provider);
 

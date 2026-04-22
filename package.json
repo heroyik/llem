@@ -2,10 +2,19 @@
   "name": "connect-ai-lab",
   "displayName": "Connect AI",
   "description": "100% 로컬 AI 코딩 에이전트 — 파일 생성, 코드 편집, 터미널 실행을 오프라인으로. Ollama + Gemma/Llama/DeepSeek 지원.",
-  "version": "2.2.19",
+  "version": "2.2.21",
   "publisher": "connectailab",
   "license": "MIT",
   "icon": "assets/icon.png",
+  "activationEvents": [
+    "onView:connect-ai-lab.chat",
+    "onCommand:connect-ai-lab.openChat",
+    "onCommand:connect-ai-lab.newChat",
+    "onCommand:connect-ai-lab.exportChat",
+    "onCommand:connect-ai-lab.explainSelection",
+    "onCommand:connect-ai-lab.focusChat",
+    "onCommand:connect-ai-lab.showBrainNetwork"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/wonseokjung/connect-ai"
@@ -37,7 +46,7 @@
       {
         "command": "connect-ai-lab.openChat",
         "title": "Connect AI: Open Chat",
-        "icon": "$(comment-discussion)"
+        "icon": "$(sparkle)"
       },
       {
         "command": "connect-ai-lab.newChat",
@@ -69,11 +78,36 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "connect-ai-lab.openChat",
+          "group": "navigation@99"
+        }
+      ],
       "editor/context": [
         {
           "command": "connect-ai-lab.explainSelection",
           "when": "editorHasSelection",
           "group": "1_modification"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "connect-ai-lab",
+          "title": "Connect AI",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "connect-ai-lab": [
+        {
+          "type": "webview",
+          "id": "connect-ai-lab.chat",
+          "name": "Connect AI",
+          "icon": "assets/icon.svg"
         }
       ]
     },

@@ -17,6 +17,9 @@ import type { AttachedFile, ChatMessage } from './types';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
+export const CONNECT_AI_VIEW_ID = 'connect-ai-lab.chat';
+export const CONNECT_AI_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.connect-ai-lab';
+
 // ============================================================
 // Sidebar Chat Provider
 // ============================================================
@@ -32,6 +35,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _abortController?: AbortController;
     private _lastPrompt?: string;
     private _lastModel?: string;
+    private _lastFiles?: AttachedFile[];
+    private _lastInternetEnabled?: boolean;
 
     // 🏛️ AI 파라미터 튜닝
     private _temperature: number;
@@ -62,9 +67,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             readBrainFile: (filename) => this._contextBuilder.readBrainFile(filename),
             saveHistory: () => this._chatSession.save(),
             setAbortController: (controller) => { this._abortController = controller; },
-            setLastPrompt: (prompt, modelName) => {
+            setLastPrompt: (prompt, modelName, files, internetEnabled) => {
                 this._lastPrompt = prompt;
                 this._lastModel = modelName;
+                this._lastFiles = files?.map(file => ({ ...file }));
+                this._lastInternetEnabled = internetEnabled;
             }
         });
         // 두뇌 토글 상태 복원 (세션 뒤에도 유지)
@@ -113,6 +120,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     public resetChat() {
         this._chatSession.reset();
+        this._lastPrompt = undefined;
+        this._lastModel = undefined;
+        this._lastFiles = undefined;
+        this._lastInternetEnabled = undefined;
         if (this._view) {
             this._view.webview.postMessage({ type: 'clearChat' });
         }
@@ -125,9 +136,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** 채팅 입력창에 포커스 (Cmd+L) */
-    public focusInput() {
+    public async focusInput(): Promise<void> {
         if (!this._view) {
-            this.openChatPanel();
+            await this.openChatPanel();
         }
 
         this._revealSurface(false);
@@ -141,18 +152,18 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** 외부에서 프롬프트 전송 (예: 코드 선택 → 설명) */
-    public injectSystemMessage(message: string) {
+    public async injectSystemMessage(message: string): Promise<void> {
         if (!this._view) {
-            this.openChatPanel();
+            await this.openChatPanel();
         }
 
         this._view?.webview.postMessage({ type: 'response', value: message });
         this._chatSession.appendAssistantMessage(message);
     }
 
-    public sendPromptFromExtension(prompt: string) {
+    public async sendPromptFromExtension(prompt: string): Promise<void> {
         if (!this._view) {
-            this.openChatPanel();
+            await this.openChatPanel();
         }
 
         this._revealSurface(false);
@@ -161,7 +172,15 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }, 300);
     }
 
-    public openChatPanel(): void {
+    public async openChatPanel(): Promise<void> {
+        try {
+            await vscode.commands.executeCommand(CONNECT_AI_VIEW_CONTAINER_COMMAND);
+            this._revealSurface(false);
+            return;
+        } catch (error) {
+            console.warn('Connect AI: secondary sidebar view could not be opened, falling back to editor panel.', error);
+        }
+
         if (this._panel) {
             this._view = this._panel;
             this._panel.reveal(vscode.ViewColumn.Beside);
@@ -286,7 +305,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         this._chatSession.removeLastAssistantResponse();
-        await this._handlePrompt(this._lastPrompt, this._lastModel || '');
+        if (this._lastFiles?.length) {
+            await this._handlePromptWithFile(this._lastPrompt, this._lastModel || '', this._lastFiles, this._lastInternetEnabled);
+            return;
+        }
+
+        await this._handlePrompt(this._lastPrompt, this._lastModel || '', this._lastInternetEnabled);
     }
 
     private _showTerminal(): void {

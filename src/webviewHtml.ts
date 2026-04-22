@@ -377,11 +377,18 @@ pendingFiles=[];attachPreview.innerHTML='';attachPreview.classList.remove('visib
   } else {
 vscode.postMessage({type:'prompt',value:text,model:modelSel.value,internet:internetEnabled});
   }
-}
+	}
 
-/* Attachment Logic */
-attachBtn.addEventListener('click',()=>fileInput.click());
-injectLocalBtn.addEventListener('click',()=>{
+	/* Attachment Logic */
+	const MAX_TEXT_ATTACHMENT_BYTES=512*1024;
+	const MAX_IMAGE_ATTACHMENT_BYTES=8*1024*1024;
+	function formatAttachmentBytes(bytes){
+	  if(bytes<1024)return bytes+'B';
+	  if(bytes<1024*1024)return (bytes/1024).toFixed(1)+'KB';
+	  return (bytes/1024/1024).toFixed(1)+'MB';
+	}
+	attachBtn.addEventListener('click',()=>fileInput.click());
+	injectLocalBtn.addEventListener('click',()=>{
   if(pendingFiles.length===0){
 alert('\ucca8\ubd80\ub41c \ud30c\uc77c\uc774 \uc5c6\uc2b5\ub2c8\ub2e4. + \ubc84\ud2bc\uc744 \ub20c\ub7ec \uc5f0\ub3d9\ud560 \ubb38\uc11c\ub97c \uba3c\uc800 \ucd94\uac00\ud574\uc8fc\uc138\uc694.');
 return;
@@ -390,19 +397,26 @@ return;
   pendingFiles=[];
   renderPreview();
 });
-fileInput.addEventListener('change',()=>{
-  const files=Array.from(fileInput.files);
-  files.forEach(file=>{
-const reader=new FileReader();
-reader.onload=()=>{
-  const base64=reader.result.split(',')[1];
-  pendingFiles.push({name:file.name,type:file.type,data:base64});
-  renderPreview();
-};
-reader.readAsDataURL(file);
-  });
-  fileInput.value='';
-});
+	fileInput.addEventListener('change',()=>{
+	  const files=Array.from(fileInput.files);
+	  files.forEach(file=>{
+	const isImage=file.type&&file.type.startsWith('image/');
+	const limit=isImage?MAX_IMAGE_ATTACHMENT_BYTES:MAX_TEXT_ATTACHMENT_BYTES;
+	if(isImage&&file.size>limit){
+	  alert(file.name+' 파일이 너무 큽니다. 이미지는 최대 '+formatAttachmentBytes(limit)+'까지 첨부할 수 있습니다.');
+	  return;
+	}
+	const source=file.size>limit?file.slice(0,limit):file;
+	const reader=new FileReader();
+	reader.onload=()=>{
+	  const base64=reader.result.split(',')[1];
+	  pendingFiles.push({name:file.name,type:file.type||'text/plain',data:base64,truncated:file.size>limit,originalSize:file.size});
+	  renderPreview();
+	};
+	reader.readAsDataURL(source);
+	  });
+	  fileInput.value='';
+	});
 function renderPreview(){
   attachPreview.innerHTML='';
   if(pendingFiles.length===0){attachPreview.classList.remove('visible');return;}
@@ -415,7 +429,7 @@ if(isImg){
 } else {
   const icon=document.createElement('span');icon.className='chip-icon';icon.textContent=f.type.startsWith('audio/')?'\ud83c\udfa7':'\ud83d\udcc4';chip.appendChild(icon);
 }
-const nm=document.createElement('span');nm.className='chip-name';nm.textContent=f.name;chip.appendChild(nm);
+	const nm=document.createElement('span');nm.className='chip-name';nm.textContent=f.name+(f.truncated?' (일부)':'');chip.appendChild(nm);
 const rm=document.createElement('span');rm.className='chip-remove';rm.textContent='\u2715';
 rm.addEventListener('click',()=>{pendingFiles.splice(i,1);renderPreview();});
 chip.appendChild(rm);

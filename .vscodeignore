@@ -10,5 +10,4 @@ node_modules/**
 .gitignore
 tsconfig.json
 *.vsix
-assets/icon.svg
 preview.html

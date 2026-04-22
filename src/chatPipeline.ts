@@ -15,8 +15,27 @@ export interface ChatPipelineHost {
     readBrainFile(filename: string): string;
     saveHistory(): void;
     setAbortController(controller?: AbortController): void;
-    setLastPrompt(prompt: string, modelName: string): void;
+    setLastPrompt(prompt: string, modelName: string, files?: AttachedFile[], internetEnabled?: boolean): void;
 }
+
+interface PromptRunOptions {
+    prompt: string;
+    modelName: string;
+    files?: AttachedFile[];
+    internetEnabled?: boolean;
+}
+
+interface PreparedAttachments {
+    fileContext: string;
+    imageFiles: AttachedFile[];
+    displayFiles: Pick<AttachedFile, 'name' | 'type' | 'data'>[];
+    notices: string[];
+}
+
+const DEFAULT_BACKGROUND_LABEL = 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED';
+const MAX_TEXT_ATTACHMENT_CHARS = 20000;
+const MAX_TEXT_ATTACHMENT_DECODE_BYTES = 96 * 1024;
+const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
 export class ChatPipeline {
     constructor(private readonly host: ChatPipelineHost) {}
@@ -27,70 +46,45 @@ export class ChatPipeline {
         files: AttachedFile[],
         internetEnabled?: boolean
     ): Promise<void> {
-        try {
-            const config = getConfig();
-            const endpoint = await resolveAIEndpoint(config);
-            const imageFiles = files.filter(f => f.type.startsWith('image/'));
-            const textFiles = files.filter(f => !f.type.startsWith('image/'));
-
-            const fileContext = textFiles.map(f => {
-                const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
-                return `\n\n[첨부 파일: ${f.name}]\n\`\`\`\n${decoded.slice(0, 20000)}\n\`\`\``;
-            }).join('');
-
-            const userContent = prompt + fileContext;
-            this.host.getChatHistory().push({ role: 'user', content: userContent });
-            this.host.getDisplayMessages().push({
-                text: prompt,
-                role: 'user',
-                files: files.map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    data: f.type.startsWith('image/') ? f.data : ''
-                }))
-            });
-
-            const reqMessages = this.host.buildRequestMessages(internetEnabled);
-            this.attachImagesToRequest(endpoint, reqMessages, imageFiles);
-
-            this.host.postWebviewMessage({ type: 'streamStart' });
-            const aiMessage = await this.streamMessages(
-                endpoint,
-                reqMessages,
-                this.selectedModel(modelName, config.defaultModel),
-                config.timeout
-            );
-            this.host.postWebviewMessage({ type: 'streamEnd' });
-            this.host.getChatHistory().push({ role: 'assistant', content: aiMessage });
-
-            const report = await this.host.executeActions(aiMessage);
-            const finalMessage = this.appendAgentReport(aiMessage, report);
-            this.host.getDisplayMessages().push({ text: this.stripActionTags(finalMessage), role: 'ai' });
-            this.trimHistory();
-            this.host.saveHistory();
-        } catch (error: any) {
-            const { ollamaBase } = getConfig();
-            this.host.postWebviewMessage({ type: 'error', value: formatPromptWithFileError(error, ollamaBase) });
-            this.postStreamErrorDetail(error, detail => `⚠️ API 자세한 오류: ${detail}`);
-        }
+        await this.runPrompt({ prompt, modelName, files, internetEnabled });
     }
 
     public async handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean): Promise<void> {
+        await this.runPrompt({ prompt, modelName, internetEnabled });
+    }
+
+    private async runPrompt(options: PromptRunOptions): Promise<void> {
+        const files = options.files ?? [];
+        const hasFiles = files.length > 0;
+        let abortController: AbortController | undefined;
+
         try {
             const config = getConfig();
             const endpoint = await resolveAIEndpoint(config);
-            const selectedModel = this.selectedModel(modelName, config.defaultModel);
+            const selectedModel = this.selectedModel(options.modelName, config.defaultModel);
+            const attachments = this.prepareAttachments(files);
 
-            this.host.getChatHistory().push({ role: 'user', content: prompt });
-            this.host.getDisplayMessages().push({ text: prompt, role: 'user' });
+            this.host.getChatHistory().push({ role: 'user', content: options.prompt + attachments.fileContext });
+            const displayMessage: DisplayMessage = { text: options.prompt, role: 'user' };
+            if (hasFiles) {
+                displayMessage.files = attachments.displayFiles;
+            }
+            this.host.getDisplayMessages().push(displayMessage);
 
             const reqMessages = this.host.buildRequestMessages(
-                internetEnabled,
-                'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED'
+                options.internetEnabled,
+                DEFAULT_BACKGROUND_LABEL
             );
+            this.attachImagesToRequest(endpoint, reqMessages, attachments.imageFiles);
+
             this.host.postWebviewMessage({ type: 'streamStart' });
-            this.host.setLastPrompt(prompt, modelName);
-            const abortController = new AbortController();
+
+            for (const notice of attachments.notices) {
+                this.host.postWebviewMessage({ type: 'streamChunk', value: notice });
+            }
+
+            this.host.setLastPrompt(options.prompt, options.modelName, this.compactFilesForReuse(files), options.internetEnabled);
+            abortController = new AbortController();
             this.host.setAbortController(abortController);
 
             let aiMessage = await this.streamMessages(
@@ -110,24 +104,111 @@ export class ChatPipeline {
                 abortController.signal
             );
 
-            this.host.postWebviewMessage({ type: 'streamEnd' });
             this.host.getChatHistory().push({ role: 'assistant', content: aiMessage });
 
             const report = await this.host.executeActions(aiMessage);
             const finalMessage = this.appendAgentReport(aiMessage, report);
+            this.host.postWebviewMessage({ type: 'streamEnd' });
             this.host.getDisplayMessages().push({ text: this.stripActionTags(finalMessage), role: 'ai' });
             this.trimHistory();
             this.host.saveHistory();
         } catch (error: any) {
             const { ollamaBase } = getConfig();
-            this.host.postWebviewMessage({ type: 'error', value: formatPromptError(error, ollamaBase) });
-            this.postStreamErrorDetail(error, detail => {
-                const refined = detail.includes('greater than the context length')
-                    ? '프로젝트 정보가 모델의 Context Length(기억력 한계)를 초과합니다.\n💡 해결책: LM Studio에서 모델을 불러올 때 오른쪽 설정 패널에서 [Context Length] 슬라이더를 8192 수정 후 리로드하세요.'
-                    : detail;
-                return `💡 가이드: ${refined}`;
+            this.host.postWebviewMessage({
+                type: 'error',
+                value: hasFiles ? formatPromptWithFileError(error, ollamaBase) : formatPromptError(error, ollamaBase)
+            });
+            if (hasFiles) {
+                this.postStreamErrorDetail(error, detail => `⚠️ API 자세한 오류: ${detail}`);
+            } else {
+                this.postStreamErrorDetail(error, detail => {
+                    const refined = detail.includes('greater than the context length')
+                        ? '프로젝트 정보가 모델의 Context Length(기억력 한계)를 초과합니다.\n💡 해결책: LM Studio에서 모델을 불러올 때 오른쪽 설정 패널에서 [Context Length] 슬라이더를 8192 수정 후 리로드하세요.'
+                        : detail;
+                    return `💡 가이드: ${refined}`;
+                });
+            }
+        } finally {
+            if (abortController) {
+                this.host.setAbortController(undefined);
+            }
+        }
+    }
+
+    private prepareAttachments(files: AttachedFile[]): PreparedAttachments {
+        const prepared: PreparedAttachments = {
+            fileContext: '',
+            imageFiles: [],
+            displayFiles: [],
+            notices: []
+        };
+
+        for (const file of files) {
+            const type = file.type || 'application/octet-stream';
+            const size = file.originalSize ?? estimateBase64Bytes(file.data);
+
+            if (type.startsWith('image/')) {
+                if (size > MAX_IMAGE_ATTACHMENT_BYTES) {
+                    prepared.displayFiles.push({ name: file.name, type, data: '' });
+                    prepared.notices.push(`\n\n> 📎 **[첨부 이미지 제외]** ${file.name}: ${formatBytes(size)} 이미지가 너무 커서 모델 요청에서 제외했습니다. 최대 ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}까지 지원합니다.\n\n`);
+                    continue;
+                }
+
+                prepared.imageFiles.push({ ...file, type });
+                prepared.displayFiles.push({ name: file.name, type, data: file.data });
+                continue;
+            }
+
+            const decoded = decodeBase64TextPrefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES);
+            const preview = decoded.slice(0, MAX_TEXT_ATTACHMENT_CHARS);
+            const wasTruncated = Boolean(file.truncated)
+                || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
+                || decoded.length > MAX_TEXT_ATTACHMENT_CHARS;
+            const note = wasTruncated
+                ? ` (큰 파일이라 일부만 포함: 최대 ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} / 전체 ${formatBytes(size)})`
+                : '';
+
+            prepared.fileContext += `\n\n[첨부 파일: ${file.name}${note}]\n\`\`\`\n${preview}\n\`\`\``;
+            prepared.displayFiles.push({ name: file.name, type, data: '' });
+
+            if (wasTruncated) {
+                prepared.notices.push(`\n\n> 📎 **[첨부 파일 일부만 사용]** ${file.name}: 큰 파일이라 처음 ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} 정도만 모델 컨텍스트에 넣었습니다. 전체 크기: ${formatBytes(size)}.\n\n`);
+            }
+        }
+
+        return prepared;
+    }
+
+    private compactFilesForReuse(files: AttachedFile[]): AttachedFile[] | undefined {
+        if (files.length === 0) {
+            return undefined;
+        }
+
+        const reusableFiles: AttachedFile[] = [];
+
+        for (const file of files) {
+            const type = file.type || 'application/octet-stream';
+            const size = file.originalSize ?? estimateBase64Bytes(file.data);
+
+            if (type.startsWith('image/')) {
+                if (size <= MAX_IMAGE_ATTACHMENT_BYTES) {
+                    reusableFiles.push({ ...file, type });
+                }
+                continue;
+            }
+
+            reusableFiles.push({
+                ...file,
+                type,
+                data: size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
+                    ? sliceBase64Prefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES)
+                    : file.data,
+                truncated: file.truncated || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES,
+                originalSize: size
             });
         }
+
+        return reusableFiles.length > 0 ? reusableFiles : undefined;
     }
 
     private attachImagesToRequest(endpoint: AIEndpoint, reqMessages: ChatMessage[], imageFiles: AttachedFile[]): void {
@@ -245,7 +326,6 @@ export class ChatPipeline {
 
         const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
         this.host.postWebviewMessage({ type: 'streamChunk', value: reportMsg });
-        this.host.postWebviewMessage({ type: 'streamEnd' });
         return aiMessage + reportMsg;
     }
 
@@ -296,6 +376,51 @@ export class ChatPipeline {
             }
         });
     }
+}
+
+function decodeBase64TextPrefix(base64: string, maxBytes: number): string {
+    const prefix = sliceBase64Prefix(base64, maxBytes);
+
+    if (!prefix) {
+        return '';
+    }
+
+    return Buffer.from(prefix, 'base64')
+        .toString('utf-8')
+        .replace(/\uFFFD$/, '');
+}
+
+function sliceBase64Prefix(base64: string, maxBytes: number): string {
+    const encodedLimit = Math.max(4, Math.floor(maxBytes / 3) * 4);
+    const end = Math.min(base64.length, encodedLimit);
+    const alignedEnd = end - (end % 4);
+
+    if (alignedEnd <= 0) {
+        return '';
+    }
+
+    return base64.slice(0, alignedEnd);
+}
+
+function estimateBase64Bytes(base64: string): number {
+    if (!base64) {
+        return 0;
+    }
+
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
+}
+
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) {
+        return `${bytes}B`;
+    }
+
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)}KB`;
+    }
+
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function cleanHtmlText(html: string): string {

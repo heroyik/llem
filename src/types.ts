@@ -17,6 +17,8 @@ export interface AttachedFile {
     name: string;
     type: string;
     data: string;
+    truncated?: boolean;
+    originalSize?: number;
 }
 
 export interface DisplayMessage {
