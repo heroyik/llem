@@ -11,3 +11,4 @@ node_modules/**
 tsconfig.json
 *.vsix
 preview.html
+temp/**
