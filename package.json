@@ -11,15 +11,7 @@
   },
   "license": "MIT",
   "icon": "assets/icon.png",
-  "activationEvents": [
-    "onView:llem.chat",
-    "onCommand:llem.openChat",
-    "onCommand:llem.newChat",
-    "onCommand:llem.exportChat",
-    "onCommand:llem.explainSelection",
-    "onCommand:llem.focusChat",
-    "onCommand:llem.showVaultMap"
-  ],
+  "activationEvents": [],
   "engines": {
     "vscode": "^1.80.0"
   },
