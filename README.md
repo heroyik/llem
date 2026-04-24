@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.2.21-blue" alt="version" />
+  <img src="https://img.shields.io/badge/version-2.2.22-blue" alt="version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/integration-Agent_University-purple" alt="integration" />
   <img src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-orange" alt="engine" />
@@ -20,7 +20,7 @@
 
 ## 🌟 Overview: The P-Reinforce Architecture
 
-Connect AI v2.2.21는 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
+Connect AI v2.2.22는 단순한 코딩 에이전트를 넘어섭니다. **P-Reinforce 아키텍처**를 기반으로 설계된 이 에이전트는 사용자의 모든 정보와 지시를 받아들여 **스스로 의미를 분석하고, 폴더를 생성하고, 마크다운 위키 파일로 정리하여 클라우드에 자동 백업**하는 자율 지식 정원사(Autonomous Gardener)입니다.
 
 ---
 
@@ -61,7 +61,7 @@ Ollama 또는 LM Studio에 설치된 모델을 내부 API(`v1/models`)를 호출
 
 ### A.U 멤버십 유저 (Recommended)
 1. 상단 탭의 [Releases](https://github.com/wonseokjung/connect-ai/releases) 메뉴로 진입.
-2. 최신 `connect-ai-lab-2.2.21.vsix` 파일을 다운로드.
+2. 최신 `connect-ai-lab-2.2.22.vsix` 파일을 다운로드.
 3. VS Code 에서 `Cmd+Shift+P` → **Extensions: Install from VSIX** → 다운받은 파일 선택
 
 ### 개발자 빌드 (Build from Source)
@@ -114,6 +114,12 @@ npm run package:vsix -- --notes-file release-notes.md
 ---
 
 ## 📝 Release Notes
+
+### v2.2.22
+
+- VSIX 빌드 버전을 `2.2.21`에서 `2.2.22`로 올렸습니다.
+- Connect AI 아이콘을 로컬 LLM 연결 느낌의 칩 + 링크 형태로 개편하고, 툴바용 단색 아이콘과 패키지용 컬러 아이콘을 각각 최적화했습니다
+- 릴리스 스크립트가 `release/connect-ai-lab-2.2.22.vsix` 패키지를 생성합니다.
 
 ### v2.2.21
 
