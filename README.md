@@ -443,7 +443,7 @@ That means the extension is no longer pretending to be a variation of the previo
 Repository URL:
 
 ```text
-https://github.com/wonseokjung/connect-ai
+https://github.com/wonseokjung/llem
 ```
 
 ## License
