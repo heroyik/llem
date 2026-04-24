@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as vscode from 'vscode';
 import { normalizeAIEndpoint, stripTrailingSlash } from './aiClient';
-import { _getBrainDir, getConfig, getConnectAiSettings } from './config';
+import { getConfig, getLlemSettings, getVaultDir } from './config';
 import { ensureDir } from './fsUtils';
 
 export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<void> {
@@ -14,8 +14,8 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
             if (lmRes.data?.data?.length > 0) {
                 engineName = 'LM Studio';
                 modelName = lmRes.data.data[0].id;
-                await getConnectAiSettings().update('ollamaUrl', 'http://127.0.0.1:1234', vscode.ConfigurationTarget.Global);
-                await getConnectAiSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
+                await getLlemSettings().update('engineUrl', 'http://127.0.0.1:1234', vscode.ConfigurationTarget.Global);
+                await getLlemSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
             }
         } catch {}
 
@@ -25,19 +25,19 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
                 if (ollamaRes.data?.models?.length > 0) {
                     engineName = 'Ollama';
                     modelName = ollamaRes.data.models[0].name;
-                    await getConnectAiSettings().update('ollamaUrl', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
-                    await getConnectAiSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
+                    await getLlemSettings().update('engineUrl', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
+                    await getLlemSettings().update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
                 }
             } catch {}
         }
 
-        ensureDir(_getBrainDir());
+        ensureDir(getVaultDir());
         ctx.globalState.update('setupComplete', true);
 
         if (engineName) {
-            vscode.window.showInformationMessage(`🧠 자동 설정 완료! ${engineName} 감지됨 → 모델: ${modelName}`);
+            vscode.window.showInformationMessage(`LLeM found ${engineName} and locked onto ${modelName}. You're good to roll.`);
         } else {
-            vscode.window.showInformationMessage('🧠 Connect AI 준비 완료! LM Studio 또는 Ollama를 실행하면 자동 연결됩니다.');
+            vscode.window.showInformationMessage('LLeM is on deck. Fire up LM Studio or Ollama and it will hook in automatically.');
         }
     } catch {
         ctx.globalState.update('setupComplete', true);

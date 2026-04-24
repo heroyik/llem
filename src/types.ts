@@ -1,11 +1,11 @@
 export type ChatRole = 'system' | 'user' | 'assistant';
 
-export interface ConnectAiConfig {
+export interface LlemConfig {
     ollamaBase: string;
     defaultModel: string;
     maxTreeFiles: number;
     timeout: number;
-    localBrainPath: string;
+    vaultPath: string;
 }
 
 export interface ChatMessage {

@@ -1,20 +1,19 @@
 import * as vscode from 'vscode';
 import { startBridgeServer } from './bridgeServer';
 import { registerExtensionCommands } from './extensionCommands';
-import { CONNECT_AI_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
+import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 
 // ============================================================
-// Connect AI — Full Agentic Local AI for VS Code
-// 100% Offline · File Create · File Edit · Terminal · Multi-file Context
+// LLeM — local chat, repo edits, terminal moves, zero cloud drama
 // ============================================================
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Connect AI extension activated.');
+    console.log('LLeM extension activated.');
 
     const provider = new SidebarChatProvider(context.extensionUri, context);
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(CONNECT_AI_VIEW_ID, provider, {
+        vscode.window.registerWebviewViewProvider(LLEM_VIEW_ID, provider, {
             webviewOptions: {
                 retainContextWhenHidden: true
             }

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { _getBrainDir } from './config';
+import { getVaultDir } from './config';
 import { executeActions } from './actionExecutor';
 import { SYSTEM_PROMPT } from './prompts';
 import { getChatWebviewHtml } from './webviewHtml';
@@ -17,12 +17,8 @@ import type { AttachedFile, ChatMessage } from './types';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
-export const CONNECT_AI_VIEW_ID = 'connect-ai-lab.chat';
-export const CONNECT_AI_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.connect-ai-lab';
-
-// ============================================================
-// Sidebar Chat Provider
-// ============================================================
+export const LLEM_VIEW_ID = 'llem.chat';
+export const LLEM_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.llem';
 
 export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _view?: ChatWebviewSurface;
@@ -31,14 +27,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _ctx: vscode.ExtensionContext;
 
     private _isSyncingBrain: boolean = false;
-    public _brainEnabled: boolean = true; // 🧠 ON/OFF 토글 상태
+    public _brainEnabled: boolean = true;
     private _abortController?: AbortController;
     private _lastPrompt?: string;
     private _lastModel?: string;
     private _lastFiles?: AttachedFile[];
     private _lastInternetEnabled?: boolean;
 
-    // 🏛️ AI 파라미터 튜닝
     private _temperature: number;
     private _topP: number;
     private _topK: number;
@@ -74,7 +69,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 this._lastInternetEnabled = internetEnabled;
             }
         });
-        // 두뇌 토글 상태 복원 (세션 뒤에도 유지)
         this._brainEnabled = this._ctx.globalState.get<boolean>('brainEnabled', true);
         this._registerContextInvalidation();
     }
@@ -94,12 +88,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 if (workspaceRoot && filePath.startsWith(workspaceRoot)) {
                     this.invalidateContextCaches({ workspace: true });
                 }
-                if (filePath.startsWith(_getBrainDir())) {
+                if (filePath.startsWith(getVaultDir())) {
                     this.invalidateContextCaches({ brain: true });
                 }
             }),
             vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration('connectAiLab.localBrainPath')) {
+                if (event.affectsConfiguration('llem.vaultPath')) {
                     this.invalidateContextCaches({ brain: true });
                 }
             })
@@ -127,15 +121,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             this._view.webview.postMessage({ type: 'clearChat' });
         }
-        vscode.window.showInformationMessage('Connect AI: 새 대화가 시작되었습니다.');
+        vscode.window.showInformationMessage('LLeM spun up a fresh thread.');
     }
 
-    /** 대화를 Markdown 파일로 내보내기 */
     public async exportChat() {
         await this._chatSession.exportMarkdown();
     }
 
-    /** 채팅 입력창에 포커스 (Cmd+L) */
     public async focusInput(): Promise<void> {
         if (!this._view) {
             await this.openChatPanel();
@@ -151,7 +143,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return this._chatSession.getHistoryText();
     }
 
-    /** 외부에서 프롬프트 전송 (예: 코드 선택 → 설명) */
     public async injectSystemMessage(message: string): Promise<void> {
         if (!this._view) {
             await this.openChatPanel();
@@ -174,11 +165,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     public async openChatPanel(): Promise<void> {
         try {
-            await vscode.commands.executeCommand(CONNECT_AI_VIEW_CONTAINER_COMMAND);
+            await vscode.commands.executeCommand(LLEM_VIEW_CONTAINER_COMMAND);
             this._revealSurface(false);
             return;
         } catch (error) {
-            console.warn('Connect AI: secondary sidebar view could not be opened, falling back to editor panel.', error);
+            console.warn('LLeM: secondary sidebar view could not be opened, falling back to editor panel.', error);
         }
 
         if (this._panel) {
@@ -188,8 +179,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         const panel = vscode.window.createWebviewPanel(
-            'connect-ai-lab-chat',
-            'Connect AI',
+            'llem-chat',
+            'LLeM',
             vscode.ViewColumn.Beside,
             {
                 enableScripts: true,
@@ -208,9 +199,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    // --------------------------------------------------------
-    // Webview Lifecycle
-    // --------------------------------------------------------
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -258,7 +246,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             resetChat: () => this.resetChat(),
             restoreDisplayMessages: () => this._restoreDisplayMessages(),
             sendModels: () => this._sendModels(),
-            showBrainNetwork: () => vscode.commands.executeCommand('connect-ai-lab.showBrainNetwork'),
+            showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
             stopGeneration: () => this._stopGeneration()
         };
@@ -319,7 +307,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        vscode.window.showInformationMessage('Connect AI: 실행 중인 터미널 세션이 없습니다.');
+        vscode.window.showInformationMessage('LLeM does not have a live terminal session right now.');
     }
 
     private _stopGeneration(): void {
@@ -367,7 +355,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return this._contextBuilder.getBrainFileCount();
     }
 
-    /** 저장된 대화 메시지를 웹뷰에 다시 전송 (복원) */
     private _restoreDisplayMessages() {
         if (!this._view || this._chatSession.displayMessages.length === 0) { return; }
         this._view.webview.postMessage({
@@ -396,9 +383,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         await this._chatPipeline.handlePrompt(prompt, modelName, internetEnabled);
     }
 
-    // --------------------------------------------------------
-    // Execute ALL agent actions from AI response
-    // --------------------------------------------------------
     private async _executeActions(aiMessage: string): Promise<string[]> {
         return executeActions(aiMessage, {
             appendChatMessage: (message) => this._chatSession.chatHistory.push(message),
@@ -409,9 +393,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    // ============================================================
-    // Webview HTML — CINEMATIC UI v3 (Content-Grade Visuals)
-    // ============================================================
     private _getHtml(webview: vscode.Webview): string {
         return getChatWebviewHtml(this._extensionUri, webview);
     }

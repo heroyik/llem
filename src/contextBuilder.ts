@@ -7,7 +7,7 @@ import {
     MAX_CONTEXT_SIZE,
     SECOND_BRAIN_CONTEXT_CACHE_TTL_MS,
     WORKSPACE_CONTEXT_CACHE_TTL_MS,
-    _getBrainDir,
+    getVaultDir,
     getConfig,
 } from './config';
 import type { BrainFilesCache, ChatMessage, TextContextCache } from './types';
@@ -79,7 +79,7 @@ export class ContextBuilder {
         return results;
     }
 
-    public getBrainFiles(brainDir = _getBrainDir()): string[] {
+    public getBrainFiles(brainDir = getVaultDir()): string[] {
         const cacheKey = brainDir;
         const now = Date.now();
         if (this.brainFilesCache && this.brainFilesCache.key === cacheKey && this.brainFilesCache.expiresAt > now) {
@@ -100,7 +100,7 @@ export class ContextBuilder {
     }
 
     public getSecondBrainContext(): string {
-        const brainDir = _getBrainDir();
+        const brainDir = getVaultDir();
         const cacheKey = brainDir;
         const now = Date.now();
         if (this.secondBrainContextCache && this.secondBrainContextCache.key === cacheKey && this.secondBrainContextCache.expiresAt > now) {
@@ -117,9 +117,9 @@ export class ContextBuilder {
     }
 
     public readBrainFile(filename: string): string {
-        const brainDir = _getBrainDir();
+        const brainDir = getVaultDir();
         if (!fs.existsSync(brainDir)) {
-            return '[ERROR] Second Brain이 동기화되지 않았습니다. 🧠 버튼을 먼저 눌러주세요.';
+            return '[ERROR] The vault is not ready yet. Open the vault menu first.';
         }
 
         const exactPath = path.join(brainDir, filename);
@@ -140,7 +140,7 @@ export class ContextBuilder {
             return content.slice(0, 8000);
         }
 
-        return `[NOT FOUND] "${filename}" 파일을 Second Brain에서 찾을 수 없습니다. 목차(INDEX)를 다시 확인해주세요.`;
+        return `[NOT FOUND] Could not find "${filename}" in the vault. Check the vault index and try again.`;
     }
 
     public getWorkspaceContext(): string {
@@ -200,9 +200,9 @@ export class ContextBuilder {
             }
         }
 
-        const msgLimit = truncated ? `\n(⚠️ 메모리 폭발 방지를 위해 상위 ${maxIndex}개 파일의 목차만 표시됩니다.)` : '';
+        const msgLimit = truncated ? `\n(Showing only the first ${maxIndex} files so the context does not blow up.)` : '';
 
-        return `\n\n[CRITICAL: SECOND BRAIN INDEX — User's Personal Knowledge Base (${files.length} documents)]\nThe user has synced a personal knowledge repository. Below is the TABLE OF CONTENTS.${msgLimit}\nIf the user's query is even slightly related to any topics in this index, YOU MUST FIRST READ the relevant document BEFORE answering.\nTo read the actual content of any document, use EXACTLY this syntax: <read_brain>filename_or_path</read_brain>\nYou can call <read_brain> multiple times. ALWAYS READ THE FULL DOCUMENT BEFORE ANSWERING.\n\n**IMPORTANT: When your answer uses knowledge from the Second Brain, you MUST end your response with a "📚 출처" section listing the file(s) you referenced. Example:\n📚 출처: MrBeast_분석.md, 마케팅_전략.md**\n\n${index.join('\n')}\n\n`;
+        return `\n\n[CRITICAL: VAULT INDEX — User Notes (${files.length} documents)]\nThe user has a synced markdown vault. Below is the table of contents.${msgLimit}\nIf the request overlaps with anything in this index, read the relevant note before answering.\nTo read the full content of any note, use EXACTLY this syntax: <read_vault>filename_or_path</read_vault>\nYou can call <read_vault> multiple times. Always read the full note before answering.\n\n**IMPORTANT: When your answer uses knowledge from the vault, end your response with a "Sources" line listing the note files you used. Example:\nSources: product-roadmap.md, launch-notes.md**\n\n${index.join('\n')}\n\n`;
     }
 
     private buildWorkspaceContext(root: string): string {
@@ -244,7 +244,7 @@ export class ContextBuilder {
 
         let result = '';
         if (lines.length > 0) {
-            result += `\n\n[WORKSPACE INFO]\n📂 경로: ${root}\n\n[프로젝트 파일 구조]\n${lines.join('\n')}`;
+            result += `\n\n[WORKSPACE INFO]\nPath: ${root}\n\n[PROJECT TREE]\n${lines.join('\n')}`;
         }
 
         const keyFiles = [
@@ -264,7 +264,7 @@ export class ContextBuilder {
                 try {
                     const content = fs.readFileSync(abs, 'utf-8');
                     if (content.length < 5000) {
-                        result += `\n\n[파일 내용: ${keyFile}]\n\`\`\`\n${content}\n\`\`\``;
+                        result += `\n\n[FILE CONTENT: ${keyFile}]\n\`\`\`\n${content}\n\`\`\``;
                         totalRead += content.length;
                     }
                 } catch {

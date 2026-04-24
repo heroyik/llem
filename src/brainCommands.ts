@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { _getBrainDir, getConnectAiSettings } from './config';
+import { getLlemSettings, getVaultDir } from './config';
 import { queueBrainGitSync } from './brainGitSync';
 import { ensureDir, safeDateFolderName, sanitizeFileName } from './fsUtils';
 import { runGit } from './gitUtils';
@@ -25,101 +25,105 @@ export interface BrainCommandsHost {
 }
 
 export async function handleInjectLocalBrain(files: BrainInjectFile[], host: BrainCommandsHost): Promise<void> {
-    const brainDir = _getBrainDir();
-    if (!fs.existsSync(brainDir)) {
-        vscode.window.showErrorMessage('Second Brain이 연동되지 않았습니다. 채팅창 ⚙버튼이나 헤더에서 🧠버튼을 누른 후 깃허브 레포지토리를 먼저 연동해주세요.');
+    if (files.length === 0) {
         return;
     }
 
+    const vaultDir = getVaultDir();
+    ensureDir(vaultDir);
+    host.setBrainEnabled(true);
+
     const dateStr = safeDateFolderName();
-    const datePath = path.join(brainDir, '00_Raw', dateStr);
-    ensureDir(datePath);
+    const dropPath = path.join(vaultDir, 'drops', dateStr);
+    ensureDir(dropPath);
 
     const injectedTitles: string[] = [];
-
-    host.postWebviewMessage({ type: 'response', value: `🧠 **[P-Reinforce 연동 준비]**\n첨부하신 ${files.length}개의 파일을 로컬 두뇌(\`00_Raw/${dateStr}\`)에 입수하고 자동 푸시를 진행합니다.` });
+    host.postWebviewMessage({
+        type: 'response',
+        value: `📦 **[Vault drop queued]** ${files.length} file${files.length === 1 ? '' : 's'} just landed in \`drops/${dateStr}\`. LLeM is stashing them now.`
+    });
 
     for (const file of files) {
         try {
             const fileContent = Buffer.from(file.data, 'base64').toString('utf-8');
-            const safeTitle = sanitizeFileName(file.name, 'brain_pack');
-            const filePath = path.join(datePath, safeTitle);
+            const safeTitle = sanitizeFileName(file.name, 'vault_drop');
+            const filePath = path.join(dropPath, safeTitle);
             await fs.promises.writeFile(filePath, fileContent, 'utf-8');
             injectedTitles.push(safeTitle);
         } catch (err) {
-            console.error('Failed to write brain file:', err);
+            console.error('Failed to write vault file:', err);
         }
     }
+
     host.invalidateContextCaches({ brain: true });
 
-    const safeTitles = injectedTitles.join(', ');
-
+    const safeTitles = injectedTitles.join(', ') || 'new drop';
     try {
-        await queueBrainGitSync(brainDir, `Auto-Inject Knowledge [Raw]: ${safeTitles}`);
-        scheduleReinforcePrompt(host, brainDir, datePath, dateStr, injectedTitles, safeTitles, true);
+        await queueBrainGitSync(vaultDir, `Vault drop: ${safeTitles}`);
+        scheduleVaultDraftPrompt(host, vaultDir, dropPath, dateStr, injectedTitles, safeTitles, true);
     } catch {
-        scheduleReinforcePrompt(host, brainDir, datePath, dateStr, injectedTitles, safeTitles, false);
+        scheduleVaultDraftPrompt(host, vaultDir, dropPath, dateStr, injectedTitles, safeTitles, false);
     }
 }
 
 export async function handleBrainMenu(host: BrainCommandsHost): Promise<void> {
-    const brainDir = _getBrainDir();
-    const brainFiles = host.getBrainFiles(brainDir);
-    const fileCount = brainFiles.length;
+    const vaultDir = getVaultDir();
+    ensureDir(vaultDir);
 
-    const currentRepo = getConnectAiSettings().get<string>('secondBrainRepo', '');
-    const repoLabel = currentRepo ? currentRepo.split('/').pop() : '없음';
+    const vaultFiles = host.getBrainFiles(vaultDir);
+    const fileCount = vaultFiles.length;
+    const currentRepo = getLlemSettings().get<string>('vaultRepo', '');
+    const repoLabel = currentRepo ? currentRepo.split('/').pop() || currentRepo : 'No repo linked';
 
-    const items: any[] = [
-        { label: `📂 내 지식 목록 (${fileCount}개)`, description: '클릭하면 파일 내용 열기', action: 'listFiles' },
-        { label: '🔄 깃허브 동기화', description: `${repoLabel} — 로컬↔깃허브 양방향 최신화`, action: 'githubSync' },
-        { label: '📁 폴더 위치 바꾸기', description: `현재: ${brainDir}`, action: 'changeFolder' },
-        { label: '🌐 지식 지도', description: '내 지식의 연결 관계 시각화', action: 'viewGraph' },
+    const items = [
+        { label: `Browse vault notes (${fileCount})`, description: 'Open markdown notes inside the vault', action: 'listFiles' },
+        { label: 'Sync vault with GitHub', description: repoLabel, action: 'githubSync' },
+        { label: 'Change vault folder', description: vaultDir, action: 'changeFolder' },
+        { label: 'Open vault map', description: 'See how your notes cluster together', action: 'viewGraph' },
     ];
 
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: '🧠 내 지식 관리' });
-    if (!pick) return;
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Vault tools' });
+    if (!pick) {
+        return;
+    }
 
     switch (pick.action) {
         case 'listFiles':
-            await showBrainFileList(brainDir, brainFiles, fileCount);
+            await showBrainFileList(vaultDir, vaultFiles, fileCount);
             break;
         case 'changeFolder':
             await changeBrainFolder(host);
             break;
-        case 'resync':
-            resyncBrainFolder(host, brainDir);
-            break;
         case 'viewGraph':
-            vscode.commands.executeCommand('connect-ai-lab.showBrainNetwork');
+            vscode.commands.executeCommand('llem.showVaultMap');
             break;
         case 'githubSync':
-            await syncSecondBrain(host);
+            await syncVaultRepo(host);
             break;
     }
 }
 
-async function showBrainFileList(brainDir: string, brainFiles: string[], fileCount: number): Promise<void> {
+async function showBrainFileList(vaultDir: string, vaultFiles: string[], fileCount: number): Promise<void> {
     if (fileCount === 0) {
         const action = await vscode.window.showInformationMessage(
-            '📂 아직 지식이 없습니다. 뇌 폴더에 .md 파일을 넣어주세요!',
-            '📁 뇌 폴더 열기'
+            'Your vault is empty right now. Drop in some markdown and it will show up here.',
+            'Open Vault Folder'
         );
-        if (action === '📁 뇌 폴더 열기') {
-            ensureDir(brainDir);
-            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(brainDir));
+        if (action === 'Open Vault Folder') {
+            ensureDir(vaultDir);
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(vaultDir));
         }
         return;
     }
 
-    const fileItems = await Promise.all(brainFiles.slice(0, 50).map(async f => {
-        const rel = path.relative(brainDir, f);
-        const title = await readBrainFileTitle(f);
-        return { label: `📄 ${rel}`, description: title, filePath: f };
+    const fileItems = await Promise.all(vaultFiles.slice(0, 80).map(async file => {
+        const rel = path.relative(vaultDir, file);
+        const title = await readBrainFileTitle(file);
+        return { label: rel, description: title, filePath: file };
     }));
 
     const selected = await vscode.window.showQuickPick(fileItems, {
-        placeHolder: `📂 내 지식 파일 (총 ${fileCount}개) — 클릭하면 내용을 볼 수 있어요`
+        placeHolder: `Vault notes (${fileCount})`
     });
     if (selected) {
         const doc = await vscode.workspace.openTextDocument(selected.filePath);
@@ -132,131 +136,138 @@ async function changeBrainFolder(host: BrainCommandsHost): Promise<void> {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: '이 폴더를 내 뇌로 사용하기',
-        title: '📁 AI에게 읽혀줄 지식(.md 파일)이 들어있는 폴더를 선택하세요'
+        openLabel: 'Use this folder as the vault',
+        title: 'Pick the folder LLeM should use for notes and drops'
     });
     if (!folders || folders.length === 0) {
         return;
     }
 
     const selectedPath = folders[0].fsPath;
-    await getConnectAiSettings().update('localBrainPath', selectedPath, vscode.ConfigurationTarget.Global);
+    await getLlemSettings().update('vaultPath', selectedPath, vscode.ConfigurationTarget.Global);
     host.setBrainEnabled(true);
     host.invalidateContextCaches({ brain: true });
 
     const newFiles = host.findBrainFiles(selectedPath);
-    vscode.window.showInformationMessage(`✅ 뇌 폴더가 변경되었습니다! (${newFiles.length}개 지식 파일 발견)`);
-    host.postWebviewMessage({ type: 'response', value: `🧠 **뇌 폴더 연결 완료!**\n📁 ${selectedPath}\n📄 ${newFiles.length}개의 지식 파일을 읽어들이고 있습니다.` });
+    vscode.window.showInformationMessage(`Vault folder updated. Found ${newFiles.length} note${newFiles.length === 1 ? '' : 's'}.`);
+    host.postWebviewMessage({
+        type: 'response',
+        value: `📁 **[Vault connected]**\n${selectedPath}\n\nLLeM spotted ${newFiles.length} note${newFiles.length === 1 ? '' : 's'} and pulled them into context.`
+    });
 }
 
-function resyncBrainFolder(host: BrainCommandsHost, brainDir: string): void {
-    host.setBrainEnabled(true);
-    host.invalidateContextCaches({ brain: true });
-    const refreshedFiles = host.findBrainFiles(brainDir);
-    vscode.window.showInformationMessage(`🔄 지식 새로고침 완료! (${refreshedFiles.length}개 파일)`);
-    host.postWebviewMessage({ type: 'response', value: `🔄 **지식 새로고침 완료!** ${refreshedFiles.length}개 파일이 연결되어 있습니다.\n\n지식 모드가 ON 되었습니다.` });
-}
-
-async function syncSecondBrain(host: BrainCommandsHost): Promise<void> {
+async function syncVaultRepo(host: BrainCommandsHost): Promise<void> {
     if (host.isSyncingBrain()) {
-        vscode.window.showWarningMessage('동기화가 이미 진행 중입니다. 잠시만 기다려주세요!');
+        vscode.window.showWarningMessage('Vault sync is already running. Give it a sec.');
         return;
     }
 
-    let secondBrainRepo = getConnectAiSettings().get<string>('secondBrainRepo', '');
-
-    if (!secondBrainRepo) {
+    let vaultRepo = getLlemSettings().get<string>('vaultRepo', '');
+    if (!vaultRepo) {
         const inputUrl = await vscode.window.showInputBox({
-            prompt: '🧠 뇌를 연결할 깃허브 저장소 주소를 입력하세요',
-            placeHolder: '예: https://github.com/사용자/레포지토리'
+            prompt: 'Paste the GitHub repo URL for your vault backup',
+            placeHolder: 'https://github.com/you/your-vault'
         });
-        if (!inputUrl) { return; }
+        if (!inputUrl) {
+            return;
+        }
 
-        await getConnectAiSettings().update('secondBrainRepo', inputUrl, vscode.ConfigurationTarget.Global);
-        secondBrainRepo = inputUrl;
+        await getLlemSettings().update('vaultRepo', inputUrl, vscode.ConfigurationTarget.Global);
+        vaultRepo = inputUrl;
     }
 
     host.setSyncingBrain(true);
-    const brainDir = _getBrainDir();
-    try {
-        host.postWebviewMessage({ type: 'response', value: '🔄 **지식 동기화 진행 중...** 내 지식 폴더와 깃허브를 가장 최신 상태로 조율하고 있습니다.' });
-        ensureDir(brainDir);
+    const vaultDir = getVaultDir();
 
-        const gitDir = path.join(brainDir, '.git');
-        const remoteRepo = secondBrainRepo.trim();
+    try {
+        ensureDir(vaultDir);
+        host.postWebviewMessage({
+            type: 'response',
+            value: '🔄 **[Vault sync in progress]** LLeM is lining up your local vault with GitHub.'
+        });
+
+        const gitDir = path.join(vaultDir, '.git');
+        const remoteRepo = vaultRepo.trim();
 
         if (!fs.existsSync(gitDir)) {
-            await runGit(brainDir, ['init']);
+            await runGit(vaultDir, ['init']);
         }
 
-        await runGit(brainDir, ['remote', 'remove', 'origin']).catch(() => {});
-        await runGit(brainDir, ['remote', 'add', 'origin', remoteRepo]);
+        await runGit(vaultDir, ['remote', 'remove', 'origin']).catch(() => {});
+        await runGit(vaultDir, ['remote', 'add', 'origin', remoteRepo]);
 
         try {
-            await runGit(brainDir, ['add', '.']);
-            await runGit(brainDir, ['commit', '-m', 'Auto-sync local brain']).catch(() => {});
+            await runGit(vaultDir, ['add', '.']);
+            await runGit(vaultDir, ['commit', '-m', 'Sync vault']).catch(() => {});
 
             try {
-                await runGit(brainDir, ['fetch', 'origin']);
-                await runGit(brainDir, ['pull', 'origin', 'main', '--no-edit', '--allow-unrelated-histories']).catch(async () => {
-                    await runGit(brainDir, ['pull', 'origin', 'master', '--no-edit', '--allow-unrelated-histories']);
+                await runGit(vaultDir, ['fetch', 'origin']);
+                await runGit(vaultDir, ['pull', 'origin', 'main', '--no-edit', '--allow-unrelated-histories']).catch(async () => {
+                    await runGit(vaultDir, ['pull', 'origin', 'master', '--no-edit', '--allow-unrelated-histories']);
                 });
             } catch {
-                // 원격 저장소가 비어있거나 pull 실패 시 무시합니다.
+                // Ignore empty remote repos or pull failures and keep going.
             }
 
-            await runGit(brainDir, ['push', '-u', 'origin', 'main']).catch(async () => {
-                await runGit(brainDir, ['push', '-u', 'origin', 'master']).catch(() => {});
+            await runGit(vaultDir, ['push', '-u', 'origin', 'main']).catch(async () => {
+                await runGit(vaultDir, ['push', '-u', 'origin', 'master']).catch(() => {});
             });
         } catch (syncErr: any) {
             const msg = syncErr.message || '';
             if (msg.includes('Authentication') || msg.includes('403') || msg.includes('404')) {
-                throw new Error('깃허브 저장소에 접근할 수 없습니다. URL 및 권한을 확인해주세요.');
+                throw new Error('GitHub would not let LLeM in. Double-check the repo URL and access.');
             }
-            console.warn('Sync warning:', syncErr);
+            console.warn('Vault sync warning:', syncErr);
         }
 
         host.setBrainEnabled(true);
         host.invalidateContextCaches({ brain: true });
 
-        vscode.window.showInformationMessage('✅ 깃허브 지식과 내 지식 폴더가 완벽히 동기화(병합) 되었습니다!');
-        host.postWebviewMessage({ type: 'response', value: '✅ **지식 동기화 완료!** 이제 내 PC의 폴더와 깃허브가 완벽하게 동일한 최신 상태가 되었습니다.\n\n지금부터 이 지식들을 바탕으로 맥락에 맞는 스마트한 답변을 제공합니다. (지식 모드: 🟢 ON)' });
+        vscode.window.showInformationMessage('Vault sync complete. Local notes and GitHub are lined up.');
+        host.postWebviewMessage({
+            type: 'response',
+            value: '✅ **[Vault sync complete]** Local notes and GitHub are now in step. LLeM can use the synced notes for richer answers.'
+        });
     } catch (error: any) {
         const errMsg = error.message || '';
         let userMsg = errMsg;
         if (errMsg.includes('not found') || errMsg.includes('does not exist')) {
-            userMsg = '깃허브 저장소를 찾을 수 없습니다. URL을 다시 확인해주세요.';
+            userMsg = 'Could not find that GitHub repo. Check the URL and try again.';
         } else if (errMsg.includes('Authentication') || errMsg.includes('permission')) {
-            userMsg = '깃허브 인증에 실패했습니다. 저장소가 Public(공개)인지 확인해주세요.';
+            userMsg = 'GitHub auth failed. Make sure the repo is reachable from this machine.';
         }
-        vscode.window.showErrorMessage(`Second Brain 동기화 실패: ${userMsg}`);
-        host.postWebviewMessage({ type: 'error', value: `⚠️ 동기화 실패: ${userMsg}\n\n💡 **해결 방법:**\n1. 깃허브 저장소가 **Public(공개)** 상태인지 확인\n2. URL 형식: \`https://github.com/사용자이름/저장소이름\`\n3. 새로 만든 빈 저장소도 연결 가능합니다!` });
+
+        vscode.window.showErrorMessage(`Vault sync failed: ${userMsg}`);
+        host.postWebviewMessage({
+            type: 'error',
+            value: `⚠️ Vault sync failed: ${userMsg}\n\nTip: confirm the repo URL, permissions, and whether the repo exists yet.`
+        });
     } finally {
         host.setSyncingBrain(false);
     }
 }
 
-function scheduleReinforcePrompt(
+function scheduleVaultDraftPrompt(
     host: BrainCommandsHost,
-    brainDir: string,
-    datePath: string,
+    vaultDir: string,
+    dropPath: string,
     dateStr: string,
     injectedTitles: string[],
     safeTitles: string,
     pushed: boolean
 ): void {
     setTimeout(async () => {
-        const combinedContent = await readInjectedContent(datePath, injectedTitles);
+        const combinedContent = await readInjectedContent(dropPath, injectedTitles);
         const syncStatus = pushed
-            ? '글로벌 두뇌(Second Brain)에 입수 및 클라우드 백업 완료되었습니다.'
-            : '글로벌 두뇌에 다운로드 되었습니다.(원격 푸시 보류됨)';
+            ? 'and already backed up to GitHub.'
+            : 'and stored locally for now.';
         const uiMsg = pushed
-            ? '🧠 데이터가 완벽하게 입수되었습니다! 즉시 P-Reinforce 구조화를 시작할까요?'
-            : '🧠 로컬 데이터가 입수되었습니다! 곧바로 P-Reinforce 구조화를 시작할까요?';
+            ? 'Fresh files just hit the vault and the backup landed too. Want me to spin them into clean notes?'
+            : 'Fresh files just hit the local vault. Want me to spin them into clean notes?';
 
         host.pushChatMessage({
             role: 'system',
-            content: buildReinforcePrompt(brainDir, dateStr, safeTitles, combinedContent, syncStatus, pushed)
+            content: buildVaultDraftPrompt(vaultDir, dateStr, safeTitles, combinedContent, syncStatus, pushed)
         });
         host.injectSystemMessage(uiMsg);
     }, 3000);
@@ -269,31 +280,35 @@ async function readBrainFileTitle(filePath: string): Promise<string> {
             .split('\n')
             .find(line => line.trim().length > 0)
             ?.replace(/^#+\s*/, '')
-            .slice(0, 60) || '';
+            .slice(0, 80) || '';
     } catch {
         return '';
     }
 }
 
-async function readInjectedContent(datePath: string, injectedTitles: string[]): Promise<string> {
+async function readInjectedContent(dropPath: string, injectedTitles: string[]): Promise<string> {
     let combinedContent = '';
     for (const title of injectedTitles) {
         try {
-            const content = await fs.promises.readFile(path.join(datePath, title), 'utf-8');
-            combinedContent += `\n\n[원본 데이터: ${title}]\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\``;
-        } catch {}
+            const content = await fs.promises.readFile(path.join(dropPath, title), 'utf-8');
+            combinedContent += `\n\n[RAW DROP: ${title}]\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\``;
+        } catch {
+            // Ignore unreadable drop files.
+        }
     }
     return combinedContent;
 }
 
-function buildReinforcePrompt(
-    brainDir: string,
+function buildVaultDraftPrompt(
+    vaultDir: string,
     dateStr: string,
     safeTitles: string,
     combinedContent: string,
     syncStatus: string,
     pushed: boolean
 ): string {
-    const completionLine = pushed ? ' 완료 후 잘라낸 결과를 보고하십시오.' : '';
-    return `[A.U 시스템 지시: P-Reinforce Architect 모드 활성화]\n새로운 비정형 데이터('${safeTitles}')가 ${syncStatus}\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 ${pushed ? "'응'이나 '진행해' 등으로 " : ''}동의할 경우, 당신은 절대 대화만으로 대답하지 말고 아래의 [P-Reinforce 구조화 규격]에 따라 곧바로 <create_file> Tool들을 사용하십시오.\n\n[P-Reinforce 구조화 규격]\n1. 폴더 생성: 원본 데이터를 주제별로 쪼개어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 폴더(예: 🛠️ Projects, 💡 Topics, ⚖️ Decisions, 🚀 Skills)에 저장하십시오.\n2. 마크다운 양식 준수: 생성되는 각 문서 파일은 반드시 아래 포맷을 따라야 합니다.\n---\nid: {{UUID}}\ncategory: "[[10_Wiki/설정한_폴더]]"\nconfidence_score: 0.9\ntags: [관련태그]\nlast_reinforced: ${dateStr}\n---\n# [[문서 제목]]\n## 📌 한 줄 통찰\n> (핵심 요약)\n## 📖 구조화된 지식\n- (세부 내용 불렛 포인트)\n## 🔗 지식 연결\n- Parent: [[상위_카테고리]]\n- Related: [[연관_개념]]\n- Raw Source: [[00_Raw/${dateStr}/${safeTitles}]]\n\n지시를 숙지했다면 묻지 말고 즉각 \`<create_file path="${brainDir}/10_Wiki/새폴더/새문서.md">\`를 사용하여 지식을 분해 후 생성하십시오.${completionLine}`;
+    const completionLine = pushed ? ' After finishing, briefly report what you created.' : '';
+    const notesRoot = path.join(vaultDir, 'notes');
+
+    return `[LLeM vault mode]\nFresh raw material (${safeTitles}) just landed in the user's vault ${syncStatus}\n\nRaw content follows:${combinedContent}\n\nIf the user confirms, do not just summarize in chat. Use <create_file> to turn the material into polished markdown notes under \`${notesRoot}\`.\n\nRules for vault note creation:\n1. Split the material into clean topic-based notes.\n2. Create notes inside sensible folders under \`${notesRoot}\`.\n3. Use this markdown shape for every new note:\n---\nid: {{UUID}}\nsource: "drops/${dateStr}/${safeTitles}"\nupdated: ${dateStr}\ntags: [tag-one, tag-two]\n---\n# Note Title\n## Quick Take\n> one-line summary\n## Details\n- key points\n## Links\n- Related: [[another-note]]\n- Source: [[drops/${dateStr}/${safeTitles}]]\n\nWhen you are ready, create the note files directly with tags like \`<create_file path="${notesRoot}/folder/note.md">\` instead of only talking about them.${completionLine}`;
 }

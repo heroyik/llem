@@ -113,19 +113,24 @@ export class ChatPipeline {
             this.trimHistory();
             this.host.saveHistory();
         } catch (error: any) {
+            if (isAbortError(error)) {
+                this.host.postWebviewMessage({ type: 'streamAbort' });
+                return;
+            }
+
             const { ollamaBase } = getConfig();
             this.host.postWebviewMessage({
                 type: 'error',
                 value: hasFiles ? formatPromptWithFileError(error, ollamaBase) : formatPromptError(error, ollamaBase)
             });
             if (hasFiles) {
-                this.postStreamErrorDetail(error, detail => `⚠️ API 자세한 오류: ${detail}`);
+                this.postStreamErrorDetail(error, detail => `⚠️ API detail: ${detail}`);
             } else {
                 this.postStreamErrorDetail(error, detail => {
                     const refined = detail.includes('greater than the context length')
-                        ? '프로젝트 정보가 모델의 Context Length(기억력 한계)를 초과합니다.\n💡 해결책: LM Studio에서 모델을 불러올 때 오른쪽 설정 패널에서 [Context Length] 슬라이더를 8192 수정 후 리로드하세요.'
+                        ? 'Your project context is bigger than the model can hold.\nTip: in LM Studio, raise the Context Length slider to 8192 and reload the model.'
                         : detail;
-                    return `💡 가이드: ${refined}`;
+                    return `Tip: ${refined}`;
                 });
             }
         } finally {
@@ -150,7 +155,7 @@ export class ChatPipeline {
             if (type.startsWith('image/')) {
                 if (size > MAX_IMAGE_ATTACHMENT_BYTES) {
                     prepared.displayFiles.push({ name: file.name, type, data: '' });
-                    prepared.notices.push(`\n\n> 📎 **[첨부 이미지 제외]** ${file.name}: ${formatBytes(size)} 이미지가 너무 커서 모델 요청에서 제외했습니다. 최대 ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}까지 지원합니다.\n\n`);
+                    prepared.notices.push(`\n\n> 📎 **[Image skipped]** ${file.name}: ${formatBytes(size)} is too large for the model request. Max supported size is ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}.\n\n`);
                     continue;
                 }
 
@@ -165,14 +170,14 @@ export class ChatPipeline {
                 || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
                 || decoded.length > MAX_TEXT_ATTACHMENT_CHARS;
             const note = wasTruncated
-                ? ` (큰 파일이라 일부만 포함: 최대 ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} / 전체 ${formatBytes(size)})`
+                ? ` (partial preview only: up to ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} of ${formatBytes(size)})`
                 : '';
 
-            prepared.fileContext += `\n\n[첨부 파일: ${file.name}${note}]\n\`\`\`\n${preview}\n\`\`\``;
+            prepared.fileContext += `\n\n[ATTACHED FILE: ${file.name}${note}]\n\`\`\`\n${preview}\n\`\`\``;
             prepared.displayFiles.push({ name: file.name, type, data: '' });
 
             if (wasTruncated) {
-                prepared.notices.push(`\n\n> 📎 **[첨부 파일 일부만 사용]** ${file.name}: 큰 파일이라 처음 ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} 정도만 모델 컨텍스트에 넣었습니다. 전체 크기: ${formatBytes(size)}.\n\n`);
+                prepared.notices.push(`\n\n> 📎 **[Partial file preview]** ${file.name}: only the first ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} made it into model context. Full size: ${formatBytes(size)}.\n\n`);
             }
         }
 
@@ -240,7 +245,7 @@ export class ChatPipeline {
         timeout: number,
         signal?: AbortSignal
     ): Promise<string> {
-        const brainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
+        const brainReads = [...aiMessage.matchAll(/<read_(?:brain|vault)>([\s\S]*?)<\/read_(?:brain|vault)>/g)];
         const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
 
         if (brainReads.length === 0 && urlReads.length === 0) {
@@ -262,31 +267,31 @@ export class ChatPipeline {
                 const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
                 const cleaned = cleanHtmlText(data.toString());
                 fetchedContent += `\n\n[WEB CONTENT: ${url}]\n${cleaned.slice(0, 15000)}\n`;
-                const msg = `\n\n> 🌐 **[웹 검색 완료]** ${url} (${cleaned.length}자)\n\n`;
+                const msg = `\n\n> 🌐 **[Web fetch complete]** ${url} (${cleaned.length} chars)\n\n`;
                 uiFeedbackStr += msg;
                 this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
             } catch (err: any) {
                 fetchedContent += `\n\n[WEB CONTENT: ${url}] (FAILED: ${err.message})\n`;
-                const msg = `\n\n> 🌐 **[웹 검색 실패]** ${url} - ${err.message}\n\n`;
+                const msg = `\n\n> 🌐 **[Web fetch failed]** ${url} - ${err.message}\n\n`;
                 uiFeedbackStr += msg;
                 this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
             }
         }
 
-        const cleanedResponse = aiMessage.replace(/<read_brain>[\s\S]*?<\/read_brain>/g, '')
+        const cleanedResponse = aiMessage.replace(/<read_(?:brain|vault)>[\s\S]*?<\/read_(?:brain|vault)>/g, '')
             .replace(/<read_url>[\s\S]*?<\/read_url>/gi, '')
             .trim();
 
         if (brainReads.length > 0) {
-            const msg = `\n\n> 🧠 **[Second Brain 열람 완료]** 스캔한 핵심 지식을 바탕으로 답변을 구성합니다...\n\n`;
+            const msg = `\n\n> 📚 **[Vault lookup complete]** Pulling the answer together from the notes we just opened.\n\n`;
             uiFeedbackStr += msg;
             this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
         }
 
-        reqMessages.push({ role: 'assistant', content: cleanedResponse || '탐색을 진행 중입니다...' });
+        reqMessages.push({ role: 'assistant', content: cleanedResponse || 'Digging through the context...' });
         reqMessages.push({
             role: 'user',
-            content: `[SYSTEM: The following documents and web contents were retrieved based on your actions. Use this information to provide a complete and accurate answer to the user's original question.]\n${fetchedContent}\n\nNow answer the user's question using the above knowledge. Do NOT output <read_brain> or <read_url> again. Answer directly and comprehensively.`
+            content: `[SYSTEM: The following vault notes and web contents were retrieved based on your actions. Use them to answer the user's original question accurately.]\n${fetchedContent}\n\nNow answer the user's question using the knowledge above. Do NOT output <read_vault>, <read_brain>, or <read_url> again. Answer directly.`
         });
 
         return cleanedResponse + uiFeedbackStr + await this.streamMessages(
@@ -324,7 +329,7 @@ export class ChatPipeline {
             return aiMessage;
         }
 
-        const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
+        const reportMsg = `\n\n---\n**Action Report**\n${report.join('\n')}`;
         this.host.postWebviewMessage({ type: 'streamChunk', value: reportMsg });
         return aiMessage + reportMsg;
     }
@@ -353,7 +358,7 @@ export class ChatPipeline {
             .replace(/<(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
             .replace(/<(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
             .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
-            .replace(/<(?:read_brain)>[\s\S]*?<\/(?:read_brain)>/gi, '')
+            .replace(/<(?:read_brain|read_vault)>[\s\S]*?<\/(?:read_brain|read_vault)>/gi, '')
             .trim();
     }
 
@@ -432,26 +437,33 @@ function cleanHtmlText(html: string): string {
         .trim();
 }
 
+function isAbortError(error: any): boolean {
+    return error?.name === 'AbortError'
+        || error?.code === 'ERR_CANCELED'
+        || error?.message === 'canceled'
+        || error?.message === 'AbortError: This operation was aborted';
+}
+
 function formatPromptWithFileError(error: any, ollamaBase: string): string {
     const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
     const targetName = isLM ? 'LM Studio' : 'Ollama';
 
     if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
-        return `⚠️ ${targetName} 서버에 연결할 수 없습니다.\n\n**해결 방법:**\n1. ${targetName} 앱을 열고 서버가 켜져 있는지(Start Server) 확인\n2. Settings > 모델 기본 URL이 올바른지 확인 (기본: http://127.0.0.1:${isLM ? '1234' : '11434'})`;
+        return `⚠️ Could not reach ${targetName}.\n\n**Try this:**\n1. Open ${targetName} and make sure the local server is running.\n2. Check the engine URL in Settings. Default is http://127.0.0.1:${isLM ? '1234' : '11434'}.`;
     }
     if (error.response?.status === 400) {
-        return `⚠️ 모델 요청 오류 (400)\n\n**원인:** 모델 이름이 올바르지 않거나, 컨텍스트 길이 초과\n**해결:** 좌측 모델 선택 드롭다운에서 정확한 모델을 선택하세요.\n${isLM ? '• LM Studio의 경우 모델을 먼저 로드(Load)한 후 시도하세요.' : '• Ollama: ollama list 로 설치된 모델 확인'}`;
+        return `⚠️ Model request failed (400).\n\n**Usually this means:** the model name is off, or the prompt blew past the context window.\n**Try this:** pick the right model from the dropdown.\n${isLM ? '• In LM Studio, make sure the model is actually loaded first.' : '• In Ollama, run `ollama list` and make sure the model exists.'}`;
     }
     if (error.response?.status === 404) {
-        return `⚠️ 모델을 찾을 수 없습니다 (404)\n\n**원인:** 선택한 모델이 ${targetName}에 로드되지 않았습니다.\n**해결:** ${isLM ? 'LM Studio에서 해당 모델을 먼저 다운로드 후 Load 해주세요.' : 'ollama pull 모델이름 으로 먼저 다운로드하세요.'}`;
+        return `⚠️ Model not found (404).\n\nThe selected model is not available in ${targetName} right now.\n${isLM ? 'Load it in LM Studio first, then try again.' : 'Pull it first with `ollama pull <model-name>`.'}`;
     }
     if (error.response?.status === 413) {
-        return '⚠️ 컨텍스트 용량 초과 (413)\n\n**해결:** 🧠 지식 모드를 일시적으로 OFF 하거나, + 버튼으로 새 대화를 시작하세요.';
+        return '⚠️ Context limit hit (413).\n\nTry turning vault mode off for a moment, or spin up a fresh thread with `+`.';
     }
     if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-        return '⚠️ AI 응답 시간 초과\n\n모델이 문제를 처리하는 데 시간이 너무 오래 걸렸습니다.\n**해결:** 더 작은 모델을 선택하거나, 질문을 짧게 줄여보세요.';
+        return '⚠️ The model timed out.\n\nTry a smaller model, a shorter prompt, or a longer request timeout.';
     }
-    return `⚠️ 오류: ${error.message}`;
+    return `⚠️ Error: ${error.message}`;
 }
 
 function formatPromptError(error: any, ollamaBase: string): string {
@@ -459,10 +471,10 @@ function formatPromptError(error: any, ollamaBase: string): string {
     const targetName = isLM ? 'LM Studio' : 'Ollama';
 
     if (error.code === 'ECONNREFUSED') {
-        return `⚠️ ${targetName} 서버에 연결할 수 없습니다.\n앱에서 로컬 서버가 켜져 있는지(Start Server) 확인해주세요.`;
+        return `⚠️ Could not reach ${targetName}.\nMake sure the local server is up.`;
     }
     if (error.response?.status === 400 || error.response?.status === 413) {
-        return '⚠️ 컨텍스트 용량 초과: 입력이 너무 깁니다. 새 대화(+)를 시작하거나 질문을 줄여주세요.';
+        return '⚠️ Context limit hit. The prompt is too large. Start a fresh thread or trim the request.';
     }
-    return `⚠️ 오류: ${error.message}`;
+    return `⚠️ Error: ${error.message}`;
 }

@@ -24,12 +24,12 @@ export function queueBrainGitSync(brainDir: string, message: string): Promise<vo
 export function tryAutoPushBrain(brainDir: string, message: string, provider: BrainSyncNotifier): void {
     queueBrainGitSync(brainDir, message).then(() => {
         setTimeout(() => {
-            provider.injectSystemMessage('✅ **[P-Reinforce Sync]** 주입된 지식을 글로벌 두뇌(GitHub)에 안전하게 백업 및 동기화 완료했습니다.');
+            provider.injectSystemMessage('✅ **[Vault Sync]** Your latest vault drop is backed up to GitHub and fully in sync.');
         }, 5000);
     }).catch((err) => {
         console.error('Git Auto-Push Failed:', err);
         setTimeout(() => {
-            provider.injectSystemMessage('✅ 지식이 로컬 오프라인 모드로 안전하게 주입되었습니다.\n\n💡 **Tip:** 만약 온라인 두뇌(클라우드) 동기화를 원하시면, 좌측 사이드바 뇌(🧠) 아이콘을 눌러 깃허브 저장소를 연결해보세요!');
+            provider.injectSystemMessage('✅ Your vault drop landed safely in local mode.\n\nTip: connect a GitHub repo from the vault menu if you want cloud backup too.');
         }, 5000);
     });
 }

@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EXCLUDED_DIRS, _getBrainDir } from './config';
+import { EXCLUDED_DIRS, getVaultDir } from './config';
 import { tryAutoPushBrain } from './brainGitSync';
 import { openDocument, pathExists } from './fsUtils';
 import type { ChatMessage } from './types';
@@ -28,7 +28,7 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
     if (!rootPath) {
         const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file)/i.test(aiMessage);
         if (hasActions) {
-            report.push('❌ 폴더가 열려있지 않습니다. File → Open Folder로 폴더를 열거나 파일을 열어주세요.');
+            report.push('❌ No workspace is open. Open a folder first so LLeM has somewhere to work.');
         }
         return report;
     }
@@ -54,11 +54,11 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
             await fs.promises.mkdir(dir, { recursive: true });
             await fs.promises.writeFile(absPath, content, 'utf-8');
             workspaceModified = true;
-            if (absPath.startsWith(_getBrainDir())) brainModified = true;
-            report.push(`✅ 생성: ${relPath}`);
+            if (absPath.startsWith(getVaultDir())) brainModified = true;
+            report.push(`✅ Created: ${relPath}`);
             if (!firstCreatedFile) { firstCreatedFile = absPath; }
         } catch (err: any) {
-            report.push(`❌ 생성 실패: ${relPath} — ${err.message}`);
+            report.push(`❌ Create failed: ${relPath} — ${err.message}`);
         }
     }
 
@@ -73,7 +73,7 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         const absPath = path.resolve(rootPath, relPath);
 
         if (!(await pathExists(absPath))) {
-            report.push(`❌ 편집 실패: ${relPath} — 파일이 존재하지 않습니다.`);
+            report.push(`❌ Edit failed: ${relPath} — file does not exist.`);
             continue;
         }
 
@@ -90,19 +90,19 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
                     fileContent = fileContent.replace(findText, replaceText);
                     editCount++;
                 } else {
-                    report.push(`⚠️ ${relPath}: 일치하는 텍스트를 찾지 못했습니다.`);
+                    report.push(`⚠️ ${relPath}: could not find the target text.`);
                 }
             }
 
             if (editCount > 0) {
                 await fs.promises.writeFile(absPath, fileContent, 'utf-8');
                 workspaceModified = true;
-                if (absPath.startsWith(_getBrainDir())) brainModified = true;
-                report.push(`✏️ 편집 완료: ${relPath} (${editCount}건 수정)`);
+                if (absPath.startsWith(getVaultDir())) brainModified = true;
+                report.push(`✏️ Edited: ${relPath} (${editCount} replacement${editCount === 1 ? '' : 's'})`);
                 await openDocument(vscode.Uri.file(absPath));
             }
         } catch (err: any) {
-            report.push(`❌ 편집 실패: ${relPath} — ${err.message}`);
+            report.push(`❌ Edit failed: ${relPath} — ${err.message}`);
         }
     }
 
@@ -119,13 +119,13 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
                     await fs.promises.unlink(absPath);
                 }
                 workspaceModified = true;
-                if (absPath.startsWith(_getBrainDir())) brainModified = true;
-                report.push(`🗑️ 삭제: ${relPath}`);
+                if (absPath.startsWith(getVaultDir())) brainModified = true;
+                report.push(`🗑️ Deleted: ${relPath}`);
             } else {
-                report.push(`⚠️ 삭제 스킵: ${relPath} — 파일이 존재하지 않습니다.`);
+                report.push(`⚠️ Delete skipped: ${relPath} — file does not exist.`);
             }
         } catch (err: any) {
-            report.push(`❌ 삭제 실패: ${relPath} — ${err.message}`);
+            report.push(`❌ Delete failed: ${relPath} — ${err.message}`);
         }
     }
 
@@ -137,13 +137,13 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
             if (await pathExists(absPath)) {
                 const content = await fs.promises.readFile(absPath, 'utf-8');
                 const preview = content.slice(0, 500).split('\n').slice(0, 10).join('\n');
-                report.push(`📖 읽기: ${relPath} (${content.length}자)\n\`\`\`\n${preview}...\n\`\`\``);
-                host.appendChatMessage({ role: 'user', content: `[시스템: read_file 결과]\n파일: ${relPath}\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\`` });
+                report.push(`📖 Read: ${relPath} (${content.length} chars)\n\`\`\`\n${preview}...\n\`\`\``);
+                host.appendChatMessage({ role: 'user', content: `[SYSTEM: read_file result]\nFile: ${relPath}\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\`` });
             } else {
-                report.push(`⚠️ 읽기 실패: ${relPath} — 파일이 존재하지 않습니다.`);
+                report.push(`⚠️ Read failed: ${relPath} — file does not exist.`);
             }
         } catch (err: any) {
-            report.push(`❌ 읽기 실패: ${relPath} — ${err.message}`);
+            report.push(`❌ Read failed: ${relPath} — ${err.message}`);
         }
     }
 
@@ -159,13 +159,13 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
                     .filter(e => !e.name.startsWith('.') && !EXCLUDED_DIRS.has(e.name))
                     .map(e => e.isDirectory() ? `📁 ${e.name}/` : `📄 ${e.name}`)
                     .join('\n');
-                report.push(`📂 목록: ${relDir}/\n\`\`\`\n${listing}\n\`\`\``);
-                host.appendChatMessage({ role: 'user', content: `[시스템: list_files 결과]\n디렉토리: ${relDir}/\n${listing}` });
+                report.push(`📂 Listed: ${relDir}/\n\`\`\`\n${listing}\n\`\`\``);
+                host.appendChatMessage({ role: 'user', content: `[SYSTEM: list_files result]\nDirectory: ${relDir}/\n${listing}` });
             } else {
-                report.push(`⚠️ 목록 실패: ${relDir} — 디렉토리가 존재하지 않습니다.`);
+                report.push(`⚠️ List failed: ${relDir} — directory does not exist.`);
             }
         } catch (err: any) {
-            report.push(`❌ 목록 실패: ${relDir} — ${err.message}`);
+            report.push(`❌ List failed: ${relDir} — ${err.message}`);
         }
     }
 
@@ -182,16 +182,16 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
             let terminal = host.getTerminal();
             if (!terminal || terminal.exitStatus !== undefined) {
                 terminal = vscode.window.createTerminal({
-                    name: '🚀 Connect AI',
+                    name: 'LLeM Console',
                     cwd: rootPath
                 });
                 host.setTerminal(terminal);
             }
             terminal.show();
             terminal.sendText(cmd);
-            report.push(`🖥️ 실행: ${cmd}`);
+            report.push(`🖥️ Ran: ${cmd}`);
         } catch (err: any) {
-            report.push(`❌ 명령 실패: ${cmd} — ${err.message}`);
+            report.push(`❌ Command failed: ${cmd} — ${err.message}`);
         }
     }
 
@@ -208,16 +208,16 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
                 .trim();
 
             const preview = cleaned.slice(0, 500);
-            report.push(`🌐 웹사이트 읽기: ${url} (${cleaned.length}자)\n\`\`\`\n${preview}...\n\`\`\``);
-            host.appendChatMessage({ role: 'user', content: `[시스템: read_url 결과]\nURL: ${url}\n\`\`\`\n${cleaned.slice(0, 15000)}\n\`\`\`` });
+            report.push(`🌐 Read web: ${url} (${cleaned.length} chars)\n\`\`\`\n${preview}...\n\`\`\``);
+            host.appendChatMessage({ role: 'user', content: `[SYSTEM: read_url result]\nURL: ${url}\n\`\`\`\n${cleaned.slice(0, 15000)}\n\`\`\`` });
         } catch (err: any) {
-            report.push(`❌ 웹사이트 접속 실패: ${url} — ${err.message}`);
-            host.appendChatMessage({ role: 'user', content: `[시스템: read_url 실패]\n${err.message}` });
+            report.push(`❌ Web read failed: ${url} — ${err.message}`);
+            host.appendChatMessage({ role: 'user', content: `[SYSTEM: read_url failed]\n${err.message}` });
         }
     }
 
     if (report.length === 0) {
-        const fallbackRegex = /```(?:[a-zA-Z]*)?\s*\n\/\/\s*(?:file|파일):\s*([^\n]+)\n([\s\S]*?)```/gi;
+        const fallbackRegex = /```(?:[a-zA-Z]*)?\s*\n\/\/\s*(?:file|path):\s*([^\n]+)\n([\s\S]*?)```/gi;
         while ((match = fallbackRegex.exec(aiMessage)) !== null) {
             const relPath = match[1].trim();
             const content = match[2].trim();
@@ -228,10 +228,10 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
                     await fs.promises.mkdir(dir, { recursive: true });
                     await fs.promises.writeFile(absPath, content, 'utf-8');
                     workspaceModified = true;
-                    report.push(`✅ 생성(자동감지): ${relPath}`);
+                    report.push(`✅ Created (auto-detect): ${relPath}`);
                     if (!firstCreatedFile) firstCreatedFile = absPath;
                 } catch (err: any) {
-                    report.push(`❌ 생성 실패: ${relPath} — ${err.message}`);
+                    report.push(`❌ Create failed: ${relPath} — ${err.message}`);
                 }
             }
         }
@@ -242,12 +242,12 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
 
     const successCount = report.filter(r => r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🖥️') || r.startsWith('🗑️') || r.startsWith('📖') || r.startsWith('📂')).length;
     if (successCount > 0) {
-        vscode.window.showInformationMessage(`Connect AI: ${successCount}개 에이전트 작업 완료!`);
+        vscode.window.showInformationMessage(`LLeM wrapped ${successCount} action${successCount === 1 ? '' : 's'}.`);
     }
 
     if (brainModified) {
-        tryAutoPushBrain(_getBrainDir(), '[P-Reinforce] Auto-synced structured knowledge', host);
-        report.push(`☁️ **[GitHub Sync]** 글로벌 뇌(Second Brain) 백업을 백그라운드에서 시작했습니다.`);
+        tryAutoPushBrain(getVaultDir(), 'Auto-sync vault updates', host);
+        report.push('☁️ **[Vault Sync]** GitHub backup kicked off in the background.');
     }
 
     if (workspaceModified || brainModified) {

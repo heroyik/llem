@@ -1,24 +1,25 @@
 {
-  "name": "connect-ai-lab",
-  "displayName": "Connect AI",
-  "description": "100% 로컬 AI 코딩 에이전트 — 파일 생성, 코드 편집, 터미널 실행을 오프라인으로. Ollama + Gemma/Llama/DeepSeek 지원.",
-  "version": "2.2.22",
-  "publisher": "connectailab",
-  "license": "MIT",
-  "icon": "assets/icon.png",
-  "activationEvents": [
-    "onView:connect-ai-lab.chat",
-    "onCommand:connect-ai-lab.openChat",
-    "onCommand:connect-ai-lab.newChat",
-    "onCommand:connect-ai-lab.exportChat",
-    "onCommand:connect-ai-lab.explainSelection",
-    "onCommand:connect-ai-lab.focusChat",
-    "onCommand:connect-ai-lab.showBrainNetwork"
-  ],
+  "name": "llem",
+  "displayName": "LLeM",
+  "description": "A local-first coding sidekick that chats with your repo, edits files, runs terminal moves, and keeps the whole thing on-device. Zero cloud drama, all signal.",
+  "version": "2.2.26",
+  "publisher": "nIcK",
+  "author": "nIcK",
   "repository": {
     "type": "git",
     "url": "https://github.com/wonseokjung/connect-ai"
   },
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "activationEvents": [
+    "onView:llem.chat",
+    "onCommand:llem.openChat",
+    "onCommand:llem.newChat",
+    "onCommand:llem.exportChat",
+    "onCommand:llem.explainSelection",
+    "onCommand:llem.focusChat",
+    "onCommand:llem.showVaultMap"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -37,45 +38,46 @@
     "offline",
     "agent",
     "code-generation",
-    "connect-ai-lab",
+    "llem",
+    "lm-studio",
     "copilot"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "connect-ai-lab.openChat",
-        "title": "Connect AI: Open Chat",
+        "command": "llem.openChat",
+        "title": "LLeM: Open Console",
         "icon": {
           "light": "assets/open-chat-light.svg",
           "dark": "assets/open-chat-dark.svg"
         }
       },
       {
-        "command": "connect-ai-lab.newChat",
-        "title": "Connect AI: New Chat",
+        "command": "llem.newChat",
+        "title": "LLeM: New Thread",
         "icon": "$(add)"
       },
       {
-        "command": "connect-ai-lab.exportChat",
-        "title": "Connect AI: Export Chat as Markdown"
+        "command": "llem.exportChat",
+        "title": "LLeM: Export Thread as Markdown"
       },
       {
-        "command": "connect-ai-lab.explainSelection",
-        "title": "Connect AI: Explain Selected Code"
+        "command": "llem.explainSelection",
+        "title": "LLeM: Break Down Selection"
       },
       {
-        "command": "connect-ai-lab.focusChat",
-        "title": "Connect AI: Focus Chat Input"
+        "command": "llem.focusChat",
+        "title": "LLeM: Focus Prompt"
       },
       {
-        "command": "connect-ai-lab.showBrainNetwork",
-        "title": "Connect AI: Show Brain Topology 🧠"
+        "command": "llem.showVaultMap",
+        "title": "LLeM: Open Vault Map"
       }
     ],
     "keybindings": [
       {
-        "command": "connect-ai-lab.focusChat",
+        "command": "llem.focusChat",
         "key": "cmd+l",
         "mac": "cmd+l"
       }
@@ -83,13 +85,13 @@
     "menus": {
       "editor/title": [
         {
-          "command": "connect-ai-lab.openChat",
+          "command": "llem.openChat",
           "group": "navigation@99"
         }
       ],
       "editor/context": [
         {
-          "command": "connect-ai-lab.explainSelection",
+          "command": "llem.explainSelection",
           "when": "editorHasSelection",
           "group": "1_modification"
         }
@@ -98,44 +100,44 @@
     "viewsContainers": {
       "secondarySidebar": [
         {
-          "id": "connect-ai-lab",
-          "title": "Connect AI",
+          "id": "llem",
+          "title": "LLeM",
           "icon": "assets/icon.svg"
         }
       ]
     },
     "views": {
-      "connect-ai-lab": [
+      "llem": [
         {
           "type": "webview",
-          "id": "connect-ai-lab.chat",
-          "name": "Connect AI",
+          "id": "llem.chat",
+          "name": "LLeM",
           "icon": "assets/icon.svg"
         }
       ]
     },
     "configuration": {
-      "title": "Connect AI",
+      "title": "LLeM",
       "properties": {
-        "connectAiLab.ollamaUrl": {
+        "llem.engineUrl": {
           "type": "string",
           "default": "http://127.0.0.1:11434",
-          "description": "🤖 AI 서버 주소 (보통 자동으로 잡히니 건드리지 않아도 됩니다)"
+          "description": "Local model endpoint. Point it at Ollama or LM Studio and let it cook."
         },
-        "connectAiLab.defaultModel": {
+        "llem.defaultModel": {
           "type": "string",
           "default": "gemma4:e2b",
-          "description": "🧠 사용할 AI 모델 이름 (예: gemma4:e2b, llama3.3, deepseek-r1)"
+          "description": "Default model slug. Pick your fave and keep the flow moving."
         },
-        "connectAiLab.requestTimeout": {
+        "llem.requestTimeout": {
           "type": "number",
           "default": 300,
-          "description": "⏱ AI 응답 대기 시간 (초, 기본 300초 = 5분)"
+          "description": "How long LLeM waits before timing out, in seconds."
         },
-        "connectAiLab.localBrainPath": {
+        "llem.vaultPath": {
           "type": "string",
           "default": "",
-          "description": "📁 내 지식 폴더 경로 — 내 PC의 특정 폴더(예: 바탕화면/MyBrain)를 지정하면, 그 안의 .md 파일들이 AI의 지식이 됩니다. 비워두면 기본 폴더를 자동 생성합니다."
+          "description": "Optional path to your markdown vault. Leave it blank and LLeM spins up its own stash."
         }
       }
     }
@@ -144,6 +146,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
     "package:vsix": "node scripts/package-vsix.mjs",
+    "package:vsix:local": "LOCAL_VSIX=1 node scripts/package-vsix.mjs",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile"
   },

@@ -68,13 +68,13 @@ export class ChatSession {
 
     public async exportMarkdown(): Promise<void> {
         if (this.displayMessages.length === 0) {
-            vscode.window.showWarningMessage('내보낼 대화가 없습니다.');
+            vscode.window.showWarningMessage('There is no thread to export yet.');
             return;
         }
 
-        let md = `# Connect AI — 대화 기록\n\n_${new Date().toLocaleString('ko-KR')}_\n\n---\n\n`;
+        let md = `# LLeM - Thread Export\n\n_${new Date().toLocaleString('en-US')}_\n\n---\n\n`;
         for (const message of this.displayMessages) {
-            const label = message.role === 'user' ? '**👤 You**' : '**✦ Connect AI**';
+            const label = message.role === 'user' ? '**You**' : '**LLeM**';
             md += `### ${label}\n\n${message.text}\n\n---\n\n`;
         }
 
@@ -87,6 +87,6 @@ export class ChatSession {
         await fs.promises.writeFile(filePath, md, 'utf-8');
         const doc = await vscode.workspace.openTextDocument(filePath);
         await vscode.window.showTextDocument(doc);
-        vscode.window.showInformationMessage(`대화가 ${path.basename(filePath)}로 저장되었습니다.`);
+        vscode.window.showInformationMessage(`Thread saved as ${path.basename(filePath)}.`);
     }
 }

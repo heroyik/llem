@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AIEndpoint, ChatMessage, ConnectAiConfig, StreamOptions } from './types';
+import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
 
 export function stripTrailingSlash(value: string): string {
@@ -23,7 +23,7 @@ export function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
     };
 }
 
-export async function resolveAIEndpoint(config: ConnectAiConfig): Promise<AIEndpoint> {
+export async function resolveAIEndpoint(config: LlemConfig): Promise<AIEndpoint> {
     const endpoint = normalizeAIEndpoint(config.ollamaBase);
     if (endpoint.isLMStudio) {
         return endpoint;
@@ -66,7 +66,7 @@ function extractStreamToken(line: string, isLMStudio: boolean): string {
     const raw = line.startsWith('data: ') ? line.slice(6) : line;
     const json = JSON.parse(raw);
     if (json.error) {
-        return `[API 오류] ${json.error.message || json.error}`;
+        return `[API error] ${json.error.message || json.error}`;
     }
     return isLMStudio
         ? json.choices?.[0]?.delta?.content || ''

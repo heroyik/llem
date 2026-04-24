@@ -37,6 +37,17 @@ function parseArgs(argv) {
 
     if (arg.startsWith('--notes-file=')) {
       args.notesFile = arg.slice('--notes-file='.length);
+      continue;
+    }
+
+    if (arg === '--local') {
+      args.local = true;
+      continue;
+    }
+
+    if (arg === '--public') {
+      args.local = false;
+      continue;
     }
   }
 
@@ -45,11 +56,11 @@ function parseArgs(argv) {
 
 function usage() {
   console.error(`
-VSIX 패키징에는 README에 기록할 릴리스 노트가 필요합니다.
+VSIX packaging needs release notes so README updates stay honest.
 
-예시:
-  npm run package:vsix -- --notes "채팅을 에디터 영역으로 이동; README 릴리스 노트 자동화"
-  RELEASE_NOTES=$'- 채팅을 에디터 영역으로 이동했습니다.\\n- README 릴리스 노트를 자동 기록합니다.' npm run package:vsix
+Examples:
+  npm run package:vsix -- --notes "Refreshed the LLeM branding; rewired the vault flow"
+  RELEASE_NOTES=$'- Refreshed the LLeM branding.\\n- Rewired the vault flow.' npm run package:vsix
   npm run package:vsix -- --notes-file release-notes.md
 `);
 }
@@ -76,6 +87,17 @@ function readNotes() {
   return notes;
 }
 
+function isLocalBuild() {
+  const args = parseArgs(process.argv.slice(2));
+  const envValue = process.env.LOCAL_VSIX;
+
+  if (typeof args.local === 'boolean') {
+    return args.local;
+  }
+
+  return envValue === '1' || envValue === 'true';
+}
+
 function bumpPatch(version) {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!match) {
@@ -92,11 +114,30 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
-function updatePackageVersion(newVersion) {
+function makeLocalPublisher(publisher) {
+  return publisher.endsWith('-local') ? publisher : `${publisher}-local`;
+}
+
+function makeLocalDisplayName(displayName) {
+  return displayName.endsWith(' Local') ? displayName : `${displayName} Local`;
+}
+
+function getArtifactBaseName() {
+  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  return pkg.name || 'extension';
+}
+
+function updatePackageVersion(newVersion, options = {}) {
   const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
   const oldVersion = pkg.version;
+  const originalPublisher = pkg.publisher;
+  const originalDisplayName = pkg.displayName;
 
   pkg.version = newVersion;
+  if (options.local) {
+    pkg.publisher = makeLocalPublisher(pkg.publisher);
+    pkg.displayName = makeLocalDisplayName(pkg.displayName);
+  }
   writeJson(packagePath, pkg);
 
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
@@ -107,11 +148,23 @@ function updatePackageVersion(newVersion) {
   }
 
   writeJson(lockPath, lock);
-  return oldVersion;
+  return {
+    oldVersion,
+    originalDisplayName,
+    originalPublisher,
+  };
+}
+
+function restorePackageIdentity(newVersion, snapshot) {
+  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  pkg.version = newVersion;
+  pkg.publisher = snapshot.originalPublisher;
+  pkg.displayName = snapshot.originalDisplayName;
+  writeJson(packagePath, pkg);
 }
 
 function extractPendingNotes(readme) {
-  const pendingPattern = /\n### 다음 VSIX 예정\n\n([\s\S]*?)(?=\n### |\n## |$)/;
+  const pendingPattern = /\n### Next VSIX\n\n([\s\S]*?)(?=\n### |\n## |$)/;
   const match = readme.match(pendingPattern);
 
   if (!match) {
@@ -149,24 +202,23 @@ function updateReadme(oldVersion, newVersion, notes) {
   let readme = fs.readFileSync(readmePath, 'utf8');
   const pending = extractPendingNotes(readme);
   const releaseNotesBody = uniqueNotes([...pending.notes, ...notes]);
+  const artifactBaseName = getArtifactBaseName();
 
   readme = pending.readme;
 
   const releaseNotes = [
     `### v${newVersion}`,
     '',
-    `- VSIX 빌드 버전을 \`${oldVersion}\`에서 \`${newVersion}\`로 올렸습니다.`,
+    `- Bumped the VSIX build from \`${oldVersion}\` to \`${newVersion}\`.`,
     ...releaseNotesBody.map((note) => `- ${note}`),
-    `- 릴리스 스크립트가 \`release/connect-ai-lab-${newVersion}.vsix\` 패키지를 생성합니다.`,
+    `- Packaged \`release/${artifactBaseName}-${newVersion}.vsix\`.`,
     '',
   ].join('\n');
 
   readme = readme
-    .replace(/badge\/version-\d+\.\d+\.\d+-blue/, `badge/version-${newVersion}-blue`)
-    .replace(/Connect AI v\d+\.\d+\.\d+는/, `Connect AI v${newVersion}는`)
-    .replace(/최신 `connect-ai-lab-\d+\.\d+\.\d+\.vsix` 파일/, `최신 \`connect-ai-lab-${newVersion}.vsix\` 파일`);
+    .replace(/badge\/version-\d+\.\d+\.\d+-blue/, `badge/version-${newVersion}-blue`);
 
-  const heading = '## 📝 Release Notes';
+  const heading = '## Release Notes';
   const headingIndex = readme.indexOf(heading);
 
   if (headingIndex === -1) {
@@ -188,13 +240,15 @@ function run(command, args) {
 }
 
 const notes = readNotes();
+const localBuild = isLocalBuild();
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const oldVersion = pkg.version;
 const newVersion = bumpPatch(oldVersion);
+const artifactBaseName = pkg.name || 'extension';
 
 run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'compile']);
 
-updatePackageVersion(newVersion);
+const identitySnapshot = updatePackageVersion(newVersion, { local: localBuild });
 updateReadme(oldVersion, newVersion, notes);
 fs.mkdirSync(releaseDir, { recursive: true });
 
@@ -204,7 +258,13 @@ const vsceBin = path.join(
   '.bin',
   process.platform === 'win32' ? 'vsce.cmd' : 'vsce',
 );
-const outputPath = path.join(releaseDir, `connect-ai-lab-${newVersion}.vsix`);
+const outputPath = path.join(releaseDir, `${artifactBaseName}-${newVersion}.vsix`);
 
-run(vsceBin, ['package', '--out', outputPath]);
-console.log(`Packaged ${path.relative(rootDir, outputPath)}`);
+try {
+  run(vsceBin, ['package', '--out', outputPath]);
+  console.log(`Packaged ${path.relative(rootDir, outputPath)}`);
+} finally {
+  if (localBuild) {
+    restorePackageIdentity(newVersion, identitySnapshot);
+  }
+}
