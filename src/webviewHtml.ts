@@ -233,6 +233,9 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       background: var(--panel-3);
       border-radius: 999px;
     }
+    .chat.drag-over {
+      background: linear-gradient(180deg, rgba(104, 225, 253, 0.04), transparent 28%);
+    }
     .welcome {
       margin: auto;
       max-width: 560px;
@@ -532,6 +535,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       border-color: rgba(255, 255, 255, 0.18);
       box-shadow: var(--shadow), 0 0 0 1px rgba(255, 158, 88, 0.12);
     }
+    .input-box.drag-over {
+      border-color: rgba(104, 225, 253, 0.45);
+      box-shadow: var(--shadow), 0 0 0 1px rgba(104, 225, 253, 0.2), 0 0 0 10px rgba(104, 225, 253, 0.06);
+    }
     textarea {
       width: 100%;
       border: none;
@@ -604,6 +611,47 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+    .drop-overlay {
+      position: absolute;
+      inset: 10px 14px 16px;
+      border-radius: 24px;
+      border: 1px dashed rgba(104, 225, 253, 0.45);
+      background:
+        linear-gradient(180deg, rgba(17, 15, 22, 0.82), rgba(17, 15, 22, 0.68)),
+        radial-gradient(circle at top, rgba(104, 225, 253, 0.12), transparent 40%);
+      backdrop-filter: blur(14px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      pointer-events: none;
+      z-index: 4;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+    .drop-overlay.visible {
+      display: flex;
+    }
+    .drop-card {
+      width: min(100%, 320px);
+      padding: 18px 20px;
+      border-radius: 18px;
+      border: 1px solid rgba(104, 225, 253, 0.18);
+      background: rgba(31, 24, 39, 0.9);
+      text-align: center;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
+    }
+    .drop-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .drop-sub {
+      margin-top: 8px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--text-dim);
     }
     .stream-shell {
       display: flex;
@@ -749,7 +797,13 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
   </div>
   <div class="thinking-bar" id="thinkingBar"></div>
-  <div class="main-view">
+  <div class="main-view" id="mainView">
+    <div class="drop-overlay" id="dropOverlay">
+      <div class="drop-card">
+        <div class="drop-title">Drop files to attach</div>
+        <div class="drop-sub">Images up to 8MB. Text and code files up to 512KB are added to the next message.</div>
+      </div>
+    </div>
     <div class="chat" id="chat">
       <div class="welcome">
         <div class="welcome-logo">LL</div>
@@ -758,11 +812,11 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       </div>
     </div>
     <div class="input-wrap">
-      <div class="input-box">
+      <div class="input-box" id="inputBox">
         <div class="attach-preview" id="attachPreview"></div>
         <textarea id="input" rows="1" placeholder="What are we building today?"></textarea>
         <div class="input-footer">
-          <span class="input-hint">Enter sends · Shift+Enter adds a line</span>
+          <span class="input-hint">Enter sends · Shift+Enter adds a line · Drop files to attach</span>
           <div class="input-btns">
             <button class="attach-btn" id="attachBtn" title="Attach files">+</button>
             <button class="attach-btn" id="injectLocalBtn" title="Drop files into the vault">✦</button>
@@ -786,6 +840,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
 
     try {
       const vscode = acquireVsCodeApi();
+      const mainView = document.getElementById('mainView');
       const chat = document.getElementById('chat');
       const input = document.getElementById('input');
       const sendBtn = document.getElementById('sendBtn');
@@ -797,14 +852,17 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       const internetBtn = document.getElementById('internetBtn');
       const attachBtn = document.getElementById('attachBtn');
       const injectLocalBtn = document.getElementById('injectLocalBtn');
+      const inputBox = document.getElementById('inputBox');
       const fileInput = document.getElementById('fileInput');
       const attachPreview = document.getElementById('attachPreview');
+      const dropOverlay = document.getElementById('dropOverlay');
       const thinkingBar = document.getElementById('thinkingBar');
 
       let loader = null;
       let sending = false;
       let pendingFiles = [];
       let internetEnabled = false;
+      let dragDepth = 0;
       let streamEl = null;
       let streamRaw = '';
       let streamStatusEl = null;
@@ -820,6 +878,12 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       const STREAM_META_INTERVAL = 250;
       const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
       const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+      const ATTACHABLE_EXTENSIONS = new Set([
+        '.txt', '.md', '.csv', '.json',
+        '.js', '.ts', '.html', '.css',
+        '.py', '.java', '.rs', '.go',
+        '.yaml', '.yml', '.xml', '.toml'
+      ]);
 
       function getTime() {
         return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -1160,6 +1224,102 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         return (bytes / 1024 / 1024).toFixed(1) + 'MB';
       }
 
+      function hasFilePayload(event) {
+        const transfer = event.dataTransfer;
+        if (!transfer || !transfer.types) {
+          return false;
+        }
+        return Array.from(transfer.types).includes('Files');
+      }
+
+      function isSupportedAttachment(file) {
+        if (!file) {
+          return false;
+        }
+        const type = file.type || '';
+        if (type.startsWith('image/') || type.startsWith('audio/')) {
+          return true;
+        }
+        const lowerName = (file.name || '').toLowerCase();
+        const dotIndex = lowerName.lastIndexOf('.');
+        return dotIndex >= 0 && ATTACHABLE_EXTENSIONS.has(lowerName.slice(dotIndex));
+      }
+
+      function setDropActive(active) {
+        dropOverlay.classList.toggle('visible', active);
+        inputBox.classList.toggle('drag-over', active);
+        chat.classList.toggle('drag-over', active);
+      }
+
+      function resetDropActive() {
+        dragDepth = 0;
+        setDropActive(false);
+      }
+
+      function readBlobAsDataUrl(blob) {
+        return new Promise(function(resolve, reject) {
+          const reader = new FileReader();
+          reader.onerror = function() {
+            reject(reader.error || new Error('Failed to read file.'));
+          };
+          reader.onload = function() {
+            resolve(reader.result || '');
+          };
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      async function buildAttachment(file) {
+        if (!isSupportedAttachment(file)) {
+          alert(file.name + ' is not a supported attachment yet.');
+          return null;
+        }
+
+        const type = file.type || 'text/plain';
+        const isImage = type.startsWith('image/');
+        const limit = isImage ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_TEXT_ATTACHMENT_BYTES;
+
+        if (isImage && file.size > limit) {
+          alert(file.name + ' is too big. Images can be up to ' + formatAttachmentBytes(limit) + '.');
+          return null;
+        }
+
+        const source = file.size > limit ? file.slice(0, limit) : file;
+        const dataUrl = await readBlobAsDataUrl(source);
+        const base64 = String(dataUrl).split(',')[1] || '';
+
+        return {
+          name: file.name,
+          type: type,
+          data: base64,
+          truncated: file.size > limit,
+          originalSize: file.size
+        };
+      }
+
+      async function appendPendingFiles(files) {
+        if (!files || files.length === 0) {
+          return;
+        }
+
+        const appended = [];
+        for (const file of files) {
+          try {
+            const attachment = await buildAttachment(file);
+            if (attachment) {
+              appended.push(attachment);
+            }
+          } catch (error) {
+            alert('Could not read ' + file.name + '.');
+          }
+        }
+
+        if (appended.length > 0) {
+          pendingFiles = pendingFiles.concat(appended);
+          renderPreview();
+        }
+      }
+
       function renderPreview() {
         attachPreview.innerHTML = '';
         if (pendingFiles.length === 0) {
@@ -1280,31 +1440,62 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       });
 
       fileInput.addEventListener('change', function() {
-        const files = Array.from(fileInput.files || []);
-        files.forEach(function(file) {
-          const isImage = file.type && file.type.startsWith('image/');
-          const limit = isImage ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_TEXT_ATTACHMENT_BYTES;
-          if (isImage && file.size > limit) {
-            alert(file.name + ' is too big. Images can be up to ' + formatAttachmentBytes(limit) + '.');
-            return;
-          }
-          const source = file.size > limit ? file.slice(0, limit) : file;
-          const reader = new FileReader();
-          reader.onload = function() {
-            const base64 = reader.result.split(',')[1];
-            pendingFiles.push({
-              name: file.name,
-              type: file.type || 'text/plain',
-              data: base64,
-              truncated: file.size > limit,
-              originalSize: file.size
-            });
-            renderPreview();
-          };
-          reader.readAsDataURL(source);
-        });
+        void appendPendingFiles(Array.from(fileInput.files || []));
         fileInput.value = '';
       });
+
+      mainView.addEventListener('dragenter', function(event) {
+        if (!hasFilePayload(event)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepth += 1;
+        setDropActive(true);
+      });
+
+      mainView.addEventListener('dragover', function(event) {
+        if (!hasFilePayload(event)) {
+          return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'copy';
+        }
+        setDropActive(true);
+      });
+
+      mainView.addEventListener('dragleave', function(event) {
+        if (dragDepth === 0) {
+          return;
+        }
+        event.preventDefault();
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) {
+          setDropActive(false);
+        }
+      });
+
+      window.addEventListener('dragover', function(event) {
+        if (hasFilePayload(event)) {
+          event.preventDefault();
+        }
+      });
+
+      window.addEventListener('drop', function(event) {
+        if (!hasFilePayload(event)) {
+          return;
+        }
+        event.preventDefault();
+        const dropTarget = event.target;
+        const isInsideMainView = dropTarget instanceof Node && mainView.contains(dropTarget);
+        const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+        resetDropActive();
+        if (isInsideMainView) {
+          void appendPendingFiles(droppedFiles);
+        }
+      });
+
+      window.addEventListener('blur', resetDropActive);
 
       sendBtn.addEventListener('click', send);
       input.addEventListener('keydown', function(event) {

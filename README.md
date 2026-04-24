@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.2.27-blue" />
+  <img alt="version" src="https://img.shields.io/badge/version-2.2.28-blue" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7ad66d" />
   <img alt="engine" src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-ff9e58" />
 </p>
@@ -277,6 +277,8 @@ You can attach:
 - code files
 - data files such as JSON or CSV
 
+You can add them with the `+` button or by dragging files straight into the chat surface.
+
 Images can be passed directly to model requests when supported. Large text files are truncated to keep prompts manageable.
 
 ### Stop generation
@@ -450,6 +452,13 @@ https://github.com/wonseokjung/llem
 MIT
 
 ## Release Notes
+
+### v2.2.28
+
+- Bumped the VSIX build from `2.2.27` to `2.2.28`.
+- Added drag-and-drop file attachments in the chat UI
+- Clarified chat file attachment usage in the README
+- Packaged `release/llem-2.2.28.vsix`.
 
 ### v2.2.27
 
