@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.2.30-blue" />
+  <img alt="version" src="https://img.shields.io/badge/version-2.2.31-blue" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7ad66d" />
   <img alt="engine" src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-ff9e58" />
 </p>
@@ -175,10 +175,21 @@ In LM Studio:
 Once the LM Studio server is up, LLeM can target it using the same chat flow.
 
 ## Configuration
+
+To change settings such as `llem.engineUrl` or `llem.defaultModel`, you should open
+your VS Code settings in JSON format.
+
+- **macOS**: Press `CMD+SHIFT+P`, then select
+  **Preferences: Open User Settings (JSON)**.
+- **Windows**: Press `CTRL+SHIFT+P`, then select
+  **Preferences: Open User Settings (JSON)**.
+
 LLeM exposes a small set of settings under the `llem` namespace.
 
 ### `llem.engineUrl`
-The local model endpoint URL.
+
+
+The local or remote model endpoint URL.
 
 Default:
 
@@ -186,9 +197,15 @@ Default:
 http://127.0.0.1:11434
 ```
 
-Use this to switch between Ollama and LM Studio.
+Use this to switch between Ollama and LM Studio. If you are connecting to a **remote Ollama server**, specify the IP address or hostname:
+
+```text
+http://192.168.1.100:11434
+```
 
 ### `llem.defaultModel`
+
+
 The default model slug used for requests.
 
 Default:
@@ -452,6 +469,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.31
+
+- Bumped the VSIX build from `2.2.30` to `2.2.31`.
+- Added configuration instructions for engineUrl and defaultModel, including remote Ollama example
+- Packaged `release/llem-2.2.31.vsix`.
 
 ### v2.2.30
 
