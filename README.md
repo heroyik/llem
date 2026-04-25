@@ -364,7 +364,7 @@ It reports that the local engine could not be reached and points you back toward
 It reports that the requested model is not available in the current engine.
 
 ### If the context is too large
-It suggests starting a new thread, reducing the prompt size, or turning vault-heavy context off temporarily.
+It suggests start a new chat or focus on a smaller context.rting a new thread, reducing the prompt size, or turning vault-heavy context off temporarily.
 
 ### If the request times out
 It suggests:
