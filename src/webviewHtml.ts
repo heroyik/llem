@@ -1473,9 +1473,21 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         }
       });
 
+      window.addEventListener('dragenter', function(event) {
+        if (hasFilePayload(event)) {
+          event.preventDefault();
+          if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'copy';
+          }
+        }
+      });
+
       window.addEventListener('dragover', function(event) {
         if (hasFilePayload(event)) {
           event.preventDefault();
+          if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'copy';
+          }
         }
       });
 
@@ -1490,18 +1502,22 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         console.log('LLeM Drag & Drop: Drop detected. Types:', types);
 
         const isUriList = types.includes('text/uri-list');
+        const hasFiles = types.includes('Files');
+
         if (isUriList) {
           const uriListString = event.dataTransfer.getData('text/uri-list');
           console.log('LLeM Drag & Drop: Handling text/uri-list. Content:', uriListString);
           if (uriListString) {
-            // Split by any newline sequence (LF, CRLF, CR) and trim each URI
-            const uris = uriListString.split(/\\r?\\n|\\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+            const uris = uriListString.split(/\r?\n|\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
             console.log('LLeM Drag & Drop: Parsed URIs:', uris);
             if (uris.length > 0) {
               vscode.postMessage({ type: 'fetchUris', uris: uris });
+              return;
             }
           }
-        } else {
+        }
+        
+        if (hasFiles) {
           const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
           console.log('LLeM Drag & Drop: Handling native files. Count:', droppedFiles.length);
           if (droppedFiles.length > 0) {

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.2.36-blue" />
+  <img alt="version" src="https://img.shields.io/badge/version-2.2.37-blue" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7ad66d" />
   <img alt="engine" src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-ff9e58" />
 </p>
@@ -542,6 +542,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.37
+
+- Bumped the VSIX build from `2.2.36` to `2.2.37`.
+- Improved Drag and Drop to work reliably without holding the Shift key
+- Packaged `release/llem-2.2.37.vsix`.
 
 ### v2.2.36
 
