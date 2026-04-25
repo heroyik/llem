@@ -862,7 +862,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       let sending = false;
       let pendingFiles = [];
       let internetEnabled = false;
-      let dragDepth = 0;
       let streamEl = null;
       let streamRaw = '';
       let streamStatusEl = null;
@@ -1229,7 +1228,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         if (!transfer || !transfer.types) {
           return false;
         }
-        return Array.from(transfer.types).includes('Files');
+        return Array.prototype.includes.call(transfer.types, 'Files') || 
+               Array.prototype.includes.call(transfer.types, 'text/uri-list');
       }
 
       function isSupportedAttachment(file) {
@@ -1252,7 +1252,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       }
 
       function resetDropActive() {
-        dragDepth = 0;
         setDropActive(false);
       }
 
@@ -1449,7 +1448,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           return;
         }
         event.preventDefault();
-        dragDepth += 1;
         setDropActive(true);
       });
 
@@ -1465,13 +1463,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       });
 
       mainView.addEventListener('dragleave', function(event) {
-        if (dragDepth === 0) {
-          return;
-        }
-        event.preventDefault();
-        dragDepth = Math.max(0, dragDepth - 1);
-        if (dragDepth === 0) {
-          setDropActive(false);
+        if (!mainView.contains(event.relatedTarget)) {
+          resetDropActive();
         }
       });
 
@@ -1488,14 +1481,21 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         event.preventDefault();
         const dropTarget = event.target;
         const isInsideMainView = dropTarget instanceof Node && mainView.contains(dropTarget);
-        const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
         resetDropActive();
         if (isInsideMainView) {
-          void appendPendingFiles(droppedFiles);
+          const isUriList = Array.prototype.includes.call(event.dataTransfer.types, 'text/uri-list');
+          if (isUriList) {
+            const uriListString = event.dataTransfer.getData('text/uri-list');
+            if (uriListString) {
+              const uris = uriListString.split('\\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+              vscode.postMessage({ type: 'fetchUris', uris: uris });
+            }
+          } else {
+            const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+            void appendPendingFiles(droppedFiles);
+          }
         }
       });
-
-      window.addEventListener('blur', resetDropActive);
 
       sendBtn.addEventListener('click', send);
       input.addEventListener('keydown', function(event) {
@@ -1615,6 +1615,12 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             input.style.height = 'auto';
             input.style.height = Math.min(input.scrollHeight, 150) + 'px';
             send();
+            break;
+          case 'fetchedUris':
+            if (msg.files && msg.files.length > 0) {
+              pendingFiles = pendingFiles.concat(msg.files);
+              renderPreview();
+            }
             break;
         }
       });

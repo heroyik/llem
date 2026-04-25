@@ -11,6 +11,7 @@ export interface WebviewMessageRouterHost {
     showBrainNetwork(): void;
     showTerminal(): void;
     stopGeneration(): void;
+    fetchUris(uris: string[]): Promise<void>;
 }
 
 export async function routeWebviewMessage(message: any, host: WebviewMessageRouterHost): Promise<void> {
@@ -50,6 +51,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'showTerminal':
             host.showTerminal();
+            break;
+        case 'fetchUris':
+            await host.fetchUris(message.uris);
             break;
     }
 }

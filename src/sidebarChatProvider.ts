@@ -248,7 +248,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             sendModels: () => this._sendModels(),
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
-            stopGeneration: () => this._stopGeneration()
+            stopGeneration: () => this._stopGeneration(),
+            fetchUris: (uris) => this._fetchUris(uris)
         };
     }
 
@@ -308,6 +309,42 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         vscode.window.showInformationMessage('LLeM does not have a live terminal session right now.');
+    }
+
+    private async _fetchUris(uris: string[]): Promise<void> {
+        if (!this._view) { return; }
+        const files = [];
+
+        for (const uriString of uris) {
+            try {
+                const uri = vscode.Uri.parse(uriString.trim());
+                if (uri.scheme !== 'file') { continue; }
+                
+                const stat = await vscode.workspace.fs.stat(uri);
+                if (stat.type === vscode.FileType.File && stat.size <= 8 * 1024 * 1024) {
+                    const data = await vscode.workspace.fs.readFile(uri);
+                    const name = uri.path.split('/').pop() || 'file';
+                    const ext = name.split('.').pop()?.toLowerCase() || '';
+                    
+                    let type = 'text/plain';
+                    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) { type = `image/${ext}`; }
+                    else if (['mp3', 'wav', 'ogg'].includes(ext)) { type = `audio/${ext}`; }
+                    
+                    files.push({
+                        name,
+                        type,
+                        data: Buffer.from(data).toString('base64'),
+                        size: stat.size
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to read dropped URI', e);
+            }
+        }
+        
+        if (files.length > 0) {
+            this._view.webview.postMessage({ type: 'fetchedUris', files });
+        }
     }
 
     private _stopGeneration(): void {
