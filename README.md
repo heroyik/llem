@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.2.34-blue" />
+  <img alt="version" src="https://img.shields.io/badge/version-2.2.36-blue" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7ad66d" />
   <img alt="engine" src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-ff9e58" />
 </p>
@@ -32,7 +32,8 @@ This repo now treats LLeM as a distinct extension identity. The old branding and
 
 ### 1. Local-first model workflow
 
-LLeM does not depend on a hosted inference backend. It points at a local engine URL and sends requests to Ollama or LM Studio running on your machine.
+LLeM does not depend on a hosted inference backend. It points at a local engine
+URL and sends requests to Ollama or LM Studio running on your machine.
 
 Why that matters:
 
@@ -43,7 +44,9 @@ Why that matters:
 
 ### 2. Live streaming output
 
-Instead of hiding behind a boring waiting spinner, LLeM shows the raw output stream as tokens arrive. You see the reply forming in real time, and when the stream finishes the message is rendered cleanly as markdown.
+Instead of hiding behind a boring waiting spinner, LLeM shows the raw output
+stream as tokens arrive. You see the reply forming in real time, and when the
+stream finishes the message is rendered cleanly as markdown.
 
 ### 3. Repo-aware chat
 
@@ -54,11 +57,13 @@ LLeM builds request context from your open workspace. That includes:
 - a handful of important top-level files
 - optional vault context if you have a vault connected
 
-That gives the model a much better shot at answering repo-specific questions without you needing to explain the whole project every time.
+That gives the model a much better shot at answering repo-specific questions
+without you needing to explain the whole project every time.
 
 ### 4. Real file and terminal actions
 
-LLeM is not just a text box. It can interpret action tags in the model response and then:
+LLeM is not just a text box. It can interpret action tags in the model response
+and then:
 
 - create files
 - edit files
@@ -73,7 +78,8 @@ That makes it feel much closer to a real coding assistant than a plain chatbot.
 
 ### 5. Markdown vault support
 
-LLeM can maintain a markdown vault alongside your coding workflow. The vault is useful for:
+LLeM can maintain a markdown vault alongside your coding workflow. The vault is
+useful for:
 
 - project notes
 - architecture thoughts
@@ -96,7 +102,8 @@ The extension now ships as:
 - publisher: `nIcK`
 - extension ID: `nIcK.llem`
 
-That is important because it prevents the old icon and metadata collision behavior that came from reusing a previous extension identity.
+That is important because it prevents the old icon and metadata collision
+behavior that came from reusing a previous extension identity.
 
 ## Who It Is For
 
@@ -192,7 +199,6 @@ Once the LM Studio server is up, LLeM can target it using the same chat flow.
 
 ## Configuration
 
-
 To change settings such as `llem.engineUrl` or `llem.defaultModel`, you should open
 your VS Code settings in JSON format.
 
@@ -205,8 +211,6 @@ LLeM exposes a small set of settings under the `llem` namespace.
 
 ### `llem.engineUrl`
 
-
-
 The local or remote model endpoint URL.
 
 Default:
@@ -215,15 +219,14 @@ Default:
 http://127.0.0.1:11434
 ```
 
-Use this to switch between Ollama and LM Studio. If you are connecting to a **remote Ollama server**, specify the IP address or hostname:
+Use this to switch between Ollama and LM Studio. If you are connecting to a
+**remote Ollama server**, specify the IP address or hostname:
 
 ```text
 http://192.168.1.100:11434
 ```
 
 ### `llem.defaultModel`
-
-
 
 The default model slug used for requests.
 
@@ -272,7 +275,8 @@ LLeM currently contributes these commands:
 
 #### Open Console
 
-Opens the LLeM chat surface in the secondary sidebar. If the view is unavailable, LLeM can fall back to an editor panel.
+Opens the LLeM chat surface in the secondary sidebar. If the view is
+unavailable, LLeM can fall back to an editor panel.
 
 #### New Thread
 
@@ -284,7 +288,8 @@ Exports the current visible conversation into a markdown file inside the open wo
 
 #### Break Down Selection
 
-Sends the active editor selection into the chat with a “break this down for me” prompt.
+Sends the active editor selection into the chat with a “break this down for me”
+prompt.
 
 #### Focus Prompt
 
@@ -327,9 +332,11 @@ You can attach:
 - code files
 - data files such as JSON or CSV
 
-You can add them with the `+` button or by dragging files straight into the chat surface.
+You can add them with the `+` button or by dragging files straight into the
+chat surface.
 
-Images can be passed directly to model requests when supported. Large text files are truncated to keep prompts manageable.
+Images can be passed directly to model requests when supported. Large text files
+are truncated to keep prompts manageable.
 
 ### Stop generation
 
@@ -364,7 +371,8 @@ Typical use cases:
 
 ### `notes/`
 
-This is where LLeM can create cleaner, structured notes after you confirm that you want raw material turned into something more polished.
+This is where LLeM can create cleaner, structured notes after you confirm that
+you want raw material turned into something more polished.
 
 ### Vault menu
 
@@ -421,7 +429,8 @@ LLeM includes a few practical guardrails.
 
 ### If the model server is not reachable
 
-It reports that the local engine could not be reached and points you back toward checking Ollama or LM Studio.
+It reports that the local engine could not be reached and points you back toward
+checking Ollama or LM Studio.
 
 ### If the model is missing
 
@@ -429,8 +438,8 @@ It reports that the requested model is not available in the current engine.
 
 ### If the context is too large
 
-It suggests starting a new thread, reducing the prompt size, or turning vault-heavy context off temporarily.
-
+It suggests starting a new thread, reducing the prompt size, or turning
+vault-heavy context off temporarily.
 
 ### If the request times out
 
@@ -505,7 +514,8 @@ The extension currently uses:
 
 ## Identity and Collision Avoidance
 
-One of the goals of the rewrite was to stop the extension from inheriting stale marketplace metadata from the old identity.
+One of the goals of the rewrite was to stop the extension from inheriting stale
+marketplace metadata from the old identity.
 
 The fix is not just visual. LLeM now has:
 
@@ -516,7 +526,8 @@ The fix is not just visual. LLeM now has:
 - rewritten UI copy
 - rewritten vault flow language
 
-That means the extension is no longer pretending to be a variation of the previous product. It is its own extension now.
+That means the extension is no longer pretending to be a variation of the
+previous product. It is its own extension now.
 
 ## Repository
 
@@ -531,6 +542,23 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.36
+
+- Bumped the VSIX build from `2.2.35` to `2.2.36`.
+- Improved Drag and Drop to work reliably without holding the Shift key
+- Added recognition for VS Code internal tree item types
+- Enforced copy drop effect on both drag-enter and drag-over for better cross-environment support
+- Fixed markdown lint errors in README.md
+- Packaged `release/llem-2.2.36.vsix`.
+
+### v2.2.35
+
+- Improved Drag & Drop to work reliably without holding the Shift key
+- Added recognition for VS Code internal tree item types
+- Enforced 'copy' drop effect on both drag-enter and drag-over for better
+  cross-environment support
+- Bumped version to 2.2.35
 
 ### v2.2.34
 
@@ -552,7 +580,8 @@ MIT
 ### v2.2.31
 
 - Bumped the VSIX build from `2.2.30` to `2.2.31`.
-- Added configuration instructions for engineUrl and defaultModel, including remote Ollama example
+- Added configuration instructions for engineUrl and defaultModel, including
+  remote Ollama example
 - Packaged `release/llem-2.2.31.vsix`.
 
 ### v2.2.30
@@ -577,7 +606,8 @@ MIT
 ### v2.2.27
 
 - Bumped the VSIX build from `2.2.26` to `2.2.27`.
-- Refined the marketplace description and discovery keywords to match the new LLeM product docs
+- Refined the marketplace description and discovery keywords to match the new
+  LLeM product docs
 - Packaged `release/llem-2.2.27.vsix`.
 
 ### v2.2.26

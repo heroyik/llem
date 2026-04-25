@@ -1228,8 +1228,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         if (!transfer || !transfer.types) {
           return false;
         }
-        return Array.prototype.includes.call(transfer.types, 'Files') || 
-               Array.prototype.includes.call(transfer.types, 'text/uri-list');
+        const types = Array.from(transfer.types);
+        return types.includes('Files') || 
+               types.includes('text/uri-list') ||
+               types.some(t => t.startsWith('application/vnd.code.tree.'));
       }
 
       function isSupportedAttachment(file) {
@@ -1448,6 +1450,9 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           return;
         }
         event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'copy';
+        }
         setDropActive(true);
       });
 
