@@ -317,8 +317,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         for (const uriString of uris) {
             try {
+                console.log('LLeM: Fetching URI:', uriString);
                 const uri = vscode.Uri.parse(uriString.trim());
-                if (uri.scheme !== 'file') { continue; }
+                if (uri.scheme !== 'file') { 
+                    console.log('LLeM: Skipping non-file URI:', uri.scheme);
+                    continue; 
+                }
                 
                 const stat = await vscode.workspace.fs.stat(uri);
                 if (stat.type === vscode.FileType.File && stat.size <= 8 * 1024 * 1024) {
@@ -336,9 +340,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                         data: Buffer.from(data).toString('base64'),
                         size: stat.size
                     });
+                    console.log('LLeM: Successfully fetched file:', name);
+                } else {
+                    console.log('LLeM: Skipping file (not a file or too large):', uri.fsPath, 'size:', stat.size);
                 }
             } catch (e) {
-                console.error('Failed to read dropped URI', e);
+                console.error('LLeM: Failed to read dropped URI:', uriString, e);
             }
         }
         

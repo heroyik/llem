@@ -1479,19 +1479,27 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           return;
         }
         event.preventDefault();
-        const dropTarget = event.target;
-        const isInsideMainView = dropTarget instanceof Node && mainView.contains(dropTarget);
         resetDropActive();
-        if (isInsideMainView) {
-          const isUriList = Array.prototype.includes.call(event.dataTransfer.types, 'text/uri-list');
-          if (isUriList) {
-            const uriListString = event.dataTransfer.getData('text/uri-list');
-            if (uriListString) {
-              const uris = uriListString.split('\\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+
+        const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : [];
+        console.log('LLeM Drag & Drop: Drop detected. Types:', types);
+
+        const isUriList = types.includes('text/uri-list');
+        if (isUriList) {
+          const uriListString = event.dataTransfer.getData('text/uri-list');
+          console.log('LLeM Drag & Drop: Handling text/uri-list. Content:', uriListString);
+          if (uriListString) {
+            // Split by any newline sequence (LF, CRLF, CR) and trim each URI
+            const uris = uriListString.split(/\\r?\\n|\\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+            console.log('LLeM Drag & Drop: Parsed URIs:', uris);
+            if (uris.length > 0) {
               vscode.postMessage({ type: 'fetchUris', uris: uris });
             }
-          } else {
-            const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+          }
+        } else {
+          const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+          console.log('LLeM Drag & Drop: Handling native files. Count:', droppedFiles.length);
+          if (droppedFiles.length > 0) {
             void appendPendingFiles(droppedFiles);
           }
         }
