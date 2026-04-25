@@ -862,6 +862,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       let sending = false;
       let pendingFiles = [];
       let internetEnabled = false;
+      let dragCounter = 0;
+      let dropSequence = 0;
+      let fetchRequestSequence = 0;
+      let lastDragOverLogAt = 0;
       let streamEl = null;
       let streamRaw = '';
       let streamStatusEl = null;
@@ -1233,6 +1237,122 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         });
       }
 
+      function summarizeFileForLog(file) {
+        if (!file) {
+          return null;
+        }
+        return {
+          name: file.name || '',
+          type: file.type || '',
+          size: typeof file.size === 'number' ? file.size : file.originalSize,
+          truncated: Boolean(file.truncated)
+        };
+      }
+
+      function summarizeFilesForLog(files) {
+        return Array.from(files || []).map(summarizeFileForLog);
+      }
+
+      function summarizeTransferForLog(transfer) {
+        if (!transfer) {
+          return { types: [], items: [], files: [] };
+        }
+        return {
+          types: getTransferTypes(transfer),
+          items: Array.from(transfer.items || []).map(function(item) {
+            return { kind: item.kind, type: item.type };
+          }),
+          files: summarizeFilesForLog(transfer.files || [])
+        };
+      }
+
+      function logDragDrop(phase, detail) {
+        try {
+          const payload = Object.assign({
+            pendingCount: pendingFiles.length
+          }, detail || {});
+          console.log('LLeM Drag & Drop:', phase, payload);
+          vscode.postMessage({
+            type: 'debugDragDrop',
+            phase: phase,
+            detail: payload,
+            at: new Date().toISOString()
+          });
+        } catch (_error) {
+          // Keep drag/drop handling alive even if the console rejects a payload.
+        }
+      }
+
+      function isVsCodeDragType(type) {
+        return String(type || '').toLowerCase().startsWith('application/vnd.code.');
+      }
+
+      function getAttachmentSize(file) {
+        if (!file) {
+          return 0;
+        }
+        if (typeof file.originalSize === 'number') {
+          return file.originalSize;
+        }
+        if (typeof file.size === 'number') {
+          return file.size;
+        }
+        return 0;
+      }
+
+      function attachmentFingerprint(file) {
+        const data = String((file && file.data) || '');
+        return [
+          String((file && file.name) || '').toLowerCase(),
+          String((file && file.type) || '').toLowerCase(),
+          String(getAttachmentSize(file)),
+          file && file.truncated ? 'partial' : 'full',
+          String(data.length),
+          data.slice(0, 64),
+          data.slice(-64)
+        ].join('|');
+      }
+
+      function appendAttachmentRecords(files, source, requestId) {
+        const incoming = Array.from(files || []);
+        if (incoming.length === 0) {
+          logDragDrop('append skipped: no files', { source: source, requestId: requestId });
+          return;
+        }
+
+        const beforeCount = pendingFiles.length;
+        const seen = new Set(pendingFiles.map(attachmentFingerprint));
+        const accepted = [];
+        const duplicates = [];
+
+        incoming.forEach(function(file) {
+          const key = attachmentFingerprint(file);
+          if (seen.has(key)) {
+            duplicates.push(summarizeFileForLog(file));
+            return;
+          }
+          seen.add(key);
+          pendingFiles.push(file);
+          accepted.push(summarizeFileForLog(file));
+        });
+
+        logDragDrop('append result', {
+          source: source,
+          requestId: requestId,
+          incomingCount: incoming.length,
+          acceptedCount: accepted.length,
+          duplicateCount: duplicates.length,
+          beforeCount: beforeCount,
+          afterCount: pendingFiles.length,
+          accepted: accepted,
+          duplicates: duplicates
+        });
+
+        if (accepted.length > 0) {
+          renderPreview();
+        }
+      }
+
       function hasFilePayload(event) {
         const transfer = event.dataTransfer;
         if (!transfer) {
@@ -1244,7 +1364,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         return types.includes('files') ||
                types.includes('text/uri-list') ||
                types.includes('text/plain') ||
-               types.some(function(type) { return type.startsWith('application/vnd.code.tree.'); }) ||
+               types.some(isVsCodeDragType) ||
                items.some(function(item) { return item.kind === 'file'; });
       }
 
@@ -1298,7 +1418,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           return;
         }
 
-        ['external', 'fsPath', 'uri', 'resourceUri', 'path'].forEach(function(key) {
+        const directUriKeys = ['external', 'fsPath', 'uri', 'resourceUri', 'path'];
+        directUriKeys.forEach(function(key) {
           if (typeof value[key] === 'string') {
             addDroppedUri(uris, value[key]);
           } else if (value[key]) {
@@ -1314,9 +1435,15 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             addDroppedUri(uris, 'vscode-remote:' + authority + value.path);
           }
         }
+
+        Object.keys(value).forEach(function(key) {
+          if (!directUriKeys.includes(key) && key !== 'scheme' && key !== 'authority') {
+            collectDroppedUrisFromObject(value[key], uris);
+          }
+        });
       }
 
-      function collectDroppedUris(transfer) {
+      function collectDroppedUris(transfer, requestId) {
         const uris = [];
         if (!transfer) {
           return uris;
@@ -1327,7 +1454,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           const lowerType = String(type).toLowerCase();
           if (lowerType !== 'text/uri-list' &&
               lowerType !== 'text/plain' &&
-              !lowerType.startsWith('application/vnd.code.tree.')) {
+              !isVsCodeDragType(lowerType)) {
             return;
           }
 
@@ -1335,6 +1462,13 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           if (!raw) {
             return;
           }
+
+          logDragDrop('raw transfer data', {
+            requestId: requestId,
+            type: type,
+            length: raw.length,
+            preview: raw.slice(0, 500)
+          });
 
           if (lowerType === 'text/plain' || lowerType === 'text/uri-list') {
             collectDroppedUrisFromText(raw, uris);
@@ -1387,8 +1521,13 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         });
       }
 
-      async function buildAttachment(file) {
+      async function buildAttachment(file, source, requestId) {
         if (!isSupportedAttachment(file)) {
+          logDragDrop('unsupported native file', {
+            source: source,
+            requestId: requestId,
+            file: summarizeFileForLog(file)
+          });
           alert(file.name + ' is not a supported attachment yet.');
           return null;
         }
@@ -1398,44 +1537,70 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         const limit = isImage ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_TEXT_ATTACHMENT_BYTES;
 
         if (isImage && file.size > limit) {
+          logDragDrop('native image too large', {
+            source: source,
+            requestId: requestId,
+            file: summarizeFileForLog(file),
+            limit: limit
+          });
           alert(file.name + ' is too big. Images can be up to ' + formatAttachmentBytes(limit) + '.');
           return null;
         }
 
-        const source = file.size > limit ? file.slice(0, limit) : file;
-        const dataUrl = await readBlobAsDataUrl(source);
+        const blobSource = file.size > limit ? file.slice(0, limit) : file;
+        const dataUrl = await readBlobAsDataUrl(blobSource);
         const base64 = String(dataUrl).split(',')[1] || '';
 
-        return {
+        const attachment = {
           name: file.name,
           type: type,
           data: base64,
           truncated: file.size > limit,
           originalSize: file.size
         };
+
+        logDragDrop('built native attachment', {
+          source: source,
+          requestId: requestId,
+          file: summarizeFileForLog(attachment),
+          encodedLength: base64.length
+        });
+
+        return attachment;
       }
 
-      async function appendPendingFiles(files) {
-        if (!files || files.length === 0) {
+      async function appendPendingFiles(files, source, requestId) {
+        const incoming = Array.from(files || []);
+        logDragDrop('append native start', {
+          source: source,
+          requestId: requestId,
+          incomingCount: incoming.length,
+          incoming: summarizeFilesForLog(incoming)
+        });
+
+        if (incoming.length === 0) {
           return;
         }
 
         const appended = [];
-        for (const file of files) {
+        for (const file of incoming) {
           try {
-            const attachment = await buildAttachment(file);
+            const attachment = await buildAttachment(file, source, requestId);
             if (attachment) {
               appended.push(attachment);
             }
           } catch (error) {
+            console.error('LLeM Drag & Drop: Failed to read native file attachment.', {
+              source: source,
+              requestId: requestId,
+              file: summarizeFileForLog(file),
+              error: error && (error.stack || error.message || String(error))
+            });
             alert('Could not read ' + file.name + '.');
           }
         }
 
-        if (appended.length > 0) {
-          pendingFiles = pendingFiles.concat(appended);
-          renderPreview();
-        }
+        appendAttachmentRecords(appended, source, requestId);
       }
 
       function renderPreview() {
@@ -1535,8 +1700,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           const reader = new FileReader();
           reader.onload = function() {
             const base64 = reader.result.split(',')[1];
-            pendingFiles.push({ name: 'clipboard-image.png', type: file.type, data: base64 });
-            renderPreview();
+            appendAttachmentRecords([{ name: 'clipboard-image.png', type: file.type, data: base64, originalSize: file.size }], 'clipboard', 'clipboard');
           };
           reader.readAsDataURL(file);
           return;
@@ -1558,66 +1722,112 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       });
 
       fileInput.addEventListener('change', function() {
-        void appendPendingFiles(Array.from(fileInput.files || []));
+        void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
         fileInput.value = '';
       });
-
-      let dragCounter = 0;
 
       window.addEventListener('dragenter', function(event) {
         if (hasFilePayload(event)) {
           event.preventDefault();
+          event.stopPropagation();
           if (event.dataTransfer) {
             event.dataTransfer.dropEffect = 'copy';
           }
           dragCounter++;
           setDropActive(true);
+          logDragDrop('dragenter', {
+            dragCounter: dragCounter,
+            shiftKey: event.shiftKey,
+            transfer: summarizeTransferForLog(event.dataTransfer)
+          });
         }
-      });
+      }, true);
 
       window.addEventListener('dragover', function(event) {
         if (hasFilePayload(event)) {
           event.preventDefault();
+          event.stopPropagation();
           if (event.dataTransfer) {
             event.dataTransfer.dropEffect = 'copy';
           }
+          const now = Date.now();
+          if (now - lastDragOverLogAt > 500) {
+            lastDragOverLogAt = now;
+            logDragDrop('dragover', {
+              dragCounter: dragCounter,
+              shiftKey: event.shiftKey,
+              transfer: summarizeTransferForLog(event.dataTransfer)
+            });
+          }
         }
-      });
+      }, true);
 
       window.addEventListener('dragleave', function(event) {
         if (hasFilePayload(event)) {
+          event.stopPropagation();
           dragCounter--;
           if (dragCounter <= 0) {
             dragCounter = 0;
             resetDropActive();
           }
+          logDragDrop('dragleave', {
+            dragCounter: dragCounter,
+            shiftKey: event.shiftKey,
+            transfer: summarizeTransferForLog(event.dataTransfer)
+          });
         }
-      });
+      }, true);
 
       window.addEventListener('drop', function(event) {
         if (!hasFilePayload(event)) {
+          logDragDrop('drop ignored: no file payload', {
+            transfer: summarizeTransferForLog(event.dataTransfer)
+          });
           return;
         }
+        const requestId = 'drop-' + (++dropSequence);
         event.preventDefault();
+        event.stopPropagation();
         dragCounter = 0;
         resetDropActive();
 
         const types = event.dataTransfer ? getTransferTypes(event.dataTransfer) : [];
-        console.log('LLeM Drag & Drop: Drop detected. Types:', types);
+        logDragDrop('drop detected', {
+          requestId: requestId,
+          shiftKey: event.shiftKey,
+          types: types,
+          transfer: summarizeTransferForLog(event.dataTransfer)
+        });
 
         const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
-        console.log('LLeM Drag & Drop: Native file count:', droppedFiles.length);
         if (droppedFiles.length > 0) {
-          void appendPendingFiles(droppedFiles);
-          return;
+          void appendPendingFiles(droppedFiles, 'native-drop', requestId);
         }
 
-        const droppedUris = collectDroppedUris(event.dataTransfer);
-        console.log('LLeM Drag & Drop: Parsed URI/path count:', droppedUris.length);
+        const droppedUris = collectDroppedUris(event.dataTransfer, requestId);
+        logDragDrop('parsed uris', {
+          requestId: requestId,
+          uriCount: droppedUris.length,
+          uris: droppedUris
+        });
         if (droppedUris.length > 0) {
-          vscode.postMessage({ type: 'fetchUris', uris: droppedUris });
+          const fetchRequestId = requestId + '-fetch-' + (++fetchRequestSequence);
+          logDragDrop('post fetchUris', {
+            requestId: fetchRequestId,
+            dropRequestId: requestId,
+            uriCount: droppedUris.length,
+            uris: droppedUris
+          });
+          vscode.postMessage({ type: 'fetchUris', requestId: fetchRequestId, uris: droppedUris });
         }
-      });
+
+        if (droppedFiles.length === 0 && droppedUris.length === 0) {
+          logDragDrop('drop had payload but no readable files or uris', {
+            requestId: requestId,
+            transfer: summarizeTransferForLog(event.dataTransfer)
+          });
+        }
+      }, true);
 
       sendBtn.addEventListener('click', send);
       input.addEventListener('keydown', function(event) {
@@ -1739,10 +1949,13 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             send();
             break;
           case 'fetchedUris':
-            if (msg.files && msg.files.length > 0) {
-              pendingFiles = pendingFiles.concat(msg.files);
-              renderPreview();
-            }
+            logDragDrop('fetch response', {
+              requestId: msg.requestId,
+              fileCount: msg.files ? msg.files.length : 0,
+              files: summarizeFilesForLog(msg.files || []),
+              skipped: msg.skipped || []
+            });
+            appendAttachmentRecords(msg.files || [], 'extension-fetch', msg.requestId);
             break;
         }
       });

@@ -17,6 +17,93 @@ import type { AttachedFile, ChatMessage } from './types';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
+const MAX_DROPPED_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_DROPPED_TEXT_BYTES = 512 * 1024;
+const IMAGE_ATTACHMENT_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
+const AUDIO_ATTACHMENT_EXTENSIONS = new Set(['mp3', 'wav', 'ogg']);
+const TEXT_ATTACHMENT_EXTENSIONS = new Set([
+    'txt', 'md', 'csv', 'json',
+    'js', 'ts', 'html', 'css',
+    'py', 'java', 'rs', 'go',
+    'yaml', 'yml', 'xml', 'toml'
+]);
+
+function cleanDroppedUriString(uriString: string): string {
+    return String(uriString || '').trim().replace(/^["']|["']$/g, '');
+}
+
+function parseDroppedUri(uriString: string): vscode.Uri {
+    const rawUriString = cleanDroppedUriString(uriString);
+    if (/^[a-zA-Z]:[\\/]/.test(rawUriString) || /^\\\\/.test(rawUriString)) {
+        return vscode.Uri.file(rawUriString);
+    }
+
+    try {
+        const uri = vscode.Uri.parse(rawUriString, true);
+        if (!uri.scheme) {
+            return vscode.Uri.file(rawUriString);
+        }
+        return uri;
+    } catch (_error) {
+        return vscode.Uri.file(rawUriString);
+    }
+}
+
+function droppedUriKey(uri: vscode.Uri): string {
+    if (uri.scheme === 'file') {
+        return `file:${uri.fsPath.toLowerCase()}`;
+    }
+    return uri.toString(true).toLowerCase();
+}
+
+function basenameFromUri(uri: vscode.Uri): string {
+    const pathName = uri.path.split('/').pop() || '';
+    return pathName || 'file';
+}
+
+function extensionFromName(name: string): string {
+    const dotIndex = name.lastIndexOf('.');
+    return dotIndex >= 0 ? name.slice(dotIndex + 1).toLowerCase() : '';
+}
+
+function attachmentTypeFromName(name: string): string {
+    const ext = extensionFromName(name);
+    if (ext === 'jpg' || ext === 'jpeg') {
+        return 'image/jpeg';
+    }
+    if (ext === 'svg') {
+        return 'image/svg+xml';
+    }
+    if (['png', 'gif', 'webp'].includes(ext)) {
+        return `image/${ext}`;
+    }
+    if (ext === 'mp3') {
+        return 'audio/mpeg';
+    }
+    if (['wav', 'ogg'].includes(ext)) {
+        return `audio/${ext}`;
+    }
+    return 'text/plain';
+}
+
+function isSupportedDroppedAttachment(name: string): boolean {
+    const ext = extensionFromName(name);
+    return IMAGE_ATTACHMENT_EXTENSIONS.has(ext) ||
+        AUDIO_ATTACHMENT_EXTENSIONS.has(ext) ||
+        TEXT_ATTACHMENT_EXTENSIONS.has(ext);
+}
+
+function droppedAttachmentLimit(type: string): number {
+    return type.startsWith('image/') ? MAX_DROPPED_IMAGE_BYTES : MAX_DROPPED_TEXT_BYTES;
+}
+
+function summarizeDropError(error: unknown): string {
+    if (error instanceof Error) {
+        return `${error.name}: ${error.message}`;
+    }
+    return String(error);
+}
+
 export const LLEM_VIEW_ID = 'llem.chat';
 export const LLEM_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.llem';
 
@@ -249,7 +336,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
             stopGeneration: () => this._stopGeneration(),
-            fetchUris: (uris) => this._fetchUris(uris)
+            fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
+            debugDragDrop: (phase, detail, at) => this._debugDragDrop(phase, detail, at)
         };
     }
 
@@ -311,62 +399,146 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage('LLeM does not have a live terminal session right now.');
     }
 
-    private async _fetchUris(uris: string[]): Promise<void> {
-        if (!this._view) { return; }
-        const files = [];
+    private _debugDragDrop(phase: string, detail: unknown, at?: string): void {
+        console.log('LLeM Drag & Drop: webview event', {
+            at,
+            phase,
+            detail
+        });
+    }
 
-        for (const uriString of uris) {
+    private async _fetchUris(uris: string[], requestId?: string): Promise<void> {
+        if (!this._view) { return; }
+        const startedAt = Date.now();
+        const files: AttachedFile[] = [];
+        const skipped: Array<{ reason: string; uri?: string; name?: string; size?: number; detail?: string }> = [];
+        const seenUriKeys = new Set<string>();
+        const rawUris = Array.isArray(uris) ? uris : [];
+
+        console.log('LLeM Drag & Drop: fetchUris start', {
+            requestId,
+            receivedCount: rawUris.length,
+            uris: rawUris
+        });
+
+        for (const uriString of rawUris) {
+            const rawUriString = cleanDroppedUriString(uriString);
             try {
-                console.log('LLeM: Fetching URI:', uriString);
-                
-                const rawUriString = uriString.trim().replace(/^["']|["']$/g, '');
-                let uri: vscode.Uri;
-                try {
-                    if (/^[a-zA-Z]:[\\/]/.test(rawUriString) || /^\\\\/.test(rawUriString)) {
-                        uri = vscode.Uri.file(rawUriString);
-                    } else {
-                        uri = vscode.Uri.parse(rawUriString, true);
-                        if (!uri.scheme) {
-                            uri = vscode.Uri.file(rawUriString);
-                        }
-                    }
-                } catch (e) {
-                    uri = vscode.Uri.file(rawUriString);
+                console.log('LLeM Drag & Drop: parsing dropped URI', { requestId, rawUriString });
+
+                const uri = parseDroppedUri(rawUriString);
+                const uriKey = droppedUriKey(uri);
+                if (seenUriKeys.has(uriKey)) {
+                    skipped.push({ reason: 'duplicate-uri', uri: rawUriString });
+                    console.log('LLeM Drag & Drop: skipped duplicate URI', { requestId, rawUriString, uriKey });
+                    continue;
                 }
+                seenUriKeys.add(uriKey);
 
                 if (uri.scheme !== 'file' && uri.scheme !== 'vscode-remote') { 
-                    console.log('LLeM: Skipping unsupported URI scheme:', uri.scheme);
+                    skipped.push({ reason: 'unsupported-scheme', uri: rawUriString, detail: uri.scheme });
+                    console.log('LLeM Drag & Drop: skipped unsupported URI scheme', {
+                        requestId,
+                        rawUriString,
+                        scheme: uri.scheme
+                    });
                     continue; 
                 }
                 
                 const stat = await vscode.workspace.fs.stat(uri);
-                if (stat.type === vscode.FileType.File && stat.size <= 8 * 1024 * 1024) {
-                    const data = await vscode.workspace.fs.readFile(uri);
-                    const name = uri.path.split('/').pop() || 'file';
-                    const ext = name.split('.').pop()?.toLowerCase() || '';
-                    
-                    let type = 'text/plain';
-                    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) { type = `image/${ext}`; }
-                    else if (['mp3', 'wav', 'ogg'].includes(ext)) { type = `audio/${ext}`; }
-                    
-                    files.push({
-                        name,
-                        type,
-                        data: Buffer.from(data).toString('base64'),
-                        size: stat.size
-                    });
-                    console.log('LLeM: Successfully fetched file:', name);
-                } else {
-                    console.log('LLeM: Skipping file (not a file or too large):', uri.fsPath, 'size:', stat.size);
+                const name = basenameFromUri(uri);
+                const type = attachmentTypeFromName(name);
+                const limit = droppedAttachmentLimit(type);
+
+                console.log('LLeM Drag & Drop: stat result', {
+                    requestId,
+                    name,
+                    uri: uri.toString(true),
+                    fsPath: uri.fsPath,
+                    type: stat.type,
+                    size: stat.size,
+                    attachmentType: type,
+                    limit
+                });
+
+                if (stat.type !== vscode.FileType.File) {
+                    skipped.push({ reason: 'not-file', uri: rawUriString, name, size: stat.size });
+                    console.log('LLeM Drag & Drop: skipped non-file URI', { requestId, name, rawUriString, fileType: stat.type });
+                    continue;
                 }
+
+                if (!isSupportedDroppedAttachment(name)) {
+                    skipped.push({ reason: 'unsupported-extension', uri: rawUriString, name, size: stat.size });
+                    console.log('LLeM Drag & Drop: skipped unsupported file extension', { requestId, name, rawUriString });
+                    continue;
+                }
+
+                if (type.startsWith('image/') && stat.size > limit) {
+                    skipped.push({ reason: 'image-too-large', uri: rawUriString, name, size: stat.size });
+                    console.log('LLeM Drag & Drop: skipped oversized image', { requestId, name, size: stat.size, limit });
+                    continue;
+                }
+
+                if (!type.startsWith('image/') && stat.size > MAX_DROPPED_IMAGE_BYTES) {
+                    skipped.push({ reason: 'file-too-large', uri: rawUriString, name, size: stat.size });
+                    console.log('LLeM Drag & Drop: skipped oversized non-image file', {
+                        requestId,
+                        name,
+                        size: stat.size,
+                        limit: MAX_DROPPED_IMAGE_BYTES
+                    });
+                    continue;
+                }
+
+                const data = Buffer.from(await vscode.workspace.fs.readFile(uri));
+                const truncated = !type.startsWith('image/') && data.length > limit;
+                const attachmentData = truncated ? data.subarray(0, limit) : data;
+
+                files.push({
+                    name,
+                    type,
+                    data: attachmentData.toString('base64'),
+                    truncated,
+                    originalSize: stat.size
+                });
+
+                console.log('LLeM Drag & Drop: fetched file', {
+                    requestId,
+                    name,
+                    uri: uri.toString(true),
+                    size: stat.size,
+                    encodedBytes: attachmentData.length,
+                    truncated,
+                    attachmentType: type
+                });
             } catch (e) {
-                console.error('LLeM: Failed to read dropped URI:', uriString, e);
+                const detail = summarizeDropError(e);
+                skipped.push({ reason: 'read-error', uri: rawUriString, detail });
+                console.error('LLeM Drag & Drop: failed to read dropped URI', {
+                    requestId,
+                    uri: rawUriString,
+                    error: detail
+                }, e);
             }
         }
-        
-        if (files.length > 0) {
-            this._view.webview.postMessage({ type: 'fetchedUris', files });
-        }
+
+        console.log('LLeM Drag & Drop: fetchUris complete', {
+            requestId,
+            receivedCount: rawUris.length,
+            fetchedCount: files.length,
+            skippedCount: skipped.length,
+            elapsedMs: Date.now() - startedAt,
+            files: files.map(file => ({
+                name: file.name,
+                type: file.type,
+                originalSize: file.originalSize,
+                truncated: Boolean(file.truncated),
+                encodedLength: file.data.length
+            })),
+            skipped
+        });
+
+        this._view.webview.postMessage({ type: 'fetchedUris', requestId, files, skipped });
     }
 
     private _stopGeneration(): void {
