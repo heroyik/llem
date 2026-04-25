@@ -198,13 +198,64 @@ function uniqueNotes(notes) {
   return unique;
 }
 
+function renderReadmeMeta(version) {
+  return [
+    '<p align="center">',
+    `  <strong>VSIX version:</strong> ${version} &middot;`,
+    '  <strong>License:</strong> MIT &middot;',
+    '  <strong>Engine:</strong> Ollama | LM Studio',
+    '</p>',
+  ].join('\n');
+}
+
+function stripReadmeLogoImages(readme) {
+  return readme
+    .replace(
+      /\n*<p\s+align="center">\s*<img\b[^>]*(?:alt="LLeM logo"|assets\/icon\.png)[^>]*\/?>\s*<\/p>\s*/gi,
+      '\n',
+    )
+    .replace(/<img\b[^>]*(?:alt="LLeM logo"|assets\/icon\.png)[^>]*\/?>\s*/gi, '');
+}
+
+function updateReadmeMeta(readme, version) {
+  const meta = renderReadmeMeta(version);
+  const existingMetaPattern =
+    /<p\s+align="center">\s*(?:<img\b[^>]*(?:alt="version"|badge\/version|img\.shields\.io)[^>]*\/?>\s*)+<\/p>/i;
+  const textMetaPattern =
+    /<p\s+align="center">\s*<strong>VSIX version:<\/strong>[\s\S]*?<\/p>/i;
+
+  if (textMetaPattern.test(readme)) {
+    return readme.replace(textMetaPattern, meta);
+  }
+
+  if (existingMetaPattern.test(readme)) {
+    return readme.replace(existingMetaPattern, meta);
+  }
+
+  return readme.replace(/(<\/p>\s*)/, `$1\n${meta}\n`);
+}
+
+function assertReadmeMeta(readme, version) {
+  const expectedMeta = renderReadmeMeta(version);
+  const topMatter = readme.slice(0, Math.min(readme.length, 1200));
+
+  if (!topMatter.includes(expectedMeta)) {
+    throw new Error(`README top metadata does not show VSIX version ${version}.`);
+  }
+
+  if (/img\.shields\.io\/badge\/version-|alt="version"/i.test(topMatter)) {
+    throw new Error('README top metadata still contains the old version image badge.');
+  }
+}
+
 function updateReadme(oldVersion, newVersion, notes) {
   let readme = fs.readFileSync(readmePath, 'utf8');
   const pending = extractPendingNotes(readme);
   const releaseNotesBody = uniqueNotes([...pending.notes, ...notes]);
   const artifactBaseName = getArtifactBaseName();
 
-  readme = pending.readme;
+  readme = updateReadmeMeta(stripReadmeLogoImages(pending.readme), newVersion);
+  assertReadmeMeta(readme, newVersion);
 
   const releaseNotes = [
     `### v${newVersion}`,
@@ -214,9 +265,6 @@ function updateReadme(oldVersion, newVersion, notes) {
     `- Packaged \`release/${artifactBaseName}-${newVersion}.vsix\`.`,
     '',
   ].join('\n');
-
-  readme = readme
-    .replace(/badge\/version-\d+\.\d+\.\d+-blue/, `badge/version-${newVersion}-blue`);
 
   const heading = '## Release Notes';
   const headingIndex = readme.indexOf(heading);

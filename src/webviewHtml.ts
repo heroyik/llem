@@ -1,9 +1,19 @@
 import * as vscode from 'vscode';
 
-export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Webview): string {
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Webview, extensionVersion: string): string {
     const markdownItUri = webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'node_modules', 'markdown-it', 'dist', 'markdown-it.min.js')
     );
+    const safeExtensionVersion = escapeHtml(extensionVersion || 'dev');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -125,6 +135,24 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       font-weight: 900;
       letter-spacing: -0.04em;
       color: var(--text);
+    }
+    .brand-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .version-badge {
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 2px 6px;
+      color: var(--text-dim);
+      background: var(--panel-2);
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: 0;
+      white-space: nowrap;
     }
     .subbrand {
       font-size: 10px;
@@ -262,6 +290,19 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       font-weight: 900;
       letter-spacing: -0.05em;
       margin-bottom: 8px;
+    }
+    .welcome-version {
+      display: inline-flex;
+      vertical-align: middle;
+      margin-left: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--text-dim);
+      background: var(--panel-2);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0;
     }
     .welcome-sub {
       color: var(--text-dim);
@@ -784,7 +825,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     <div class="header-left">
       <div class="logo">LL</div>
       <div class="brand-stack">
-        <span class="brand">LLeM</span>
+        <div class="brand-line"><span class="brand">LLeM</span><span class="version-badge">v${safeExtensionVersion}</span></div>
         <span class="subbrand">Local-first code sidekick</span>
       </div>
     </div>
@@ -807,7 +848,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     <div class="chat" id="chat">
       <div class="welcome">
         <div class="welcome-logo">LL</div>
-        <div class="welcome-title">LLeM</div>
+        <div class="welcome-title">LLeM<span class="welcome-version">v${safeExtensionVersion}</span></div>
         <div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div>
       </div>
     </div>
@@ -864,8 +905,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       let internetEnabled = false;
       let dragCounter = 0;
       let dropSequence = 0;
-      let fetchRequestSequence = 0;
-      let lastDragOverLogAt = 0;
       let streamEl = null;
       let streamRaw = '';
       let streamStatusEl = null;
@@ -1237,54 +1276,20 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         });
       }
 
-      function summarizeFileForLog(file) {
-        if (!file) {
-          return null;
-        }
-        return {
-          name: file.name || '',
-          type: file.type || '',
-          size: typeof file.size === 'number' ? file.size : file.originalSize,
-          truncated: Boolean(file.truncated)
-        };
-      }
-
-      function summarizeFilesForLog(files) {
-        return Array.from(files || []).map(summarizeFileForLog);
-      }
-
-      function summarizeTransferForLog(transfer) {
-        if (!transfer) {
-          return { types: [], items: [], files: [] };
-        }
-        return {
-          types: getTransferTypes(transfer),
-          items: Array.from(transfer.items || []).map(function(item) {
-            return { kind: item.kind, type: item.type };
-          }),
-          files: summarizeFilesForLog(transfer.files || [])
-        };
-      }
-
-      function logDragDrop(phase, detail) {
-        try {
-          const payload = Object.assign({
-            pendingCount: pendingFiles.length
-          }, detail || {});
-          console.log('LLeM Drag & Drop:', phase, payload);
-          vscode.postMessage({
-            type: 'debugDragDrop',
-            phase: phase,
-            detail: payload,
-            at: new Date().toISOString()
-          });
-        } catch (_error) {
-          // Keep drag/drop handling alive even if the console rejects a payload.
-        }
-      }
-
       function isVsCodeDragType(type) {
         return String(type || '').toLowerCase().startsWith('application/vnd.code.');
+      }
+
+      function canAcceptDropEvent(event) {
+        return Boolean(event && event.shiftKey && hasFilePayload(event));
+      }
+
+      function acceptDropEvent(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'copy';
+        }
       }
 
       function getAttachmentSize(file) {
@@ -1313,39 +1318,23 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         ].join('|');
       }
 
-      function appendAttachmentRecords(files, source, requestId) {
+      function appendAttachmentRecords(files) {
         const incoming = Array.from(files || []);
         if (incoming.length === 0) {
-          logDragDrop('append skipped: no files', { source: source, requestId: requestId });
           return;
         }
 
-        const beforeCount = pendingFiles.length;
         const seen = new Set(pendingFiles.map(attachmentFingerprint));
         const accepted = [];
-        const duplicates = [];
 
         incoming.forEach(function(file) {
           const key = attachmentFingerprint(file);
           if (seen.has(key)) {
-            duplicates.push(summarizeFileForLog(file));
             return;
           }
           seen.add(key);
           pendingFiles.push(file);
-          accepted.push(summarizeFileForLog(file));
-        });
-
-        logDragDrop('append result', {
-          source: source,
-          requestId: requestId,
-          incomingCount: incoming.length,
-          acceptedCount: accepted.length,
-          duplicateCount: duplicates.length,
-          beforeCount: beforeCount,
-          afterCount: pendingFiles.length,
-          accepted: accepted,
-          duplicates: duplicates
+          accepted.push(file);
         });
 
         if (accepted.length > 0) {
@@ -1443,7 +1432,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         });
       }
 
-      function collectDroppedUris(transfer, requestId) {
+      function collectDroppedUris(transfer) {
         const uris = [];
         if (!transfer) {
           return uris;
@@ -1462,13 +1451,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           if (!raw) {
             return;
           }
-
-          logDragDrop('raw transfer data', {
-            requestId: requestId,
-            type: type,
-            length: raw.length,
-            preview: raw.slice(0, 500)
-          });
 
           if (lowerType === 'text/plain' || lowerType === 'text/uri-list') {
             collectDroppedUrisFromText(raw, uris);
@@ -1521,13 +1503,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         });
       }
 
-      async function buildAttachment(file, source, requestId) {
+      async function buildAttachment(file) {
         if (!isSupportedAttachment(file)) {
-          logDragDrop('unsupported native file', {
-            source: source,
-            requestId: requestId,
-            file: summarizeFileForLog(file)
-          });
           alert(file.name + ' is not a supported attachment yet.');
           return null;
         }
@@ -1537,12 +1514,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         const limit = isImage ? MAX_IMAGE_ATTACHMENT_BYTES : MAX_TEXT_ATTACHMENT_BYTES;
 
         if (isImage && file.size > limit) {
-          logDragDrop('native image too large', {
-            source: source,
-            requestId: requestId,
-            file: summarizeFileForLog(file),
-            limit: limit
-          });
           alert(file.name + ' is too big. Images can be up to ' + formatAttachmentBytes(limit) + '.');
           return null;
         }
@@ -1559,25 +1530,11 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           originalSize: file.size
         };
 
-        logDragDrop('built native attachment', {
-          source: source,
-          requestId: requestId,
-          file: summarizeFileForLog(attachment),
-          encodedLength: base64.length
-        });
-
         return attachment;
       }
 
       async function appendPendingFiles(files, source, requestId) {
         const incoming = Array.from(files || []);
-        logDragDrop('append native start', {
-          source: source,
-          requestId: requestId,
-          incomingCount: incoming.length,
-          incoming: summarizeFilesForLog(incoming)
-        });
-
         if (incoming.length === 0) {
           return;
         }
@@ -1585,7 +1542,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         const appended = [];
         for (const file of incoming) {
           try {
-            const attachment = await buildAttachment(file, source, requestId);
+            const attachment = await buildAttachment(file);
             if (attachment) {
               appended.push(attachment);
             }
@@ -1593,14 +1550,14 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             console.error('LLeM Drag & Drop: Failed to read native file attachment.', {
               source: source,
               requestId: requestId,
-              file: summarizeFileForLog(file),
+              fileName: file && file.name,
               error: error && (error.stack || error.message || String(error))
             });
             alert('Could not read ' + file.name + '.');
           }
         }
 
-        appendAttachmentRecords(appended, source, requestId);
+        appendAttachmentRecords(appended);
       }
 
       function renderPreview() {
@@ -1700,7 +1657,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           const reader = new FileReader();
           reader.onload = function() {
             const base64 = reader.result.split(',')[1];
-            appendAttachmentRecords([{ name: 'clipboard-image.png', type: file.type, data: base64, originalSize: file.size }], 'clipboard', 'clipboard');
+            appendAttachmentRecords([{ name: 'clipboard-image.png', type: file.type, data: base64, originalSize: file.size }]);
           };
           reader.readAsDataURL(file);
           return;
@@ -1727,105 +1684,62 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       });
 
       window.addEventListener('dragenter', function(event) {
-        if (hasFilePayload(event)) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = 'copy';
-          }
-          dragCounter++;
-          setDropActive(true);
-          logDragDrop('dragenter', {
-            dragCounter: dragCounter,
-            shiftKey: event.shiftKey,
-            transfer: summarizeTransferForLog(event.dataTransfer)
-          });
+        if (!canAcceptDropEvent(event)) {
+          return;
         }
+        acceptDropEvent(event);
+        dragCounter++;
+        setDropActive(true);
       }, true);
 
       window.addEventListener('dragover', function(event) {
-        if (hasFilePayload(event)) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = 'copy';
+        if (!canAcceptDropEvent(event)) {
+          if (dragCounter > 0 && hasFilePayload(event)) {
+            dragCounter = 0;
+            resetDropActive();
           }
-          const now = Date.now();
-          if (now - lastDragOverLogAt > 500) {
-            lastDragOverLogAt = now;
-            logDragDrop('dragover', {
-              dragCounter: dragCounter,
-              shiftKey: event.shiftKey,
-              transfer: summarizeTransferForLog(event.dataTransfer)
-            });
-          }
+          return;
+        }
+        acceptDropEvent(event);
+        if (dragCounter <= 0) {
+          dragCounter = 1;
+          setDropActive(true);
         }
       }, true);
 
       window.addEventListener('dragleave', function(event) {
-        if (hasFilePayload(event)) {
-          event.stopPropagation();
-          dragCounter--;
-          if (dragCounter <= 0) {
-            dragCounter = 0;
-            resetDropActive();
-          }
-          logDragDrop('dragleave', {
-            dragCounter: dragCounter,
-            shiftKey: event.shiftKey,
-            transfer: summarizeTransferForLog(event.dataTransfer)
-          });
+        if (dragCounter <= 0) {
+          return;
+        }
+        event.stopPropagation();
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          resetDropActive();
         }
       }, true);
 
       window.addEventListener('drop', function(event) {
-        if (!hasFilePayload(event)) {
-          logDragDrop('drop ignored: no file payload', {
-            transfer: summarizeTransferForLog(event.dataTransfer)
-          });
+        if (!canAcceptDropEvent(event)) {
+          if (dragCounter > 0) {
+            dragCounter = 0;
+            resetDropActive();
+          }
           return;
         }
+        acceptDropEvent(event);
         const requestId = 'drop-' + (++dropSequence);
-        event.preventDefault();
-        event.stopPropagation();
         dragCounter = 0;
         resetDropActive();
-
-        const types = event.dataTransfer ? getTransferTypes(event.dataTransfer) : [];
-        logDragDrop('drop detected', {
-          requestId: requestId,
-          shiftKey: event.shiftKey,
-          types: types,
-          transfer: summarizeTransferForLog(event.dataTransfer)
-        });
 
         const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
         if (droppedFiles.length > 0) {
           void appendPendingFiles(droppedFiles, 'native-drop', requestId);
         }
 
-        const droppedUris = collectDroppedUris(event.dataTransfer, requestId);
-        logDragDrop('parsed uris', {
-          requestId: requestId,
-          uriCount: droppedUris.length,
-          uris: droppedUris
-        });
+        const droppedUris = collectDroppedUris(event.dataTransfer);
         if (droppedUris.length > 0) {
-          const fetchRequestId = requestId + '-fetch-' + (++fetchRequestSequence);
-          logDragDrop('post fetchUris', {
-            requestId: fetchRequestId,
-            dropRequestId: requestId,
-            uriCount: droppedUris.length,
-            uris: droppedUris
-          });
-          vscode.postMessage({ type: 'fetchUris', requestId: fetchRequestId, uris: droppedUris });
-        }
-
-        if (droppedFiles.length === 0 && droppedUris.length === 0) {
-          logDragDrop('drop had payload but no readable files or uris', {
-            requestId: requestId,
-            transfer: summarizeTransferForLog(event.dataTransfer)
-          });
+          vscode.postMessage({ type: 'fetchUris', requestId: requestId, uris: droppedUris });
         }
       }, true);
 
@@ -1925,7 +1839,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             break;
           case 'clearChat':
             document.body.classList.add('init');
-            chat.innerHTML = '<div class="welcome"><div class="welcome-logo">LL</div><div class="welcome-title">LLeM</div><div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div></div>';
+            chat.innerHTML = '<div class="welcome"><div class="welcome-logo">LL</div><div class="welcome-title">LLeM<span class="welcome-version">v${safeExtensionVersion}</span></div><div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div></div>';
             break;
           case 'restoreMessages':
             chat.innerHTML = '';
@@ -1936,7 +1850,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
               });
             } else {
               document.body.classList.add('init');
-              chat.innerHTML = '<div class="welcome"><div class="welcome-logo">LL</div><div class="welcome-title">LLeM</div><div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div></div>';
+              chat.innerHTML = '<div class="welcome"><div class="welcome-logo">LL</div><div class="welcome-title">LLeM<span class="welcome-version">v${safeExtensionVersion}</span></div><div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div></div>';
             }
             break;
           case 'focusInput':
@@ -1949,13 +1863,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
             send();
             break;
           case 'fetchedUris':
-            logDragDrop('fetch response', {
-              requestId: msg.requestId,
-              fileCount: msg.files ? msg.files.length : 0,
-              files: summarizeFilesForLog(msg.files || []),
-              skipped: msg.skipped || []
-            });
-            appendAttachmentRecords(msg.files || [], 'extension-fetch', msg.requestId);
+            appendAttachmentRecords(msg.files || []);
             break;
         }
       });

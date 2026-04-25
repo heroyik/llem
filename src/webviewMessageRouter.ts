@@ -12,7 +12,6 @@ export interface WebviewMessageRouterHost {
     showTerminal(): void;
     stopGeneration(): void;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
-    debugDragDrop(phase: string, detail: unknown, at?: string): void;
 }
 
 export async function routeWebviewMessage(message: any, host: WebviewMessageRouterHost): Promise<void> {
@@ -55,9 +54,6 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'fetchUris':
             await host.fetchUris(message.uris, message.requestId);
-            break;
-        case 'debugDragDrop':
-            host.debugDragDrop(message.phase, message.detail, message.at);
             break;
     }
 }

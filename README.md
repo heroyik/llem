@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/icon.png" width="120" alt="LLeM logo" />
-</p>
-
 <h1 align="center">LLeM</h1>
 
 <p align="center">
@@ -10,9 +6,9 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.2.40-blue" />
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-7ad66d" />
-  <img alt="engine" src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-ff9e58" />
+  <strong>VSIX version:</strong> 2.2.47 &middot;
+  <strong>License:</strong> MIT &middot;
+  <strong>Engine:</strong> Ollama | LM Studio
 </p>
 
 ## Overview
@@ -542,6 +538,53 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.47
+
+- Bumped the VSIX build from `2.2.46` to `2.2.47`.
+- Guard README version metadata before packaging so VS Code extension details cannot ship the stale badge
+- Packaged `release/llem-2.2.47.vsix`.
+
+### v2.2.46
+
+- Bumped the VSIX build from `2.2.45` to `2.2.46`.
+- Show the packaged VSIX version as README text from package.json
+- remove README image badges and logo markup that break in VS Code extension details
+- Packaged `release/llem-2.2.46.vsix`.
+
+### v2.2.45
+
+- Bumped the VSIX build from `2.2.44` to `2.2.45`.
+- Remove the README logo block that VS Code renders as a broken image in extension details
+- Packaged `release/llem-2.2.45.vsix`.
+
+### v2.2.44
+
+- Bumped the VSIX build from `2.2.43` to `2.2.44`.
+- Fix README logo rendering in extension details
+- Align README version badge with the packaged extension
+- Update extension categories to LLM and AI
+- Packaged `release/llem-2.2.44.vsix`.
+
+### v2.2.43
+
+- Bumped the VSIX build from `2.2.42` to `2.2.43`.
+- Require Shift for Antigravity drag-and-drop attachment handling
+- Remove forced drag-and-drop capture and verbose debug overhead
+- Packaged `release/llem-2.2.43.vsix`.
+
+### v2.2.42
+
+- Bumped the VSIX build from `2.2.41` to `2.2.42`.
+- Capture drag-and-drop events without requiring Shift before VS Code opens the file
+- Show the current LLeM version in the header and welcome screen
+- Packaged `release/llem-2.2.42.vsix`.
+
+### v2.2.41
+
+- Bumped the VSIX build from `2.2.40` to `2.2.41`.
+- Force drag-and-drop attachments to use copy semantics even when VS Code reports a move drag.
+- Packaged `release/llem-2.2.41.vsix`.
 
 ### v2.2.40
 
