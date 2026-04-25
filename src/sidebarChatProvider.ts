@@ -318,9 +318,19 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         for (const uriString of uris) {
             try {
                 console.log('LLeM: Fetching URI:', uriString);
-                const uri = vscode.Uri.parse(uriString.trim());
-                if (uri.scheme !== 'file') { 
-                    console.log('LLeM: Skipping non-file URI:', uri.scheme);
+                
+                let uri: vscode.Uri;
+                try {
+                    uri = vscode.Uri.parse(uriString.trim(), true);
+                    if (!uri.scheme) {
+                        uri = vscode.Uri.file(uriString.trim());
+                    }
+                } catch (e) {
+                    uri = vscode.Uri.file(uriString.trim());
+                }
+
+                if (uri.scheme !== 'file' && uri.scheme !== 'vscode-remote') { 
+                    console.log('LLeM: Skipping unsupported URI scheme:', uri.scheme);
                     continue; 
                 }
                 

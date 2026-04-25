@@ -1229,8 +1229,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           return false;
         }
         const types = Array.from(transfer.types);
+        // Include 'text/plain' to catch some VS Code Shift-drag actions
         return types.includes('Files') || 
                types.includes('text/uri-list') ||
+               types.includes('text/plain') ||
                types.some(t => t.startsWith('application/vnd.code.tree.'));
       }
 
@@ -1445,33 +1447,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         fileInput.value = '';
       });
 
-      mainView.addEventListener('dragenter', function(event) {
-        if (!hasFilePayload(event)) {
-          return;
-        }
-        event.preventDefault();
-        if (event.dataTransfer) {
-          event.dataTransfer.dropEffect = 'copy';
-        }
-        setDropActive(true);
-      });
-
-      mainView.addEventListener('dragover', function(event) {
-        if (!hasFilePayload(event)) {
-          return;
-        }
-        event.preventDefault();
-        if (event.dataTransfer) {
-          event.dataTransfer.dropEffect = 'copy';
-        }
-        setDropActive(true);
-      });
-
-      mainView.addEventListener('dragleave', function(event) {
-        if (!mainView.contains(event.relatedTarget)) {
-          resetDropActive();
-        }
-      });
+      let dragCounter = 0;
 
       window.addEventListener('dragenter', function(event) {
         if (hasFilePayload(event)) {
@@ -1479,6 +1455,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           if (event.dataTransfer) {
             event.dataTransfer.dropEffect = 'copy';
           }
+          dragCounter++;
+          setDropActive(true);
         }
       });
 
@@ -1491,11 +1469,22 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         }
       });
 
+      window.addEventListener('dragleave', function(event) {
+        if (hasFilePayload(event)) {
+          dragCounter--;
+          if (dragCounter <= 0) {
+            dragCounter = 0;
+            resetDropActive();
+          }
+        }
+      });
+
       window.addEventListener('drop', function(event) {
         if (!hasFilePayload(event)) {
           return;
         }
         event.preventDefault();
+        dragCounter = 0;
         resetDropActive();
 
         const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : [];
@@ -1503,21 +1492,24 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
 
         const isUriList = types.includes('text/uri-list');
         const hasFiles = types.includes('Files');
+        
+        let handledUriList = false;
 
         if (isUriList) {
           const uriListString = event.dataTransfer.getData('text/uri-list');
-          console.log('LLeM Drag & Drop: Handling text/uri-list. Content:', uriListString);
+          console.log('LLeM Drag & Drop: Handling text/uri-list. Content length:', uriListString ? uriListString.length : 0);
           if (uriListString) {
-            const uris = uriListString.split(/\r?\n|\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
-            console.log('LLeM Drag & Drop: Parsed URIs:', uris);
+            const uris = uriListString.split(/\\r?\\n|\\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+            console.log('LLeM Drag & Drop: Parsed URIs count:', uris.length);
             if (uris.length > 0) {
               vscode.postMessage({ type: 'fetchUris', uris: uris });
-              return;
+              handledUriList = true;
             }
           }
         }
         
-        if (hasFiles) {
+        // If we didn't handle it via URI list (or it failed), try normal files
+        if (!handledUriList && hasFiles) {
           const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
           console.log('LLeM Drag & Drop: Handling native files. Count:', droppedFiles.length);
           if (droppedFiles.length > 0) {
