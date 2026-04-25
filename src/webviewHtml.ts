@@ -1223,17 +1223,132 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         return (bytes / 1024 / 1024).toFixed(1) + 'MB';
       }
 
+      function getTransferTypes(transfer) {
+        return Array.from((transfer && transfer.types) || []);
+      }
+
+      function getLowerTransferTypes(transfer) {
+        return getTransferTypes(transfer).map(function(type) {
+          return String(type).toLowerCase();
+        });
+      }
+
       function hasFilePayload(event) {
         const transfer = event.dataTransfer;
-        if (!transfer || !transfer.types) {
+        if (!transfer) {
           return false;
         }
-        const types = Array.from(transfer.types);
-        // Include 'text/plain' to catch some VS Code Shift-drag actions
-        return types.includes('Files') || 
+        const types = getLowerTransferTypes(transfer);
+        const items = Array.from(transfer.items || []);
+        // Include 'text/plain' to catch some VS Code file/tree drag actions.
+        return types.includes('files') ||
                types.includes('text/uri-list') ||
                types.includes('text/plain') ||
-               types.some(t => t.startsWith('application/vnd.code.tree.'));
+               types.some(function(type) { return type.startsWith('application/vnd.code.tree.'); }) ||
+               items.some(function(item) { return item.kind === 'file'; });
+      }
+
+      function trimDroppedUri(value) {
+        return String(value || '').trim().replace(/^["']|["']$/g, '');
+      }
+
+      function looksLikeDroppedUri(value) {
+        const candidate = trimDroppedUri(value);
+        return /^file:\\/\\//i.test(candidate) ||
+               /^vscode-remote:\\/\\//i.test(candidate) ||
+               /^[a-zA-Z]:[\\\\/]/.test(candidate) ||
+               /^\\\\\\\\/.test(candidate) ||
+               /^\\//.test(candidate);
+      }
+
+      function addDroppedUri(uris, value) {
+        const candidate = trimDroppedUri(value);
+        if (!candidate || candidate.startsWith('#') || !looksLikeDroppedUri(candidate)) {
+          return;
+        }
+        if (!uris.includes(candidate)) {
+          uris.push(candidate);
+        }
+      }
+
+      function collectDroppedUrisFromText(text, uris) {
+        String(text || '')
+          .split(/\\r?\\n|\\r/)
+          .map(trimDroppedUri)
+          .filter(function(line) { return line.length > 0 && !line.startsWith('#'); })
+          .forEach(function(line) { addDroppedUri(uris, line); });
+      }
+
+      function collectDroppedUrisFromObject(value, uris) {
+        if (!value) {
+          return;
+        }
+
+        if (typeof value === 'string') {
+          collectDroppedUrisFromText(value, uris);
+          return;
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(function(item) { collectDroppedUrisFromObject(item, uris); });
+          return;
+        }
+
+        if (typeof value !== 'object') {
+          return;
+        }
+
+        ['external', 'fsPath', 'uri', 'resourceUri', 'path'].forEach(function(key) {
+          if (typeof value[key] === 'string') {
+            addDroppedUri(uris, value[key]);
+          } else if (value[key]) {
+            collectDroppedUrisFromObject(value[key], uris);
+          }
+        });
+
+        if (typeof value.scheme === 'string' && typeof value.path === 'string') {
+          if (value.scheme === 'file') {
+            addDroppedUri(uris, 'file://' + value.path);
+          } else if (value.scheme === 'vscode-remote') {
+            const authority = value.authority ? '//' + value.authority : '';
+            addDroppedUri(uris, 'vscode-remote:' + authority + value.path);
+          }
+        }
+      }
+
+      function collectDroppedUris(transfer) {
+        const uris = [];
+        if (!transfer) {
+          return uris;
+        }
+
+        const types = getTransferTypes(transfer);
+        types.forEach(function(type) {
+          const lowerType = String(type).toLowerCase();
+          if (lowerType !== 'text/uri-list' &&
+              lowerType !== 'text/plain' &&
+              !lowerType.startsWith('application/vnd.code.tree.')) {
+            return;
+          }
+
+          const raw = transfer.getData(type);
+          if (!raw) {
+            return;
+          }
+
+          if (lowerType === 'text/plain' || lowerType === 'text/uri-list') {
+            collectDroppedUrisFromText(raw, uris);
+            return;
+          }
+
+          try {
+            collectDroppedUrisFromObject(JSON.parse(raw), uris);
+          } catch (_error) {
+            collectDroppedUrisFromText(raw, uris);
+          }
+        });
+
+        return uris;
       }
 
       function isSupportedAttachment(file) {
@@ -1487,34 +1602,20 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         dragCounter = 0;
         resetDropActive();
 
-        const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : [];
+        const types = event.dataTransfer ? getTransferTypes(event.dataTransfer) : [];
         console.log('LLeM Drag & Drop: Drop detected. Types:', types);
 
-        const isUriList = types.includes('text/uri-list');
-        const hasFiles = types.includes('Files');
-        
-        let handledUriList = false;
-
-        if (isUriList) {
-          const uriListString = event.dataTransfer.getData('text/uri-list');
-          console.log('LLeM Drag & Drop: Handling text/uri-list. Content length:', uriListString ? uriListString.length : 0);
-          if (uriListString) {
-            const uris = uriListString.split(/\\r?\\n|\\r/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
-            console.log('LLeM Drag & Drop: Parsed URIs count:', uris.length);
-            if (uris.length > 0) {
-              vscode.postMessage({ type: 'fetchUris', uris: uris });
-              handledUriList = true;
-            }
-          }
+        const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+        console.log('LLeM Drag & Drop: Native file count:', droppedFiles.length);
+        if (droppedFiles.length > 0) {
+          void appendPendingFiles(droppedFiles);
+          return;
         }
-        
-        // If we didn't handle it via URI list (or it failed), try normal files
-        if (!handledUriList && hasFiles) {
-          const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
-          console.log('LLeM Drag & Drop: Handling native files. Count:', droppedFiles.length);
-          if (droppedFiles.length > 0) {
-            void appendPendingFiles(droppedFiles);
-          }
+
+        const droppedUris = collectDroppedUris(event.dataTransfer);
+        console.log('LLeM Drag & Drop: Parsed URI/path count:', droppedUris.length);
+        if (droppedUris.length > 0) {
+          vscode.postMessage({ type: 'fetchUris', uris: droppedUris });
         }
       });
 

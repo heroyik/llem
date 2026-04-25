@@ -319,14 +319,19 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             try {
                 console.log('LLeM: Fetching URI:', uriString);
                 
+                const rawUriString = uriString.trim().replace(/^["']|["']$/g, '');
                 let uri: vscode.Uri;
                 try {
-                    uri = vscode.Uri.parse(uriString.trim(), true);
-                    if (!uri.scheme) {
-                        uri = vscode.Uri.file(uriString.trim());
+                    if (/^[a-zA-Z]:[\\/]/.test(rawUriString) || /^\\\\/.test(rawUriString)) {
+                        uri = vscode.Uri.file(rawUriString);
+                    } else {
+                        uri = vscode.Uri.parse(rawUriString, true);
+                        if (!uri.scheme) {
+                            uri = vscode.Uri.file(rawUriString);
+                        }
                     }
                 } catch (e) {
-                    uri = vscode.Uri.file(uriString.trim());
+                    uri = vscode.Uri.file(rawUriString);
                 }
 
                 if (uri.scheme !== 'file' && uri.scheme !== 'vscode-remote') { 
