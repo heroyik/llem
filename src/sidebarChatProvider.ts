@@ -439,7 +439,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _openAttachment(file: { name: string; data?: string; type?: string }) {
+    private async _openAttachment(file: { name?: string; data?: string; type?: string; sourceUri?: string }) {
         if (!file.name) { return; }
 
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

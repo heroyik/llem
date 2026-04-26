@@ -155,6 +155,12 @@ Bridge requests are also origin-checked, rate-limited, and validated for payload
 
 ## Release Notes
 
+### v2.2.62
+
+- Bumped the VSIX build from `2.2.61` to `2.2.62`.
+- Fix type mismatch in openAttachment
+- Packaged `release/nIcK-2.2.62.vsix`.
+
 ### v2.2.61
 
 - Bumped the VSIX build from `2.2.60` to `2.2.61`.
