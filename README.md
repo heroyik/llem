@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>VSIX version:</strong> 2.2.49 &middot;
+  <strong>VSIX version:</strong> 2.2.50 &middot;
   <strong>License:</strong> MIT &middot;
   <strong>Engine:</strong> Ollama | LM Studio
 </p>
@@ -569,6 +569,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.50
+
+- Bumped the VSIX build from `2.2.49` to `2.2.50`.
+- Fixed openAttachment logic in sidebarChatProvider for better URI parsing and binary file support
+- Packaged `release/llem-2.2.50.vsix`.
 
 ### v2.2.49
 
