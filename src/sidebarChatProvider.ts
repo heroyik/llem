@@ -106,8 +106,6 @@ function summarizeDropError(error: unknown): string {
 
 function isSafeAttachmentLookupName(name: string): boolean {
     return Boolean(name) &&
-        !name.includes('/') &&
-        !name.includes('\\') &&
         !/[{}[\]*?]/.test(name);
 }
 
@@ -486,13 +484,29 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
 
             if (!uri && isSafeAttachmentLookupName(name)) {
-                const matches = await vscode.workspace.findFiles(
-                    `**/${name}`,
-                    '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}',
-                    1
-                );
-                if (matches.length > 0) {
-                    uri = matches[0];
+                // Try as a direct relative path first
+                for (const folder of vscode.workspace.workspaceFolders || []) {
+                    const candidate = vscode.Uri.joinPath(folder.uri, name);
+                    try {
+                        const stat = await vscode.workspace.fs.stat(candidate);
+                        if (stat.type === vscode.FileType.File) {
+                            uri = candidate;
+                            break;
+                        }
+                    } catch (e) {
+                        // Not found as relative path, continue
+                    }
+                }
+
+                if (!uri) {
+                    const matches = await vscode.workspace.findFiles(
+                        `**/${name}`,
+                        '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}',
+                        1
+                    );
+                    if (matches.length > 0) {
+                        uri = matches[0];
+                    }
                 }
             }
 
