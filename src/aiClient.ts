@@ -76,14 +76,46 @@ function extractStreamToken(line: string, isLMStudio: boolean): string {
         return '';
     }
 
-    const raw = line.startsWith('data: ') ? line.slice(6) : line;
-    const json = JSON.parse(raw);
-    if (json.error) {
-        return `[API error] ${json.error.message || json.error}`;
+    try {
+        const raw = line.startsWith('data: ') ? line.slice(6) : line;
+        const json = JSON.parse(raw);
+        if (json.error) {
+            return `[API error] ${json.error.message || json.error}`;
+        }
+
+        if (isLMStudio) {
+            return json.choices?.[0]?.delta?.content || '';
+        }
+
+        // Ollama specific
+        const msg = json.message;
+        if (!msg) {
+            return json.response || ''; // Fallback for some Ollama non-chat endpoints or older versions
+        }
+
+        if (msg.content) {
+            return msg.content;
+        }
+
+        // If content is missing but tool_calls exist, the model might be trying to use a tool.
+        // We should try to stringify the tool call if it's there, as our parser might handle it.
+        if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            const firstCall = msg.tool_calls[0];
+            const name = firstCall.function?.name || '';
+            const args = firstCall.function?.arguments;
+            
+            // If the arguments is a string (like our XML format), use it.
+            // If it's an object, stringify it.
+            const argsStr = typeof args === 'string' ? args : JSON.stringify(args || '');
+            
+            // Reconstruct a pseudo-tag that our parser might recognize or at least show to the user.
+            return `<${name} ${argsStr.includes('path=') ? '' : 'arguments='}"${argsStr.replace(/"/g, '&quot;')}" />`;
+        }
+
+        return '';
+    } catch {
+        return '';
     }
-    return isLMStudio
-        ? json.choices?.[0]?.delta?.content || ''
-        : json.message?.content || '';
 }
 
 export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {

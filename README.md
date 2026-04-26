@@ -186,6 +186,13 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.68
+
+- Bumped the VSIX build from `2.2.67` to `2.2.68`.
+- Fixed 'Empty Reply' bug with Gemma 4 in Ollama
+- enhanced action parser to handle tool-calling hallucinations.
+- Packaged `release/nIcK-2.2.68.vsix`.
+
 ### v2.2.66
 
 - Bumped the VSIX build from `2.2.64` to `2.2.66`.

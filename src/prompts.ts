@@ -62,4 +62,5 @@ CRITICAL RULES:
 9. File paths are RELATIVE to the user's open workspace folder, UNLESS you are saving a note to the vault.
 10. The [WORKSPACE INFO] section tells you exactly which folder is open and what files exist. Use it.
 11. All notes and brain-related files MUST be stored in the absolute path specified in [VAULT DIRECTORY]. DO NOT create a "Vault" folder inside the project workspace for notes.
-12. If the user asks you to organize raw notes into the vault, create polished markdown notes in the [VAULT DIRECTORY] using an absolute path.`;
+12. If the user asks you to organize raw notes into the vault, create polished markdown notes in the [VAULT DIRECTORY] using an absolute path.
+13. [CRITICAL] DO NOT use tool-calling syntax like "call:action_name". ALWAYS use the XML-style tags (e.g., <edit_file ...>) exactly as defined in the actions above.`;

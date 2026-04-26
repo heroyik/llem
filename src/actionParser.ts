@@ -31,35 +31,35 @@ export function stripWrappingFence(value: string): string {
 }
 
 export function parseCreateActions(message: string): PathAction[] {
-    return parsePathBodyActions(message, new RegExp(String.raw`<(?:create_file|file)\s+${PATH_ATTR}[^>]*>([\s\S]*?)<\/(?:create_file|file)>`, 'gi'));
+    return parsePathBodyActions(message, new RegExp(String.raw`(?:<|call:)\s*(?:create_file|file)\s+${PATH_ATTR}[^>]*>([\s\S]*?)<\/(?:create_file|file)>`, 'gi'));
 }
 
 export function parseEditActions(message: string): PathAction[] {
-    return parsePathBodyActions(message, new RegExp(String.raw`<(?:edit_file|edit)\s+${PATH_ATTR}[^>]*>([\s\S]*?)<\/(?:edit_file|edit)>`, 'gi'));
+    return parsePathBodyActions(message, new RegExp(String.raw`(?:<|call:)\s*(?:edit_file|edit)\s+${PATH_ATTR}[^>]*>([\s\S]*?)<\/(?:edit_file|edit)>`, 'gi'));
 }
 
 export function parseDeleteActions(message: string): SimplePathAction[] {
-    return parseSimplePathActions(message, new RegExp(String.raw`<(?:delete_file|delete)\s+${PATH_ATTR}\s*\/?>(?:<\/(?:delete_file|delete)>)?`, 'gi'));
+    return parseSimplePathActions(message, new RegExp(String.raw`(?:<|call:)\s*(?:delete_file|delete)\s+${PATH_ATTR}\s*\/?>(?:<\/(?:delete_file|delete)>)?`, 'gi'));
 }
 
 export function parseReadFileActions(message: string): SimplePathAction[] {
-    return parseSimplePathActions(message, new RegExp(String.raw`<(?:read_file|read)\s+${PATH_ATTR}\s*\/?>(?:<\/(?:read_file|read)>)?`, 'gi'));
+    return parseSimplePathActions(message, new RegExp(String.raw`(?:<|call:)\s*(?:read_file|read)\s+${PATH_ATTR}\s*\/?>(?:<\/(?:read_file|read)>)?`, 'gi'));
 }
 
 export function parseListActions(message: string): SimplePathAction[] {
-    const regex = /<(?:list_files|list_dir|ls)\s+(?:path|dir|name)=['"]?([^'">]*)['"]?\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi;
+    const regex = /(?:<|call:)\s*(?:list_files|list_dir|ls)\s+(?:path|dir|name)=['"]?([^'">]*)['"]?\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi;
     return parseSimplePathActions(message, regex).map(action => ({
         path: action.path || '.'
     }));
 }
 
 export function parseCommandActions(message: string): TextAction[] {
-    return parseTextActions(message, /<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)
+    return parseTextActions(message, /(?:<|call:)\s*(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)
         .map(action => ({ text: stripWrappingFence(action.text) }));
 }
 
 export function parseUrlActions(message: string): TextAction[] {
-    return parseTextActions(message, /<(?:read_url|url|fetch_url)>([\s\S]*?)<\/(?:read_url|url|fetch_url)>/gi);
+    return parseTextActions(message, /(?:<|call:)\s*(?:read_url|url|fetch_url)>([\s\S]*?)<\/(?:read_url|url|fetch_url)>/gi);
 }
 
 export function parseFallbackFileBlocks(message: string): PathAction[] {

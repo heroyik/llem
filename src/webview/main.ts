@@ -187,13 +187,13 @@ try {
       return '\n\n' + token + '\n\n';
     }
 
-    value = value.replace(/<create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_, filePath, content) {
+    value = value.replace(/(?:<|call:)\s*create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_, filePath, content) {
       return pushBlock('<div class="file-badge">📁 Created file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
-    value = value.replace(/<edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/gi, function(_, filePath, content) {
+    value = value.replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/gi, function(_, filePath, content) {
       return pushBlock('<div class="edit-badge">✏️ Edited file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
-    value = value.replace(/<run_command>([\s\S]*?)<\/run_command>/gi, function(_, command) {
+    value = value.replace(/(?:<|call:)\s*run_command>([\s\S]*?)<\/run_command>/gi, function(_, command) {
       return pushBlock('<div class="cmd-badge"><span>▶ ' + esc(command.trim()) + '</span><button class="btn-open" data-action="open-terminal">Open</button></div>');
     });
 

@@ -374,13 +374,13 @@ export class ChatPipeline {
 
     private stripActionTags(text: string): string {
         return text
-            .replace(/<(?:create_file|file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file)>/gi, '')
-            .replace(/<(?:edit_file|edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
-            .replace(/<(?:delete_file|delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
-            .replace(/<(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
-            .replace(/<(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
-            .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
-            .replace(/<(?:read_brain|read_vault)>[\s\S]*?<\/(?:read_brain|read_vault)>/gi, '')
+            .replace(/(?:<|call:)\s*(?:create_file|file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file)>/gi, '')
+            .replace(/(?:<|call:)\s*(?:edit_file|edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
+            .replace(/(?:<|call:)\s*(?:delete_file|delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
+            .replace(/(?:<|call:)\s*(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
+            .replace(/(?:<|call:)\s*(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
+            .replace(/(?:<|call:)\s*(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
+            .replace(/(?:<|call:)\s*(?:read_brain|read_vault)>[\s\S]*?<\/(?:read_brain|read_vault)>/gi, '')
             .trim();
     }
 
