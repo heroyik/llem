@@ -30,10 +30,8 @@ import type { ChatMessage } from './types';
 
 export interface ActionExecutionHost {
     appendChatMessage(message: ChatMessage): void;
-    getTerminal(): vscode.Terminal | undefined;
     injectSystemMessage(message: string): void;
     invalidateContextCaches(scope?: { workspace?: boolean; brain?: boolean }): void;
-    setTerminal(terminal: vscode.Terminal): void;
 }
 
 interface ActionHandlerContext extends ActionReportContext {
@@ -106,9 +104,7 @@ const HANDLERS: ActionHandler[] = [
     async (ctx) => {
         for (const action of parseCommandActions(ctx.aiMessage)) {
             const result = await executeTerminalAction(action.text, ctx.rootPath, {
-                approveCommand,
-                getTerminal: () => ctx.host.getTerminal(),
-                setTerminal: terminal => ctx.host.setTerminal(terminal)
+                approveCommand
             });
             ctx.report.push(...result.report);
         }

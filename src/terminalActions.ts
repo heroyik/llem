@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { validateTerminalCommand } from './commandPolicy';
+import { getLlemTerminal } from './terminalManager';
 
 export interface TerminalActionHost {
     approveCommand(command: string): Promise<boolean>;
-    getTerminal(): vscode.Terminal | undefined;
-    setTerminal(terminal: vscode.Terminal): void;
 }
 
 export interface TerminalActionResult {
@@ -27,15 +26,7 @@ export async function executeTerminalAction(
             return { report: [`⚠️ Command skipped: ${command}`] };
         }
 
-        let terminal = host.getTerminal();
-        if (!terminal || terminal.exitStatus !== undefined) {
-            terminal = vscode.window.createTerminal({
-                name: 'LLeM Console',
-                cwd
-            });
-            host.setTerminal(terminal);
-        }
-
+        const terminal = getLlemTerminal();
         terminal.show();
         terminal.sendText(command);
         return { report: [`🖥️ Ran: ${command}`] };

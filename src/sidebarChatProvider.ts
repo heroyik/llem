@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { getVaultDir } from './config';
 import { executeActions } from './actionExecutor';
 import { SYSTEM_PROMPT } from './prompts';
@@ -14,6 +15,8 @@ import type { SettingsCommandsHost } from './settingsCommands';
 import { routeWebviewMessage } from './webviewMessageRouter';
 import type { WebviewMessageRouterHost } from './webviewMessageRouter';
 import type { AttachedFile, ChatMessage } from './types';
+import { openDocument } from './fsUtils';
+import { getLlemTerminal } from './terminalManager';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
@@ -115,7 +118,6 @@ export const LLEM_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.llem';
 export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _view?: ChatWebviewSurface;
     private _panel?: vscode.WebviewPanel;
-    private _terminal?: vscode.Terminal;
     private _ctx: vscode.ExtensionContext;
 
     private _isSyncingBrain: boolean = false;
@@ -396,128 +398,58 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _showTerminal(): void {
-        if (this._terminal) {
-            this._terminal.show();
-            return;
-        }
-
-        vscode.window.showInformationMessage('LLeM does not have a live terminal session right now.');
+        getLlemTerminal().show();
     }
 
     private async _fetchUris(uris: string[], requestId?: string): Promise<void> {
         if (!this._view) { return; }
-        const files: AttachedFile[] = [];
-        const seenUriKeys = new Set<string>();
-        const rawUris = Array.isArray(uris) ? uris : [];
+        for (const uriString of uris) {
+            const uri = parseDroppedUri(uriString);
+            const name = basenameFromUri(uri);
+            const type = attachmentTypeFromName(name);
 
-        for (const uriString of rawUris) {
-            const rawUriString = cleanDroppedUriString(uriString);
+            if (!isSafeAttachmentLookupName(name)) {
+                continue;
+            }
+
             try {
-                const uri = parseDroppedUri(rawUriString);
-                const uriKey = droppedUriKey(uri);
-                if (seenUriKeys.has(uriKey)) {
-                    continue;
-                }
-                seenUriKeys.add(uriKey);
-
-                if (uri.scheme !== 'file' && uri.scheme !== 'vscode-remote') { 
-                    continue; 
-                }
-
                 const stat = await vscode.workspace.fs.stat(uri);
-                const name = basenameFromUri(uri);
-                const type = attachmentTypeFromName(name);
-                const limit = droppedAttachmentLimit(type);
-
-                if (stat.type !== vscode.FileType.File) {
+                if (stat.type === vscode.FileType.Directory) {
                     continue;
                 }
-
-                if (!isSupportedDroppedAttachment(name)) {
+                if (stat.size > droppedAttachmentLimit(type)) {
+                    this._view.webview.postMessage({
+                        type: 'dropError',
+                        value: `File too large: ${name} (${Math.round(stat.size / 1024)} KB)`
+                    });
                     continue;
                 }
-
-                if (stat.size > limit) {
-                    continue;
-                }
-
-                const data = Buffer.from(await vscode.workspace.fs.readFile(uri));
-
-                files.push({
-                    name,
-                    type,
-                    data: data.toString('base64'),
-                    sourceUri: uri.toString(true),
-                    truncated: false,
-                    originalSize: stat.size
+                const bytes = await vscode.workspace.fs.readFile(uri);
+                const data = Buffer.from(bytes).toString('base64');
+                this._view.webview.postMessage({
+                    type: 'injectAttachment',
+                    value: { name, type, data, requestId }
                 });
-            } catch (e) {
-                console.warn('LLeM Drag & Drop: skipped dropped URI', {
-                    requestId,
-                    uri: rawUriString,
-                    error: summarizeDropError(e)
+            } catch (err) {
+                this._view.webview.postMessage({
+                    type: 'dropError',
+                    value: `Could not read ${name}: ${summarizeDropError(err)}`
                 });
             }
         }
-
-        this._view.webview.postMessage({ type: 'fetchedUris', requestId, files });
     }
 
-    private async _openAttachment(file: { name?: string; sourceUri?: string }): Promise<void> {
-        const name = String(file?.name || '').trim();
-        const sourceUri = String(file?.sourceUri || '').trim();
+    private async _openAttachment(file: { name: string; data?: string; type?: string }) {
+        if (!file.name) { return; }
 
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) { return; }
+
+        const absolutePath = path.isAbsolute(file.name) ? file.name : path.join(workspaceRoot, file.name);
         try {
-            let uri: vscode.Uri | undefined;
-            if (sourceUri) {
-                try {
-                    const parsed = parseDroppedUri(sourceUri);
-                    if (parsed.scheme === 'file' || parsed.scheme === 'vscode-remote') {
-                        const stat = await vscode.workspace.fs.stat(parsed);
-                        if (stat.type === vscode.FileType.File) {
-                            uri = parsed;
-                        }
-                    }
-                } catch (e) {
-                    // Ignore stat or parse errors so it can fallback to workspace search
-                }
-            }
-
-            if (!uri && isSafeAttachmentLookupName(name)) {
-                // Try as a direct relative path first
-                for (const folder of vscode.workspace.workspaceFolders || []) {
-                    const candidate = vscode.Uri.joinPath(folder.uri, name);
-                    try {
-                        const stat = await vscode.workspace.fs.stat(candidate);
-                        if (stat.type === vscode.FileType.File) {
-                            uri = candidate;
-                            break;
-                        }
-                    } catch (e) {
-                        // Not found as relative path, continue
-                    }
-                }
-
-                if (!uri) {
-                    const matches = await vscode.workspace.findFiles(
-                        `**/${name}`,
-                        '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}',
-                        1
-                    );
-                    if (matches.length > 0) {
-                        uri = matches[0];
-                    }
-                }
-            }
-
-            if (!uri) {
-                vscode.window.showWarningMessage(`Could not find ${name || 'that attachment'} in the workspace.`);
-                return;
-            }
-
-            await vscode.commands.executeCommand('vscode.open', uri, { preview: false });
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Could not open ${name || 'attachment'}: ${error.message}`);
+            await openDocument(vscode.Uri.file(absolutePath));
+        } catch (err) {
+            vscode.window.showWarningMessage(`Could not open ${file.name}: ${summarizeDropError(err)}`);
         }
     }
 
@@ -597,10 +529,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private async _executeActions(aiMessage: string): Promise<string[]> {
         return executeActions(aiMessage, {
             appendChatMessage: (message) => this._chatSession.chatHistory.push(message),
-            getTerminal: () => this._terminal,
             injectSystemMessage: (message) => this.injectSystemMessage(message),
-            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
-            setTerminal: (terminal) => { this._terminal = terminal; }
+            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope)
         });
     }
 
