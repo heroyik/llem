@@ -50,4 +50,12 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
             import('./perfLogger').then(m => m.PerfLogger.showDiagnostics());
         })
     );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('llem.testConsole', () => {
+            console.log('LLeM Test: Standard log entry');
+            console.error('LLeM Test: Error log entry');
+            console.log('LLeM Test: Multiple\nline\nlog\nentry');
+            vscode.window.showInformationMessage('Test logs sent to LLeM Console.');
+        })
+    );
 }
