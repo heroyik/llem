@@ -472,12 +472,16 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         try {
             let uri: vscode.Uri | undefined;
             if (sourceUri) {
-                const parsed = vscode.Uri.parse(sourceUri, true);
-                if (parsed.scheme === 'file' || parsed.scheme === 'vscode-remote') {
-                    const stat = await vscode.workspace.fs.stat(parsed);
-                    if (stat.type === vscode.FileType.File) {
-                        uri = parsed;
+                try {
+                    const parsed = parseDroppedUri(sourceUri);
+                    if (parsed.scheme === 'file' || parsed.scheme === 'vscode-remote') {
+                        const stat = await vscode.workspace.fs.stat(parsed);
+                        if (stat.type === vscode.FileType.File) {
+                            uri = parsed;
+                        }
                     }
+                } catch (e) {
+                    // Ignore stat or parse errors so it can fallback to workspace search
                 }
             }
 
@@ -487,7 +491,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}',
                     1
                 );
-                uri = matches[0];
+                if (matches.length > 0) {
+                    uri = matches[0];
+                }
             }
 
             if (!uri) {
@@ -495,8 +501,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            const doc = await vscode.workspace.openTextDocument(uri);
-            await vscode.window.showTextDocument(doc, { preview: false });
+            await vscode.commands.executeCommand('vscode.open', uri, { preview: false });
         } catch (error: any) {
             vscode.window.showErrorMessage(`Could not open ${name || 'attachment'}: ${error.message}`);
         }
