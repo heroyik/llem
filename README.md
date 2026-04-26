@@ -12,20 +12,141 @@ A local-first coding sidekick for VS Code and Cursor. Stream live model output, 
 
 ## Requirements
 
-LLeM requires a local model server running on your machine:
+To get real responses, you need one local model runtime running:
 
-- [Ollama](https://ollama.com/) (Default: `http://127.0.0.1:11434`)
-- [LM Studio](https://lmstudio.ai/)
+- Ollama
+- LM Studio
 
-## Extension Settings
+LLeM can auto-detect common local endpoints, but you can also set them manually.
 
-This extension contributes the following settings:
+## Engine Setup
 
-- `llem.engineUrl`: Local model endpoint URL.
-- `llem.defaultModel`: Default model slug (e.g., `gemma4:e2b`).
-- `llem.vaultPath`: Optional path to your markdown vault.
-- `llem.requestTimeout`: Request timeout in seconds.
-- `llem.bridgeEnabled`: Enable the local HTTP bridge for external tools.
+### Ollama
+
+Typical local URL:
+
+```text
+http://127.0.0.1:11434
+```
+
+Common flow:
+
+```bash
+ollama pull gemma4:e2b
+ollama list
+ollama serve
+```
+
+If Ollama is running and the chosen model exists, LLeM can talk to it directly.
+
+### LM Studio
+
+Typical local URL:
+
+```text
+http://127.0.0.1:1234
+```
+
+In LM Studio:
+
+1. download or select a model
+2. load the model
+3. enable the local server
+4. confirm the server is available
+
+Once the LM Studio server is up, LLeM can target it using the same chat flow.
+
+## Configuration
+
+To change settings such as `llem.engineUrl` or `llem.defaultModel`, you should open
+your VS Code settings in JSON format.
+
+- **macOS**: Press `CMD+SHIFT+P`, then select **Preferences: Open User Settings (JSON)**.
+- **Windows**: Press `CTRL+SHIFT+P`, then select **Preferences: Open User Settings (JSON)**.
+
+LLeM exposes a small set of settings under the `llem` namespace.
+
+### `llem.engineUrl`
+
+The local or remote model endpoint URL.
+
+Default:
+
+```text
+http://127.0.0.1:11434
+```
+
+Use this to switch between Ollama and LM Studio. If you are connecting to a
+**remote Ollama server**, specify the IP address or hostname:
+
+```text
+http://192.168.1.100:11434
+```
+
+### `llem.defaultModel`
+
+The default model slug used for requests.
+
+Default:
+
+```text
+gemma4:e2b
+```
+
+Use a model name that exists in your local engine.
+
+### `llem.requestTimeout`
+
+The request timeout in seconds.
+
+Default:
+
+```text
+300
+```
+
+If long prompts or slower models are timing out, raise this number.
+
+### `llem.vaultPath`
+
+Optional custom path to the markdown vault.
+
+If this value is empty, LLeM uses:
+
+```text
+~/.llem-vault
+```
+
+### `llem.bridgeEnabled`
+
+Whether LLeM should start the optional local HTTP bridge on `127.0.0.1:4825`.
+
+Default:
+
+```text
+false
+```
+
+Keep this off unless you intentionally connect another local tool to LLeM.
+
+### `llem.bridgeToken`
+
+Optional token for the local HTTP bridge.
+
+Default:
+
+```text
+empty
+```
+
+When set, bridge callers must send either:
+
+```text
+Authorization: Bearer <token>
+X-LLeM-Token: <token>
+```
+
+Bridge requests are also origin-checked, rate-limited, and validated for payload type and size before they reach the local model or vault writer.
 
 ## Known Issues
 
@@ -33,6 +154,18 @@ This extension contributes the following settings:
 - Ensure your local server is running before attempting to chat.
 
 ## Release Notes
+
+### v2.2.59
+
+- Bumped the VSIX build from `2.2.58` to `2.2.59`.
+- Cleaned up VSIX payload size and restored configuration docs
+- Packaged `release/llem-2.2.59.vsix`.
+
+### v2.2.58
+
+- Bumped the VSIX build from `2.2.57` to `2.2.58`.
+- Add Ollama settings to README and exclude test files from VSIX to reduce package size
+- Packaged `release/llem-2.2.58.vsix`.
 
 ### v2.2.57
 

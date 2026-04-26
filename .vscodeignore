@@ -12,3 +12,6 @@ tsconfig.json
 *.vsix
 preview.html
 temp/**
+tests/**
+out-test/**
+tsconfig.test.json
