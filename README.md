@@ -1,15 +1,10 @@
-<h1 align="center">LLeM</h1>
+# LLeM
 
-<p align="center">
-  <strong>A local-first coding sidekick for VS Code and Cursor.</strong><br/>
-  Stream model output live, chat with your repo, edit files, run terminal commands, and keep your notes in a markdown vault without shipping your code to the cloud.
-</p>
+**A local-first coding sidekick for VS Code and Cursor.**
 
-<p align="center">
-  <strong>VSIX version:</strong> 2.2.50 &middot;
-  <strong>License:</strong> MIT &middot;
-  <strong>Engine:</strong> Ollama | LM Studio
-</p>
+Stream model output live, chat with your repo, edit files, run terminal commands, and keep your notes in a markdown vault without shipping your code to the cloud.
+
+**VSIX version:** 2.2.50 · **License:** MIT · **Engine:** Ollama | LM Studio
 
 ## Overview
 
