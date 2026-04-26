@@ -2,7 +2,7 @@
   "name": "llem",
   "displayName": "LLeM",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
-  "version": "2.2.47",
+  "version": "2.2.48",
   "publisher": "nIcK",
   "author": "nIcK",
   "repository": {
@@ -70,6 +70,10 @@
       {
         "command": "llem.showVaultMap",
         "title": "LLeM: Open Vault Map"
+      },
+      {
+        "command": "llem.showDiagnostics",
+        "title": "LLeM: Show Diagnostics"
       }
     ],
     "keybindings": [
@@ -135,13 +139,30 @@
           "type": "string",
           "default": "",
           "description": "Optional path to your markdown vault. Leave it blank and LLeM spins up its own stash."
+        },
+        "llem.bridgeEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the local HTTP bridge on 127.0.0.1:4825 for external local tools. Keep this off unless you need it."
+        },
+        "llem.bridgeToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token for the local HTTP bridge. When set, requests must include Authorization: Bearer <token> or X-LLeM-Token."
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
+    "compile:ext": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
+    "compile:webview": "esbuild src/webview/main.ts --bundle --outfile=assets/webview.js --minify && esbuild src/webview/styles.css --outfile=assets/webview.css --minify",
+    "compile": "npm run compile:ext && npm run compile:webview",
+    "typecheck": "tsc -p ./ --noEmit",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run build:test && node --test tests/*.test.mjs",
+    "audit:prod": "npm audit --omit=dev",
+    "audit:all": "npm audit",
     "package:vsix": "node scripts/package-vsix.mjs",
     "package:vsix:local": "LOCAL_VSIX=1 node scripts/package-vsix.mjs",
     "watch": "tsc -watch -p ./",
@@ -151,7 +172,7 @@
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
     "@vercel/ncc": "^0.38.4",
-    "@vscode/vsce": "^3.9.1",
+    "@vscode/vsce": "^2.25.0",
     "esbuild": "^0.28.0",
     "typescript": "^5.1.3"
   },

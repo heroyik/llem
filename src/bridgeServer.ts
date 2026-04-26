@@ -1,10 +1,28 @@
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import { isBridgeRequestAuthorized } from './bridgeAuth';
+import { BridgePayloadError, readBridgePrompt, readBridgeVaultDrop } from './bridgePayload';
+import { FixedWindowRateLimiter } from './bridgeRateLimit';
 import { getConfig, getVaultDir } from './config';
 import { runLocalChatCompletion } from './aiClient';
+import { writeUtf8FileAtomic } from './atomicWrite';
 import { tryAutoPushBrain } from './brainGitSync';
 import { ensureDir, safeDateFolderName, sanitizeFileName } from './fsUtils';
+
+const MAX_BRIDGE_JSON_BODY_BYTES = 1024 * 1024;
+const BRIDGE_RATE_LIMIT_MAX_REQUESTS = 30;
+const BRIDGE_RATE_LIMIT_WINDOW_MS = 60_000;
+const ALLOWED_BRIDGE_ORIGINS = [
+    /^vscode-webview:\/\//i,
+    /^https:\/\/.*\.vscode-cdn\.net$/i,
+    /^http:\/\/127\.0\.0\.1(?::\d+)?$/i,
+    /^http:\/\/localhost(?::\d+)?$/i
+];
+const bridgeRateLimiter = new FixedWindowRateLimiter(
+    BRIDGE_RATE_LIMIT_MAX_REQUESTS,
+    BRIDGE_RATE_LIMIT_WINDOW_MS
+);
 
 export interface BridgeProvider {
     _brainEnabled: boolean;
@@ -16,10 +34,25 @@ export interface BridgeProvider {
     sendPromptFromExtension(prompt: string): void;
 }
 
+class BridgeHttpError extends Error {
+    constructor(public readonly statusCode: number, message: string) {
+        super(message);
+    }
+}
+
 function readJsonBody(req: http.IncomingMessage): Promise<any> {
     return new Promise((resolve, reject) => {
         let body = '';
-        req.on('data', chunk => body += chunk.toString());
+        let receivedBytes = 0;
+        req.on('data', chunk => {
+            receivedBytes += chunk.length;
+            if (receivedBytes > MAX_BRIDGE_JSON_BODY_BYTES) {
+                reject(new BridgeHttpError(413, 'Request body is too large.'));
+                req.destroy();
+                return;
+            }
+            body += chunk.toString();
+        });
         req.on('end', () => {
             try {
                 resolve(body ? JSON.parse(body) : {});
@@ -36,12 +69,31 @@ function writeJson(res: http.ServerResponse, statusCode: number, payload: unknow
     res.end(JSON.stringify(payload));
 }
 
+function applyCors(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const origin = req.headers.origin;
+    if (!origin) {
+        return true;
+    }
+
+    const allowed = ALLOWED_BRIDGE_ORIGINS.some(pattern => pattern.test(origin));
+    if (!allowed) {
+        writeJson(res, 403, { error: 'Origin is not allowed.' });
+        return false;
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-LLeM-Token');
+    return true;
+}
+
 export function startBridgeServer(provider: BridgeProvider): void {
     try {
         const server = http.createServer(async (req, res) => {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            if (!applyCors(req, res)) {
+                return;
+            }
 
             if (req.method === 'OPTIONS') {
                 res.writeHead(200);
@@ -49,10 +101,24 @@ export function startBridgeServer(provider: BridgeProvider): void {
                 return;
             }
 
+            if (!isAuthorizedBridgeRequest(req)) {
+                writeJson(res, 401, { error: 'Bridge token is required or invalid.' });
+                return;
+            }
+
+            if (!applyRateLimit(req, res)) {
+                return;
+            }
+
             try {
                 await handleBridgeRequest(req, res, provider);
             } catch (error: any) {
-                writeJson(res, 500, { error: error.message });
+                const statusCode = error instanceof BridgeHttpError
+                    ? error.statusCode
+                    : error instanceof BridgePayloadError
+                        ? 400
+                        : 500;
+                writeJson(res, statusCode, { error: error.message });
             }
         });
 
@@ -64,6 +130,28 @@ export function startBridgeServer(provider: BridgeProvider): void {
     }
 }
 
+function isAuthorizedBridgeRequest(req: http.IncomingMessage): boolean {
+    return isBridgeRequestAuthorized(req.headers, getConfig().bridgeToken);
+}
+
+function applyRateLimit(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    if (req.method === 'GET' && req.url === '/ping') {
+        return true;
+    }
+
+    bridgeRateLimiter.prune();
+    const key = `${req.socket.remoteAddress || 'local'}:${req.method || 'GET'}:${req.url || '/'}`;
+    const result = bridgeRateLimiter.check(key);
+    if (result.allowed) {
+        return true;
+    }
+
+    const retryAfterSeconds = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    writeJson(res, 429, { error: `Too many bridge requests. Try again in ${retryAfterSeconds}s.` });
+    return false;
+}
+
 async function handleBridgeRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -73,10 +161,11 @@ async function handleBridgeRequest(
         provider.ensureFirstRunSetup();
         const vaultDir = getVaultDir();
         const vaultCount = fs.existsSync(vaultDir) ? provider.getBrainFileCount() : 0;
+        const { bridgeToken: _bridgeToken, ...publicConfig } = getConfig();
         writeJson(res, 200, {
             status: 'ok',
             msg: 'LLeM Bridge Ready',
-            config: getConfig(),
+            config: publicConfig,
             vault: { fileCount: vaultCount, enabled: provider._brainEnabled }
         });
         return;
@@ -84,7 +173,7 @@ async function handleBridgeRequest(
 
     if (req.method === 'POST' && req.url === '/api/exam') {
         const parsed = await readJsonBody(req);
-        const prompt = parsed.prompt || 'Queued bridge task';
+        const prompt = readBridgePrompt(parsed, 'Queued bridge task');
         provider.sendPromptFromExtension(`[Bridge task received] ${prompt}`);
         const responseText = await runLocalChatCompletion(prompt);
         writeJson(res, 200, { success: true, rawOutput: responseText });
@@ -93,8 +182,9 @@ async function handleBridgeRequest(
 
     if (req.method === 'POST' && req.url === '/api/evaluate') {
         const parsed = await readJsonBody(req);
-        const promptPreview = String(parsed.prompt || '').substring(0, 60);
-        const fullPrompt = `Solve the task below. Return only the answer and the reasoning that directly supports it.\n\n[TASK]\n${parsed.prompt}`;
+        const prompt = readBridgePrompt(parsed, '');
+        const promptPreview = prompt.substring(0, 60);
+        const fullPrompt = `Solve the task below. Return only the answer and the reasoning that directly supports it.\n\n[TASK]\n${prompt}`;
 
         provider.injectSystemMessage(`**[Benchmark run started]**\n\nLLeM is working through this task in the background:\n> _"${promptPreview}..."_`);
 
@@ -140,6 +230,7 @@ async function handleBridgeRequest(
 
     if (req.method === 'POST' && (req.url === '/api/brain-inject' || req.url === '/api/vault-drop')) {
         const parsed = await readJsonBody(req);
+        const drop = readBridgeVaultDrop(parsed);
         const vaultDir = getVaultDir();
         ensureDir(vaultDir);
 
@@ -147,15 +238,15 @@ async function handleBridgeRequest(
         const dropPath = path.join(vaultDir, 'drops', dateStr);
         ensureDir(dropPath);
 
-        const safeTitle = sanitizeFileName(parsed.title, 'vault_drop').replace(/\./g, '_');
+        const safeTitle = sanitizeFileName(drop.title, 'vault_drop').replace(/\./g, '_');
         const filePath = path.join(dropPath, `${safeTitle}.md`);
-        fs.writeFileSync(filePath, parsed.markdown, 'utf-8');
+        await writeUtf8FileAtomic(filePath, drop.markdown);
         provider.invalidateContextCaches({ brain: true });
 
-        provider.injectSystemMessage(`\`\`\`console\n[LLeM] Vault drop incoming...\n[LLeM] Saved pack: ${parsed.title}\n[LLeM] Path: drops/${dateStr}/${safeTitle}.md\n[LLeM] Status: synced into local context\n\`\`\``);
+        provider.injectSystemMessage(`\`\`\`console\n[LLeM] Vault drop incoming...\n[LLeM] Saved pack: ${drop.title}\n[LLeM] Path: drops/${dateStr}/${safeTitle}.md\n[LLeM] Status: synced into local context\n\`\`\``);
 
         setTimeout(() => {
-            provider.sendPromptFromExtension(`[LLeM vault drop] You just absorbed a new knowledge pack called "${parsed.title}". Reply with exactly one confident sentence that says you have it in the vault and are ready for questions about it. No extra chatter.`);
+            provider.sendPromptFromExtension(`[LLeM vault drop] You just absorbed a new knowledge pack called "${drop.title}". Reply with exactly one confident sentence that says you have it in the vault and are ready for questions about it. No extra chatter.`);
         }, 1500);
 
         tryAutoPushBrain(vaultDir, `Vault drop: ${safeTitle}`, provider);

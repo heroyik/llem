@@ -12,6 +12,7 @@ export interface WebviewMessageRouterHost {
     showTerminal(): void;
     stopGeneration(): void;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
+    openAttachment(file: { name?: string; sourceUri?: string }): Promise<void>;
 }
 
 export async function routeWebviewMessage(message: any, host: WebviewMessageRouterHost): Promise<void> {
@@ -54,6 +55,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'fetchUris':
             await host.fetchUris(message.uris, message.requestId);
+            break;
+        case 'openAttachment':
+            await host.openAttachment(message.file || {});
             break;
     }
 }

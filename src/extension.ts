@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { startBridgeServer } from './bridgeServer';
+import { getConfig } from './config';
 import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 
@@ -20,7 +21,9 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    startBridgeServer(provider);
+    if (getConfig().bridgeEnabled) {
+        startBridgeServer(provider);
+    }
 
     registerExtensionCommands(context, provider);
 }

@@ -13,10 +13,13 @@ export const MAX_CONTEXT_SIZE = 12_000;
 export const WORKSPACE_CONTEXT_CACHE_TTL_MS = 30_000;
 export const SECOND_BRAIN_CONTEXT_CACHE_TTL_MS = 60_000;
 export const BRAIN_FILES_CACHE_TTL_MS = 60_000;
+export const MAX_BRAIN_FILES = 1000;
 
 export function getConfig(): LlemConfig {
     const cfg = vscode.workspace.getConfiguration('llem');
     return {
+        bridgeEnabled: cfg.get<boolean>('bridgeEnabled', false),
+        bridgeToken: cfg.get<string>('bridgeToken', ''),
         ollamaBase: cfg.get<string>('engineUrl', 'http://127.0.0.1:11434'),
         defaultModel: cfg.get<string>('defaultModel', 'gemma4:e2b'),
         maxTreeFiles: 200,

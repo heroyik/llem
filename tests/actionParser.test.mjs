@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const {
+  parseCommandActions,
+  parseCreateActions,
+  parseDeleteActions,
+  parseFallbackFileBlocks,
+  parseListActions,
+  parseReadFileActions,
+  parseUrlActions,
+  stripWrappingFence
+} = require('../out-test/actionParser.js');
+
+test('parseCreateActions extracts path and strips wrapping code fence', () => {
+  const actions = parseCreateActions(`
+<create_file path="src/app.ts">
+\`\`\`ts
+export const value = 1;
+\`\`\`
+</create_file>
+`);
+
+  assert.deepEqual(actions, [
+    { path: 'src/app.ts', body: 'export const value = 1;' }
+  ]);
+});
+
+test('path actions preserve nested paths for read, list, and delete', () => {
+  assert.deepEqual(parseReadFileActions('<read_file path="src/nested/file.ts"/>'), [
+    { path: 'src/nested/file.ts' }
+  ]);
+  assert.deepEqual(parseListActions('<list_files path="src/nested"/>'), [
+    { path: 'src/nested' }
+  ]);
+  assert.deepEqual(parseDeleteActions('<delete_file path="src/nested/file.ts"/>'), [
+    { path: 'src/nested/file.ts' }
+  ]);
+});
+
+test('parseCommandActions strips fenced command bodies', () => {
+  const actions = parseCommandActions(`
+<run_command>
+\`\`\`bash
+npm test
+\`\`\`
+</run_command>
+`);
+
+  assert.deepEqual(actions, [{ text: 'npm test' }]);
+});
+
+test('parseUrlActions trims requested URLs', () => {
+  assert.deepEqual(parseUrlActions('<read_url> https://example.com/a?q=1 </read_url>'), [
+    { text: 'https://example.com/a?q=1' }
+  ]);
+});
+
+test('parseFallbackFileBlocks extracts file comments from fenced code', () => {
+  const actions = parseFallbackFileBlocks(`
+\`\`\`ts
+// file: src/generated.ts
+export const generated = true;
+\`\`\`
+`);
+
+  assert.deepEqual(actions, [
+    { path: 'src/generated.ts', body: 'export const generated = true;' }
+  ]);
+});
+
+test('stripWrappingFence leaves unfenced content alone', () => {
+  assert.equal(stripWrappingFence('plain text'), 'plain text');
+});

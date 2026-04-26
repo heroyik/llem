@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "out-test",
+    "sourceMap": false
+  },
+  "include": [
+    "src/actionParser.ts",
+    "src/atomicWrite.ts",
+    "src/bridgeAuth.ts",
+    "src/bridgePayload.ts",
+    "src/bridgeRateLimit.ts",
+    "src/commandPolicy.ts",
+    "src/fileActions.ts",
+    "src/security.ts",
+    "src/webActions.ts"
+  ]
+}

@@ -44,4 +44,10 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
             showBrainNetwork(context);
         })
     );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('llem.showDiagnostics', () => {
+            import('./perfLogger').then(m => m.PerfLogger.showDiagnostics());
+        })
+    );
 }

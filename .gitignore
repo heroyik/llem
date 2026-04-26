@@ -1,8 +1,11 @@
 node_modules/
 out/
+out-test/
 *.vsix
 .vscode-test/
 preview.html
 .DS_Store
 temp/
 release/
+assets/webview.js
+assets/webview.css

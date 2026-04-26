@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getConfig } from './config';
+import { PerfLogger } from './perfLogger';
 import { resolveAIEndpoint, streamCompletion } from './aiClient';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage } from './types';
 
@@ -75,6 +76,10 @@ export class ChatPipeline {
                 options.internetEnabled,
                 DEFAULT_BACKGROUND_LABEL
             );
+
+            const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
+            PerfLogger.update({ promptSizeEstimateChars: promptChars });
+
             this.attachImagesToRequest(endpoint, reqMessages, attachments.imageFiles);
 
             this.host.postWebviewMessage({ type: 'streamStart' });
@@ -310,7 +315,11 @@ export class ChatPipeline {
         timeout: number,
         signal?: AbortSignal
     ): Promise<string> {
-        return streamCompletion({
+        const streamStart = performance.now();
+        let firstTokenTime = 0;
+        let tokenCount = 0;
+
+        const result = await streamCompletion({
             endpoint,
             messages,
             modelName,
@@ -320,8 +329,21 @@ export class ChatPipeline {
             topK: this.host.getTopK(),
             signal
         }, token => {
+            if (firstTokenTime === 0) {
+                firstTokenTime = performance.now();
+                PerfLogger.update({ streamFirstTokenMs: firstTokenTime - streamStart });
+            }
+            tokenCount++;
             this.host.postWebviewMessage({ type: 'streamChunk', value: token });
         });
+
+        const totalSeconds = (performance.now() - firstTokenTime) / 1000;
+        PerfLogger.update({
+            streamTotalTokens: tokenCount,
+            streamTokensPerSecond: totalSeconds > 0 ? tokenCount / totalSeconds : 0
+        });
+
+        return result;
     }
 
     private appendAgentReport(aiMessage: string, report: string[]): string {

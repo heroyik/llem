@@ -2,6 +2,10 @@ import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
 
+const ENDPOINT_CACHE_TTL_MS = 15_000;
+
+let endpointCache: { baseUrl: string; endpoint: AIEndpoint; expiresAt: number } | undefined;
+
 export function stripTrailingSlash(value: string): string {
     return value.endsWith('/') ? value.slice(0, -1) : value;
 }
@@ -24,19 +28,28 @@ export function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
 }
 
 export async function resolveAIEndpoint(config: LlemConfig): Promise<AIEndpoint> {
+    const now = Date.now();
+    if (endpointCache && endpointCache.baseUrl === config.ollamaBase && endpointCache.expiresAt > now) {
+        return endpointCache.endpoint;
+    }
+
     const endpoint = normalizeAIEndpoint(config.ollamaBase);
     if (endpoint.isLMStudio) {
+        endpointCache = { baseUrl: config.ollamaBase, endpoint, expiresAt: now + ENDPOINT_CACHE_TTL_MS };
         return endpoint;
     }
 
     try {
         await axios.get(`${stripTrailingSlash(config.ollamaBase)}/api/tags`, { timeout: 1000 });
+        endpointCache = { baseUrl: config.ollamaBase, endpoint, expiresAt: now + ENDPOINT_CACHE_TTL_MS };
         return endpoint;
     } catch {
-        return {
+        const fallback = {
             isLMStudio: true,
             apiUrl: 'http://127.0.0.1:1234/v1/chat/completions'
         };
+        endpointCache = { baseUrl: config.ollamaBase, endpoint: fallback, expiresAt: now + ENDPOINT_CACHE_TTL_MS };
+        return fallback;
     }
 }
 

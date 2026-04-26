@@ -104,6 +104,13 @@ function summarizeDropError(error: unknown): string {
     return String(error);
 }
 
+function isSafeAttachmentLookupName(name: string): boolean {
+    return Boolean(name) &&
+        !name.includes('/') &&
+        !name.includes('\\') &&
+        !/[{}[\]*?]/.test(name);
+}
+
 export const LLEM_VIEW_ID = 'llem.chat';
 export const LLEM_VIEW_CONTAINER_COMMAND = 'workbench.view.extension.llem';
 
@@ -336,7 +343,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
             stopGeneration: () => this._stopGeneration(),
-            fetchUris: (uris, requestId) => this._fetchUris(uris, requestId)
+            fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
+            openAttachment: (file) => this._openAttachment(file)
         };
     }
 
@@ -431,23 +439,18 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     continue;
                 }
 
-                if (type.startsWith('image/') && stat.size > limit) {
-                    continue;
-                }
-
-                if (!type.startsWith('image/') && stat.size > MAX_DROPPED_IMAGE_BYTES) {
+                if (stat.size > limit) {
                     continue;
                 }
 
                 const data = Buffer.from(await vscode.workspace.fs.readFile(uri));
-                const truncated = !type.startsWith('image/') && data.length > limit;
-                const attachmentData = truncated ? data.subarray(0, limit) : data;
 
                 files.push({
                     name,
                     type,
-                    data: attachmentData.toString('base64'),
-                    truncated,
+                    data: data.toString('base64'),
+                    sourceUri: uri.toString(true),
+                    truncated: false,
                     originalSize: stat.size
                 });
             } catch (e) {
@@ -460,6 +463,43 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         this._view.webview.postMessage({ type: 'fetchedUris', requestId, files });
+    }
+
+    private async _openAttachment(file: { name?: string; sourceUri?: string }): Promise<void> {
+        const name = String(file?.name || '').trim();
+        const sourceUri = String(file?.sourceUri || '').trim();
+
+        try {
+            let uri: vscode.Uri | undefined;
+            if (sourceUri) {
+                const parsed = vscode.Uri.parse(sourceUri, true);
+                if (parsed.scheme === 'file' || parsed.scheme === 'vscode-remote') {
+                    const stat = await vscode.workspace.fs.stat(parsed);
+                    if (stat.type === vscode.FileType.File) {
+                        uri = parsed;
+                    }
+                }
+            }
+
+            if (!uri && isSafeAttachmentLookupName(name)) {
+                const matches = await vscode.workspace.findFiles(
+                    `**/${name}`,
+                    '{**/node_modules/**,**/.git/**,**/out/**,**/dist/**}',
+                    1
+                );
+                uri = matches[0];
+            }
+
+            if (!uri) {
+                vscode.window.showWarningMessage(`Could not find ${name || 'that attachment'} in the workspace.`);
+                return;
+            }
+
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(doc, { preview: false });
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Could not open ${name || 'attachment'}: ${error.message}`);
+        }
     }
 
     private _stopGeneration(): void {

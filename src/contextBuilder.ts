@@ -10,6 +10,7 @@ import {
     getVaultDir,
     getConfig,
 } from './config';
+import { PerfLogger } from './perfLogger';
 import type { BrainFilesCache, ChatMessage, TextContextCache } from './types';
 
 function getInternetDirective(enabled?: boolean): string {
@@ -163,6 +164,7 @@ export class ContextBuilder {
     }
 
     public buildRequestMessages(options: RequestMessageBuildOptions): ChatMessage[] {
+        const start = performance.now();
         const reqMessages = [...options.chatHistory];
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
             const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
@@ -171,13 +173,16 @@ export class ContextBuilder {
                 content: `${options.systemPrompt}\n\n[${backgroundLabel}]\n${getActiveEditorContext()}\n${this.getWorkspaceContext()}\n${options.brainEnabled ? this.getSecondBrainContext() : ''}${getInternetDirective(options.internetEnabled)}`
             };
         }
+        PerfLogger.update({ contextBuildMs: performance.now() - start });
         return reqMessages;
     }
 
     private buildSecondBrainContext(brainDir: string): string {
+        const start = performance.now();
         if (!fs.existsSync(brainDir)) return '';
 
         const files = this.getBrainFiles(brainDir);
+        PerfLogger.update({ vaultScanMs: performance.now() - start, vaultFileCount: files.length });
         if (files.length === 0) return '';
 
         const maxIndex = 200;

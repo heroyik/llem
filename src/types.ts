@@ -1,6 +1,8 @@
 export type ChatRole = 'system' | 'user' | 'assistant';
 
 export interface LlemConfig {
+    bridgeEnabled: boolean;
+    bridgeToken: string;
     ollamaBase: string;
     defaultModel: string;
     maxTreeFiles: number;
@@ -17,6 +19,7 @@ export interface AttachedFile {
     name: string;
     type: string;
     data: string;
+    sourceUri?: string;
     truncated?: boolean;
     originalSize?: number;
 }
@@ -24,7 +27,7 @@ export interface AttachedFile {
 export interface DisplayMessage {
     role: string;
     text: string;
-    files?: Pick<AttachedFile, 'name' | 'type' | 'data'>[];
+    files?: Pick<AttachedFile, 'name' | 'type' | 'data' | 'sourceUri'>[];
 }
 
 export interface AIEndpoint {

@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>VSIX version:</strong> 2.2.47 &middot;
+  <strong>VSIX version:</strong> 2.2.48 &middot;
   <strong>License:</strong> MIT &middot;
   <strong>Engine:</strong> Ollama | LM Studio
 </p>
@@ -137,15 +137,15 @@ It is especially handy for people working in:
 npm install
 ```
 
-3. Compile the extension:
+1. Compile the extension:
 
 ```bash
 npm run compile
 ```
 
-4. Open the project in VS Code.
-5. Press `F5` to launch an Extension Development Host.
-6. Open the LLeM panel in the new host window.
+1. Open the project in VS Code.
+2. Press `F5` to launch an Extension Development Host.
+3. Open the LLeM panel in the new host window.
 
 ## Requirements
 
@@ -255,6 +255,37 @@ If this value is empty, LLeM uses:
 ```text
 ~/.llem-vault
 ```
+
+### `llem.bridgeEnabled`
+
+Whether LLeM should start the optional local HTTP bridge on `127.0.0.1:4825`.
+
+Default:
+
+```text
+false
+```
+
+Keep this off unless you intentionally connect another local tool to LLeM.
+
+### `llem.bridgeToken`
+
+Optional token for the local HTTP bridge.
+
+Default:
+
+```text
+empty
+```
+
+When set, bridge callers must send either:
+
+```text
+Authorization: Bearer <token>
+X-LLeM-Token: <token>
+```
+
+Bridge requests are also origin-checked, rate-limited, and validated for payload type and size before they reach the local model or vault writer.
 
 ## Commands
 
@@ -538,6 +569,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.48
+
+- Bumped the VSIX build from `2.2.47` to `2.2.48`.
+- actionExecutor structure separated via Command pattern and Performance telemetry system implemented
+- Packaged `release/llem-2.2.48.vsix`.
 
 ### v2.2.47
 
