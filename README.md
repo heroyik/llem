@@ -155,6 +155,12 @@ Bridge requests are also origin-checked, rate-limited, and validated for payload
 
 ## Release Notes
 
+### v2.2.60
+
+- Bumped the VSIX build from `2.2.59` to `2.2.60`.
+- Change identifier to llem.nIcK and remove Local suffix
+- Packaged `release/nIcK-2.2.60.vsix`.
+
 ### v2.2.59
 
 - Bumped the VSIX build from `2.2.58` to `2.2.59`.
