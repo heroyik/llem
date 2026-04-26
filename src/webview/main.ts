@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 window.onerror = function(msg, url, line) {
   const overlay = document.createElement('div');
   overlay.className = 'fatal-overlay fatal-overlay-top';
@@ -210,6 +210,15 @@ try {
 
     if (target.closest('[data-action="open-terminal"]')) {
       openTerminal();
+      return;
+    }
+
+    const inlineCode = target.closest('.msg-body :not(pre) > code');
+    if (inlineCode) {
+      const fileName = inlineCode.textContent.trim();
+      if (fileName && fileName.includes('.')) {
+        vscode.postMessage({ type: 'openAttachment', file: { name: fileName } });
+      }
     }
   });
 

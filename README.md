@@ -4,7 +4,7 @@
 
 Stream model output live, chat with your repo, edit files, run terminal commands, and keep your notes in a markdown vault without shipping your code to the cloud.
 
-**VSIX version:** 2.2.50 · **License:** MIT · **Engine:** Ollama | LM Studio
+**VSIX version:** 2.2.52 · **License:** MIT · **Engine:** Ollama | LM Studio
 
 ## Overview
 
@@ -564,6 +564,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.52
+
+- Bumped the VSIX build from `2.2.51` to `2.2.52`.
+- Enable clicking on inline code blocks to open referenced files
+- Packaged `release/llem-2.2.52.vsix`.
 
 ### v2.2.50
 

@@ -199,13 +199,7 @@ function uniqueNotes(notes) {
 }
 
 function renderReadmeMeta(version) {
-  return [
-    '<p align="center">',
-    `  <strong>VSIX version:</strong> ${version} &middot;`,
-    '  <strong>License:</strong> MIT &middot;',
-    '  <strong>Engine:</strong> Ollama | LM Studio',
-    '</p>',
-  ].join('\n');
+  return `**VSIX version:** ${version} · **License:** MIT · **Engine:** Ollama | LM Studio`;
 }
 
 function stripReadmeLogoImages(readme) {
@@ -223,6 +217,12 @@ function updateReadmeMeta(readme, version) {
     /<p\s+align="center">\s*(?:<img\b[^>]*(?:alt="version"|badge\/version|img\.shields\.io)[^>]*\/?>\s*)+<\/p>/i;
   const textMetaPattern =
     /<p\s+align="center">\s*<strong>VSIX version:<\/strong>[\s\S]*?<\/p>/i;
+  const mdMetaPattern =
+    /\*\*VSIX version:\*\*[\s\S]*?\*\*Engine:\*\* Ollama \| LM Studio/i;
+
+  if (mdMetaPattern.test(readme)) {
+    return readme.replace(mdMetaPattern, meta);
+  }
 
   if (textMetaPattern.test(readme)) {
     return readme.replace(textMetaPattern, meta);
@@ -232,7 +232,7 @@ function updateReadmeMeta(readme, version) {
     return readme.replace(existingMetaPattern, meta);
   }
 
-  return readme.replace(/(<\/p>\s*)/, `$1\n${meta}\n`);
+  return readme.replace(/(# LLeM\s*)/, `$1\n${meta}\n`);
 }
 
 function assertReadmeMeta(readme, version) {

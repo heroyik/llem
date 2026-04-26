@@ -417,6 +417,12 @@ select {
   padding: 2px 7px;
   border-radius: 6px;
   border: 1px solid rgba(255, 158, 88, 0.16);
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.msg-body :not(pre) > code:hover {
+  background: rgba(255, 158, 88, 0.22);
+  border-color: rgba(255, 158, 88, 0.35);
 }
 .msg-body table {
   width: 100%;
