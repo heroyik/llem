@@ -34,6 +34,12 @@ This extension contributes the following settings:
 
 ## Release Notes
 
+### v2.2.57
+
+- Bumped the VSIX build from `2.2.56` to `2.2.57`.
+- Restore default web browser opening for regular web links
+- Packaged `release/llem-2.2.57.vsix`.
+
 ### v2.2.56
 
 - Bumped the VSIX build from `2.2.55` to `2.2.56`.

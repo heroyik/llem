@@ -450,17 +450,7 @@ select {
   color: var(--accent-2);
   text-decoration: none;
 }
-.msg-body a[href^="http://"],
-.msg-body a[href^="https://"],
-.msg-body a[href^="mailto:"] {
-  cursor: text;
-  pointer-events: none;
-}
-.msg-body a.is-file-link {
-  cursor: pointer;
-  pointer-events: auto;
-}
-.msg-body a.is-file-link:hover {
+.msg-body a:hover {
   text-decoration: underline;
 }
 .code-wrap {
