@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>VSIX version:</strong> 2.2.48 &middot;
+  <strong>VSIX version:</strong> 2.2.49 &middot;
   <strong>License:</strong> MIT &middot;
   <strong>Engine:</strong> Ollama | LM Studio
 </p>
@@ -569,6 +569,12 @@ https://github.com/heroyik/llem
 MIT
 
 ## Release Notes
+
+### v2.2.49
+
+- Bumped the VSIX build from `2.2.48` to `2.2.49`.
+- Rebuild VSIX as requested
+- Packaged `release/llem-2.2.49.vsix`.
 
 ### v2.2.48
 
