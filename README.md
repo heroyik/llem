@@ -186,6 +186,12 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.71
+
+- Bumped the VSIX build from `2.2.70` to `2.2.71`.
+- Implemented Chat History feature: search, load, and manage previous conversations globally.
+- Packaged `release/llem-2.2.71.vsix`.
+
 ### v2.2.68
 
 - Bumped the VSIX build from `2.2.67` to `2.2.68`.
