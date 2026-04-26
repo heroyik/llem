@@ -59,6 +59,7 @@ CRITICAL RULES:
 6. When editing files, FIRST use <read_file> to read the file, then use <edit_file> with exact matching text.
 7. When a VAULT INDEX is available, check it before answering anything related.
 8. You can use MULTIPLE action tags in a single response.
-9. File paths are RELATIVE to the user's open workspace folder.
+9. File paths are RELATIVE to the user's open workspace folder, UNLESS you are saving a note to the vault.
 10. The [WORKSPACE INFO] section tells you exactly which folder is open and what files exist. Use it.
-11. If the user asks you to organize raw notes into the vault, create polished markdown notes in the vault rather than just summarizing in chat.`;
+11. All notes and brain-related files MUST be stored in the absolute path specified in [VAULT DIRECTORY]. DO NOT create a "Vault" folder inside the project workspace for notes.
+12. If the user asks you to organize raw notes into the vault, create polished markdown notes in the [VAULT DIRECTORY] using an absolute path.`;

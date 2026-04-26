@@ -148,12 +148,55 @@ X-LLeM-Token: <token>
 
 Bridge requests are also origin-checked, rate-limited, and validated for payload type and size before they reach the local model or vault writer.
 
+## Development
+
+### Prerequisites
+
+- Node.js (v18 or higher)
+- npm
+
+### Build and Package
+
+To compile the extension and webview assets:
+
+```bash
+npm run compile
+```
+
+To build a production VSIX package:
+
+```bash
+npm run package:vsix
+```
+
+The resulting file will be generated in the `release/` directory.
+
+### Local Development VSIX
+
+To build a VSIX for local testing (using local scripts):
+
+```bash
+npm run package:vsix:local
+```
+
 ## Known Issues
 
 - Large file attachments may impact context window limits depending on the local model's capability.
 - Ensure your local server is running before attempting to chat.
 
 ## Release Notes
+
+### v2.2.66
+
+- Bumped the VSIX build from `2.2.64` to `2.2.66`.
+- Enforce default vault path (~/.llem-vault) and add build instructions to README.
+- Packaged `release/nIcK-2.2.66.vsix`.
+
+### v2.2.64
+
+- Bumped the VSIX build from `2.2.63` to `2.2.64`.
+- Built a fresh VSIX package.
+- Packaged `release/nIcK-2.2.64.vsix`.
 
 ### v2.2.63
 

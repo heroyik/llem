@@ -170,7 +170,7 @@ export class ContextBuilder {
             const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
             reqMessages[0] = {
                 role: 'system',
-                content: `${options.systemPrompt}\n\n[${backgroundLabel}]\n${getActiveEditorContext()}\n${this.getWorkspaceContext()}\n${options.brainEnabled ? this.getSecondBrainContext() : ''}${getInternetDirective(options.internetEnabled)}`
+                content: `${options.systemPrompt}\n\n[${backgroundLabel}]\n${getActiveEditorContext()}\n${this.getWorkspaceContext()}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${options.brainEnabled ? this.getSecondBrainContext() : ''}${getInternetDirective(options.internetEnabled)}`
             };
         }
         PerfLogger.update({ contextBuildMs: performance.now() - start });
