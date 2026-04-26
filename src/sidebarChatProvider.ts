@@ -157,9 +157,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getTopP: () => this._topP,
             postWebviewMessage: (message) => this._view?.webview.postMessage(message),
             readBrainFile: (filename) => this._contextBuilder.readBrainFile(filename),
-            saveHistory: () => {
+            saveHistory: async () => {
                 this._chatSession.save();
-                this._historyManager.saveSession(this._chatSession);
+                await this._historyManager.saveSession(this._chatSession);
             },
             setAbortController: (controller) => { this._abortController = controller; },
             setLastPrompt: (prompt, modelName, files, internetEnabled) => {
@@ -553,13 +553,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     public async getHistory() {
         if (!this._view) { return; }
-        const history = this._historyManager.listSessions();
+        const history = await this._historyManager.listSessions();
         this._view.webview.postMessage({ type: 'historyList', value: history });
     }
 
     public async loadHistory(id: string) {
         if (!this._view) { return; }
-        const sessionData = this._historyManager.getSession(id);
+        const sessionData = await this._historyManager.getSession(id);
         if (sessionData) {
             // Save current session before loading another if it has messages
             if (this._chatSession.chatHistory.length > 0) {
@@ -572,7 +572,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     public async deleteHistory(id: string) {
-        this._historyManager.deleteSession(id);
+        await this._historyManager.deleteSession(id);
         await this.getHistory();
     }
 }

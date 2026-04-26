@@ -115,11 +115,11 @@ function writeJson(filePath, data) {
 }
 
 function makeLocalPublisher(publisher) {
-  return publisher.endsWith('-local') ? publisher : `${publisher}-local`;
+  return publisher;
 }
 
 function makeLocalDisplayName(displayName) {
-  return displayName.endsWith(' Local') ? displayName : `${displayName} Local`;
+  return displayName;
 }
 
 function getArtifactBaseName() {

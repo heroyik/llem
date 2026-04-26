@@ -186,6 +186,24 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.74
+
+- Bumped the VSIX build from `2.2.73` to `2.2.74`.
+- Updated extension name and author information
+- Packaged `release/llem-2.2.74.vsix`.
+
+### v2.2.73
+
+- Bumped the VSIX build from `2.2.72` to `2.2.73`.
+- Fixed extensionRuntime API proposal error
+- Packaged `release/llem-2.2.73.vsix`.
+
+### v2.2.72
+
+- Bumped the VSIX build from `2.2.71` to `2.2.72`.
+- Moved chat history storage to ~/.llem-history for better user control
+- Packaged `release/llem-2.2.72.vsix`.
+
 ### v2.2.71
 
 - Bumped the VSIX build from `2.2.70` to `2.2.71`.

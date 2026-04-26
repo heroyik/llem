@@ -14,7 +14,7 @@ export interface ChatPipelineHost {
     getTopP(): number;
     postWebviewMessage(message: unknown): void;
     readBrainFile(filename: string): string;
-    saveHistory(): void;
+    saveHistory(): Promise<void>;
     setAbortController(controller?: AbortController): void;
     setLastPrompt(prompt: string, modelName: string, files?: AttachedFile[], internetEnabled?: boolean): void;
 }
@@ -116,7 +116,7 @@ export class ChatPipeline {
             this.host.postWebviewMessage({ type: 'streamEnd' });
             this.host.getDisplayMessages().push({ text: this.stripActionTags(finalMessage), role: 'ai' });
             this.trimHistory();
-            this.host.saveHistory();
+            await this.host.saveHistory();
         } catch (error: any) {
             if (isAbortError(error)) {
                 this.host.postWebviewMessage({ type: 'streamAbort' });
