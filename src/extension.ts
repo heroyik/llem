@@ -4,32 +4,27 @@ import { getConfig } from './config';
 import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 import { getLlemTerminal, writeToLlemTerminal } from './terminalManager';
+import { logInfo, logError, getOutputChannel } from './logger';
 
 // ============================================================
 // LLeM — local chat, repo edits, terminal moves, zero cloud drama
 // ============================================================
 
 export function activate(context: vscode.ExtensionContext) {
-    // Redirect console.log to LLeM Console
-    const originalLog = console.log;
-    console.log = (...args: any[]) => {
-        originalLog.apply(console, args);
-        const message = args.map(arg => 
-            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' ');
-        writeToLlemTerminal(message);
-    };
+    // Ensure Output channel is ready and shown
+    const output = getOutputChannel();
+    context.subscriptions.push(output);
+    
+    // Explicitly show the output channel to confirm it works
+    output.show(true);
+    logInfo('LLeM extension activating...');
 
-    const originalError = console.error;
-    console.error = (...args: any[]) => {
-        originalError.apply(console, args);
-        const message = args.map(arg => 
-            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' ');
-        writeToLlemTerminal(`ERROR: ${message}`);
-    };
+    // Ensure terminal is created
+    getLlemTerminal().show(true);
 
-    console.log('LLeM extension activated.');
+    logInfo('LLeM extension activated.');
+
+
     
     // Ensure terminal is created and shown
     getLlemTerminal().show(true);

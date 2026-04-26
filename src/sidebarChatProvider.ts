@@ -221,9 +221,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._lastModel = undefined;
         this._lastFiles = undefined;
         this._lastInternetEnabled = undefined;
-        if (this._view) {
-            this._view.webview.postMessage({ type: 'clearChat' });
-        }
+        this._view?.webview.postMessage({ type: 'clearChat' });
+        logInfo('New chat thread initialized.');
         vscode.window.showInformationMessage('LLeM spun up a fresh thread.');
     }
 
@@ -356,7 +355,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             openAttachment: (file) => this._openAttachment(file),
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
-            deleteHistory: (id) => this.deleteHistory(id)
+            deleteHistory: (id) => this.deleteHistory(id),
+            log: (message, level) => {
+                if (level === 'error') logError(message, false);
+                else logInfo(message);
+            }
         };
     }
 

@@ -16,6 +16,7 @@ export interface WebviewMessageRouterHost {
     getHistory(): Promise<void>;
     loadHistory(id: string): Promise<void>;
     deleteHistory(id: string): Promise<void>;
+    log(message: string, level: 'info' | 'error'): void;
 }
 
 export async function routeWebviewMessage(message: any, host: WebviewMessageRouterHost): Promise<void> {
@@ -70,6 +71,13 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'deleteHistory':
             await host.deleteHistory(message.id);
+            break;
+        case 'log':
+            if (message.level === 'error') {
+                host.log(message.value, 'error');
+            } else {
+                host.log(message.value, 'info');
+            }
             break;
     }
 }

@@ -160,15 +160,21 @@ select {
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease, color .18s ease, background .18s ease;
   background: var(--panel-2);
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 .btn-icon:hover, .attach-btn:hover, .send-btn:hover, .stop-btn:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.22);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
   color: var(--text);
+}
+.btn-icon.active {
+  color: var(--accent);
+  border-color: rgba(255, 158, 88, 0.35);
+  background: var(--accent-glow);
+  box-shadow: 0 0 15px var(--accent-glow);
 }
 .send-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent-3));
@@ -867,12 +873,36 @@ body.init .input-wrap {
   font-weight: 800;
   letter-spacing: -0.03em;
 }
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.btn-new-chat {
+  background: linear-gradient(135deg, var(--accent), var(--accent-3));
+  border: none;
+  border-radius: 8px;
+  color: white;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+  box-shadow: 0 4px 12px rgba(255, 158, 88, 0.2);
+}
+.btn-new-chat:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 158, 88, 0.3);
+}
 .btn-close {
   background: none;
   border: none;
   color: var(--text-faint);
   cursor: pointer;
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .btn-close:hover {
   color: var(--text);

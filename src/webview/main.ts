@@ -14,6 +14,9 @@ window.addEventListener('unhandledrejection', function(event) {
 
 try {
   const vscode = acquireVsCodeApi();
+  function log(message, level = 'info') {
+    vscode.postMessage({ type: 'log', value: message, level: level });
+  }
   const mainView = document.getElementById('mainView');
   const chat = document.getElementById('chat');
   const input = document.getElementById('input');
@@ -29,6 +32,7 @@ try {
   const closeHistoryBtn = document.getElementById('closeHistoryBtn');
   const historySearch = document.getElementById('historySearch');
   const historyList = document.getElementById('historyList');
+  const newChatHistoryBtn = document.getElementById('newChatHistoryBtn');
   const attachBtn = document.getElementById('attachBtn');
   const injectLocalBtn = document.getElementById('injectLocalBtn');
   const inputBox = document.getElementById('inputBox');
@@ -41,6 +45,10 @@ try {
   let sending = false;
   let pendingFiles = [];
   let internetEnabled = false;
+  if (internetBtn) {
+    internetBtn.classList.toggle('active', internetEnabled);
+    internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
+  }
   let dragCounter = 0;
   let dropSequence = 0;
   let streamEl = null;
@@ -870,9 +878,7 @@ try {
     }
   }
 
-  historyBtn.addEventListener('click', function() { toggleHistory(true); });
-  closeHistoryBtn.addEventListener('click', function() { toggleHistory(false); });
-  historySearch.addEventListener('input', function() { renderHistory(historyItems); });
+  // History, internet, and other listeners are now handled below via safeListen.
 
   function send() {
     const text = input.value.trim();
@@ -906,17 +912,7 @@ try {
     }
   }
 
-  internetBtn.addEventListener('click', function() {
-    internetEnabled = !internetEnabled;
-    internetBtn.style.opacity = internetEnabled ? '1' : '0.45';
-    internetBtn.style.filter = internetEnabled ? 'none' : 'grayscale(1)';
-    internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
-    const info = document.createElement('div');
-    info.className = 'msg';
-    info.innerHTML = '<div class="msg-body msg-body-info">🌐 Live web mode is now ' + (internetEnabled ? 'ON' : 'OFF') + '.</div>';
-    chat.appendChild(info);
-    chat.scrollTop = chat.scrollHeight;
-  });
+  // Internet toggle is handled below via safeListen.
 
   input.addEventListener('input', function() {
     input.style.height = 'auto';
@@ -941,24 +937,11 @@ try {
     }
   });
 
-  attachBtn.addEventListener('click', function() {
-    fileInput.click();
-  });
+  // Attach button is handled below.
 
-  injectLocalBtn.addEventListener('click', function() {
-    if (pendingFiles.length === 0) {
-      alert('Attach files first, then drop them into the vault.');
-      return;
-    }
-    vscode.postMessage({ type: 'injectLocalBrain', files: pendingFiles });
-    pendingFiles = [];
-    renderPreview();
-  });
+  // InjectLocalBtn is handled below.
 
-  fileInput.addEventListener('change', function() {
-    void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
-    fileInput.value = '';
-  });
+  // FileInput is handled below.
 
   window.addEventListener('dragenter', function(event) {
     if (!canAcceptDropEvent(event)) {
@@ -1020,20 +1003,74 @@ try {
     }
   }, true);
 
-  sendBtn.addEventListener('click', send);
-  input.addEventListener('keydown', function(event) {
+  function safeListen(idOrEl, event, handler) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (el) el.addEventListener(event, handler);
+  }
+
+  safeListen(sendBtn, 'click', send);
+  safeListen(input, 'keydown', function(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       send();
     }
   });
-  newChatBtn.addEventListener('click', function() { vscode.postMessage({ type: 'newChat' }); });
-  settingsBtn.addEventListener('click', function() { vscode.postMessage({ type: 'openSettings' }); });
-  brainBtn.addEventListener('click', function() { vscode.postMessage({ type: 'syncBrain' }); });
-  stopBtn.addEventListener('click', function() {
+  safeListen(newChatBtn, 'click', function() {
+    log('New chat button clicked');
+    vscode.postMessage({ type: 'newChat' });
+  });
+  safeListen(newChatHistoryBtn, 'click', function() {
+    log('New chat (history) button clicked');
+    vscode.postMessage({ type: 'newChat' });
+    if (historyView) historyView.classList.remove('visible');
+    if (input) input.focus();
+  });
+  safeListen(settingsBtn, 'click', function() { vscode.postMessage({ type: 'openSettings' }); });
+  safeListen(brainBtn, 'click', function() { vscode.postMessage({ type: 'syncBrain' }); });
+  safeListen(stopBtn, 'click', function() {
     vscode.postMessage({ type: 'stopGeneration' });
     hideLoader();
     finalizeStream('stopped');
+  });
+  safeListen(internetBtn, 'click', function() {
+    internetEnabled = !internetEnabled;
+    log('Live web mode toggled: ' + (internetEnabled ? 'ON' : 'OFF'));
+    internetBtn.classList.toggle('active', internetEnabled);
+    internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
+    const info = document.createElement('div');
+    info.className = 'msg';
+    info.innerHTML = '<div class="msg-body msg-body-info">🌐 Live web mode is now ' + (internetEnabled ? 'ON' : 'OFF') + '.</div>';
+    chat.appendChild(info);
+    chat.scrollTop = chat.scrollHeight;
+  });
+  safeListen(historyBtn, 'click', function() {
+    if (historyView) historyView.classList.toggle('visible');
+    if (historyView && historyView.classList.contains('visible')) {
+      vscode.postMessage({ type: 'getHistory' });
+      if (historySearch) historySearch.focus();
+    }
+  });
+  safeListen(closeHistoryBtn, 'click', function() {
+    if (historyView) historyView.classList.remove('visible');
+  });
+  safeListen(injectLocalBtn, 'click', function() {
+    if (pendingFiles.length === 0) {
+      alert('Attach files first, then drop them into the vault.');
+      return;
+    }
+    vscode.postMessage({ type: 'injectLocalBrain', files: pendingFiles });
+    pendingFiles = [];
+    renderPreview();
+  });
+  safeListen(attachBtn, 'click', function() {
+    if (fileInput) fileInput.click();
+  });
+  safeListen(fileInput, 'change', function() {
+    void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
+    fileInput.value = '';
+  });
+  safeListen(historySearch, 'input', function() {
+    renderHistory(historyItems);
   });
 
   window.addEventListener('message', function(event) {
@@ -1115,8 +1152,20 @@ try {
         });
         break;
       case 'clearChat':
+        log('Clearing chat UI');
         document.body.classList.add('init');
         chat.innerHTML = welcomeMarkup();
+        pendingFiles = [];
+        renderPreview();
+        if (input) {
+          input.value = '';
+          input.style.height = 'auto';
+        }
+        internetEnabled = false;
+        if (internetBtn) {
+          internetBtn.classList.remove('active');
+          internetBtn.title = 'Live web: OFF';
+        }
         break;
       case 'restoreMessages':
         chat.innerHTML = '';

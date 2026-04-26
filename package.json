@@ -2,8 +2,8 @@
   "name": "llem",
   "displayName": "LLeM",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
-  "version": "2.2.74",
-  "publisher": "llem",
+  "version": "2.2.87",
+  "publisher": "nIcK",
   "author": "nIck(heroyik@gmail.com)",
   "repository": {
     "type": "git",
@@ -15,9 +15,6 @@
   "engines": {
     "vscode": "^1.80.0"
   },
-  "enabledApiProposals": [
-    "extensionRuntime"
-  ],
   "categories": [
     "LLM",
     "AI"
@@ -55,7 +52,7 @@
       },
       {
         "command": "llem.newChat",
-        "title": "LLeM: New Thread",
+        "title": "LLeM: New Chat",
         "icon": "$(add)"
       },
       {
@@ -95,6 +92,10 @@
         {
           "command": "llem.openChat",
           "group": "navigation@99"
+        },
+        {
+          "command": "llem.newChat",
+          "group": "navigation@98"
         }
       ],
       "editor/context": [

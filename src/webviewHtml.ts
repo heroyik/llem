@@ -47,7 +47,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       <button class="btn-icon" id="internetBtn" title="Live web: OFF">🌐</button>
       <button class="btn-icon" id="brainBtn" title="Vault tools">⟡</button>
       <button class="btn-icon" id="settingsBtn" title="Tune LLeM">⚙</button>
-      <button class="btn-icon" id="newChatBtn" title="Fresh thread">+</button>
+      <button class="btn-icon" id="newChatBtn" title="New chat">+</button>
     </div>
   </div>
   <div class="thinking-bar" id="thinkingBar"></div>
@@ -55,7 +55,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     <div class="history-view" id="historyView">
       <div class="history-header">
         <div class="history-title">Chat History</div>
-        <button class="btn-close" id="closeHistoryBtn">✕</button>
+        <div class="history-actions">
+          <button class="btn-new-chat" id="newChatHistoryBtn" title="New chat">New Chat</button>
+          <button class="btn-close" id="closeHistoryBtn" title="Close history">✕</button>
+        </div>
       </div>
       <div class="history-search">
         <input type="text" id="historySearch" placeholder="Search threads...">
@@ -84,8 +87,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           <div class="input-btns">
             <button class="attach-btn" id="attachBtn" title="Attach files">+</button>
             <button class="attach-btn" id="injectLocalBtn" title="Drop files into the vault">✦</button>
-            <button class="stop-btn" id="stopBtn">■</button>
-            <button class="send-btn" id="sendBtn">↑</button>
+            <button class="stop-btn" id="stopBtn" title="Stop generating">■</button>
+            <button class="send-btn" id="sendBtn" title="Send message">↑</button>
           </div>
         </div>
       </div>

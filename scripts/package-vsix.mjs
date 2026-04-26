@@ -40,6 +40,22 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--no-bump') {
+      args.noBump = true;
+      continue;
+    }
+
+    if (arg === '--version') {
+      args.version = argv[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--version=')) {
+      args.version = arg.slice('--version='.length);
+      continue;
+    }
+
     if (arg === '--local') {
       args.local = true;
       continue;
@@ -60,6 +76,8 @@ VSIX packaging needs release notes so README updates stay honest.
 
 Examples:
   npm run package:vsix -- --notes "Refreshed the LLeM branding; rewired the vault flow"
+  npm run package:vsix -- --no-bump --notes "Fixing a minor bug without version bump"
+  npm run package:vsix -- --version 2.3.0 --notes "Major release"
   RELEASE_NOTES=$'- Refreshed the LLeM branding.\\n- Rewired the vault flow.' npm run package:vsix
   npm run package:vsix -- --notes-file release-notes.md
 `);
@@ -247,10 +265,17 @@ function run(command, args) {
 }
 
 const notes = readNotes();
+const args = parseArgs(process.argv.slice(2));
 const localBuild = isLocalBuild();
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const oldVersion = pkg.version;
-const newVersion = bumpPatch(oldVersion);
+
+let newVersion = bumpPatch(oldVersion);
+if (args.version) {
+  newVersion = args.version;
+} else if (args.noBump) {
+  newVersion = oldVersion;
+}
 const artifactBaseName = pkg.name || 'extension';
 
 run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'compile']);

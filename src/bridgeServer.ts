@@ -9,6 +9,8 @@ import { runLocalChatCompletion } from './aiClient';
 import { writeUtf8FileAtomic } from './atomicWrite';
 import { tryAutoPushBrain } from './brainGitSync';
 import { ensureDir, safeDateFolderName, sanitizeFileName } from './fsUtils';
+import { logInfo, logError } from './logger';
+
 
 const MAX_BRIDGE_JSON_BODY_BYTES = 1024 * 1024;
 const BRIDGE_RATE_LIMIT_MAX_REQUESTS = 30;
@@ -123,12 +125,13 @@ export function startBridgeServer(provider: BridgeProvider): void {
         });
 
         server.listen(4825, '127.0.0.1', () => {
-            console.log('LLeM Bridge listening on port 4825');
+            logInfo('LLeM Bridge listening on port 4825');
         });
-    } catch (error) {
-        console.error('Failed to start local bridge server:', error);
+    } catch (error: any) {
+        logError(`Failed to start local bridge server: ${error.message}`);
     }
 }
+
 
 function isAuthorizedBridgeRequest(req: http.IncomingMessage): boolean {
     return isBridgeRequestAuthorized(req.headers, getConfig().bridgeToken);

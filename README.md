@@ -186,6 +186,79 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.87` to `2.2.87`.
+- Added missing tooltips for stop, send, and history close buttons.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.86` to `2.2.87`.
+- Final verification of LLeM UI fixes, logging, and versioning logic.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.86
+
+- Bumped the VSIX build from `2.2.86` to `2.2.86`.
+- Fix Live Web Mode icon state, fix New Chat button responsiveness, and add runtime logging to Output channel.
+- Packaged `release/llem-2.2.86.vsix`.
+
+### v2.2.86
+
+- Bumped the VSIX build from `2.2.85` to `2.2.86`.
+- Fixed Live Web mode icon state on startup and added version control options to build script.
+- Packaged `release/llem-2.2.86.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.86` to `2.2.87`.
+- Fixed Live Web mode icon state on startup and added visual feedback for active buttons.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.85
+
+- Bumped the VSIX build from `2.2.84` to `2.2.85`.
+- Fixed New Chat functionality and updated tooltips.
+- Packaged `release/llem-2.2.85.vsix`.
+
+### v2.2.83
+
+- Bumped the VSIX build from `2.2.82` to `2.2.83`.
+- Added New Chat button to history view and editor title bar.
+- Packaged `release/llem-2.2.83.vsix`.
+
+### v2.2.81
+
+- Bumped the VSIX build from `2.2.80` to `2.2.81`.
+- Fixed Output channel logging and resolved extensionRuntime API proposal error.
+- Packaged `release/llem-2.2.81.vsix`.
+
+### v2.2.79
+
+- Bumped the VSIX build from `2.2.78` to `2.2.79`.
+- Added dedicated LLeM Output channel for runtime logs. Updated branding and version to 2.2.78.
+- Packaged `release/llem-2.2.79.vsix`.
+
+### v2.2.77
+
+- Bumped the VSIX build from `2.2.76` to `2.2.77`.
+- Removed problematic API proposal
+- confirmed LLeM branding.
+- Packaged `release/llem-2.2.77.vsix`.
+
+### v2.2.76
+
+- Bumped the VSIX build from `2.2.75` to `2.2.76`.
+- Testing api proposal
+- Packaged `release/llem-2.2.76.vsix`.
+
+### v2.2.75
+
+- Bumped the VSIX build from `2.2.74` to `2.2.75`.
+- Updated publisher to nIcK
+- Packaged `release/llem-2.2.75.vsix`.
+
 ### v2.2.74
 
 - Bumped the VSIX build from `2.2.73` to `2.2.74`.
