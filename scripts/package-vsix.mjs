@@ -198,10 +198,6 @@ function uniqueNotes(notes) {
   return unique;
 }
 
-function renderReadmeMeta(version) {
-  return `**VSIX version:** ${version} · **License:** MIT · **Engine:** Ollama | LM Studio`;
-}
-
 function stripReadmeLogoImages(readme) {
   return readme
     .replace(
@@ -211,51 +207,13 @@ function stripReadmeLogoImages(readme) {
     .replace(/<img\b[^>]*(?:alt="LLeM logo"|assets\/icon\.png)[^>]*\/?>\s*/gi, '');
 }
 
-function updateReadmeMeta(readme, version) {
-  const meta = renderReadmeMeta(version);
-  const existingMetaPattern =
-    /<p\s+align="center">\s*(?:<img\b[^>]*(?:alt="version"|badge\/version|img\.shields\.io)[^>]*\/?>\s*)+<\/p>/i;
-  const textMetaPattern =
-    /<p\s+align="center">\s*<strong>VSIX version:<\/strong>[\s\S]*?<\/p>/i;
-  const mdMetaPattern =
-    /\*\*VSIX version:\*\*[\s\S]*?\*\*Engine:\*\* Ollama \| LM Studio/i;
-
-  if (mdMetaPattern.test(readme)) {
-    return readme.replace(mdMetaPattern, meta);
-  }
-
-  if (textMetaPattern.test(readme)) {
-    return readme.replace(textMetaPattern, meta);
-  }
-
-  if (existingMetaPattern.test(readme)) {
-    return readme.replace(existingMetaPattern, meta);
-  }
-
-  return readme.replace(/(# LLeM\s*)/, `$1\n${meta}\n`);
-}
-
-function assertReadmeMeta(readme, version) {
-  const expectedMeta = renderReadmeMeta(version);
-  const topMatter = readme.slice(0, Math.min(readme.length, 1200));
-
-  if (!topMatter.includes(expectedMeta)) {
-    throw new Error(`README top metadata does not show VSIX version ${version}.`);
-  }
-
-  if (/img\.shields\.io\/badge\/version-|alt="version"/i.test(topMatter)) {
-    throw new Error('README top metadata still contains the old version image badge.');
-  }
-}
-
 function updateReadme(oldVersion, newVersion, notes) {
   let readme = fs.readFileSync(readmePath, 'utf8');
   const pending = extractPendingNotes(readme);
   const releaseNotesBody = uniqueNotes([...pending.notes, ...notes]);
   const artifactBaseName = getArtifactBaseName();
 
-  readme = updateReadmeMeta(stripReadmeLogoImages(pending.readme), newVersion);
-  assertReadmeMeta(readme, newVersion);
+  readme = stripReadmeLogoImages(pending.readme);
 
   const releaseNotes = [
     `### v${newVersion}`,
