@@ -1,4 +1,5 @@
 # LLeM
+
 A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device without shipping your code to the cloud.
 
 ## Features
@@ -12,6 +13,7 @@ A local-first coding sidekick for VS Code and Cursor. Stream live model output, 
 ## Requirements
 
 LLeM requires a local model server running on your machine:
+
 - [Ollama](https://ollama.com/) (Default: `http://127.0.0.1:11434`)
 - [LM Studio](https://lmstudio.ai/)
 
@@ -19,11 +21,11 @@ LLeM requires a local model server running on your machine:
 
 This extension contributes the following settings:
 
-* `llem.engineUrl`: Local model endpoint URL.
-* `llem.defaultModel`: Default model slug (e.g., `gemma4:e2b`).
-* `llem.vaultPath`: Optional path to your markdown vault.
-* `llem.requestTimeout`: Request timeout in seconds.
-* `llem.bridgeEnabled`: Enable the local HTTP bridge for external tools.
+- `llem.engineUrl`: Local model endpoint URL.
+- `llem.defaultModel`: Default model slug (e.g., `gemma4:e2b`).
+- `llem.vaultPath`: Optional path to your markdown vault.
+- `llem.requestTimeout`: Request timeout in seconds.
+- `llem.bridgeEnabled`: Enable the local HTTP bridge for external tools.
 
 ## Known Issues
 
@@ -31,6 +33,19 @@ This extension contributes the following settings:
 - Ensure your local server is running before attempting to chat.
 
 ## Release Notes
+
+### v2.2.56
+
+- Bumped the VSIX build from `2.2.55` to `2.2.56`.
+- Limited clickable inline code blocks to only those that represent files and disabled clicking on standard web URLs within the chat interface
+- Packaged `release/llem-2.2.56.vsix`.
+
+### v2.2.55
+
+- Bumped the VSIX build from `2.2.54` to `2.2.55`.
+- Limited clickable inline code blocks to only those that represent files
+- Disabled clicking on standard web URLs within the chat interface
+- Packaged `release/llem-2.2.55.vsix`.
 
 ### v2.2.54
 

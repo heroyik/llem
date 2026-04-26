@@ -417,10 +417,14 @@ select {
   padding: 2px 7px;
   border-radius: 6px;
   border: 1px solid rgba(255, 158, 88, 0.16);
-  cursor: pointer;
   transition: background .12s ease, border-color .12s ease;
 }
-.msg-body :not(pre) > code:hover {
+.msg-body :not(pre) > code.is-file {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.msg-body :not(pre) > code.is-file:hover {
   background: rgba(255, 158, 88, 0.22);
   border-color: rgba(255, 158, 88, 0.35);
 }
@@ -446,7 +450,17 @@ select {
   color: var(--accent-2);
   text-decoration: none;
 }
-.msg-body a:hover {
+.msg-body a[href^="http://"],
+.msg-body a[href^="https://"],
+.msg-body a[href^="mailto:"] {
+  cursor: text;
+  pointer-events: none;
+}
+.msg-body a.is-file-link {
+  cursor: pointer;
+  pointer-events: auto;
+}
+.msg-body a.is-file-link:hover {
   text-decoration: underline;
 }
 .code-wrap {

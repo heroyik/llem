@@ -137,6 +137,38 @@ try {
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
 
+    const COMMON_EXTENSIONS = new Set([
+      '.txt', '.md', '.csv', '.json',
+      '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.html', '.css', '.scss', '.less',
+      '.py', '.java', '.rs', '.go', '.cpp', '.c', '.h', '.hpp', '.cs',
+      '.yaml', '.yml', '.xml', '.toml', '.env', '.sh', '.bat', '.ps1',
+      '.rb', '.php', '.swift', '.kt', '.sql', '.vue', '.svelte'
+    ]);
+
+    function isLikelyFile(name) {
+      const text = String(name || '').trim();
+      if (!text || text.includes(' ') || text.includes('\\n') || text.includes('(') || text.includes(')') || text.includes('{') || text.includes('}')) return false;
+      const dotIndex = text.lastIndexOf('.');
+      if (dotIndex < 0) {
+        const lower = text.toLowerCase();
+        if (lower === 'makefile' || lower === 'dockerfile' || lower === '.gitignore' || lower === '.npmignore') return true;
+        return false;
+      }
+      const ext = text.slice(dotIndex).toLowerCase();
+      return COMMON_EXTENSIONS.has(ext);
+    }
+
+    const defaultCodeInline = md.renderer.rules.code_inline || function(tokens, idx, options, env, self) {
+      return self.renderToken(tokens, idx, options);
+    };
+    md.renderer.rules.code_inline = function(tokens, idx, options, env, self) {
+      const token = tokens[idx];
+      if (isLikelyFile(token.content)) {
+        token.attrJoin('class', 'is-file');
+      }
+      return defaultCodeInline(tokens, idx, options, env, self);
+    };
+
     mdRenderer = md;
     return mdRenderer;
   }
@@ -213,10 +245,10 @@ try {
       return;
     }
 
-    const inlineCode = target.closest('.msg-body :not(pre) > code');
+    const inlineCode = target.closest('.msg-body :not(pre) > code.is-file');
     if (inlineCode) {
       const fileName = inlineCode.textContent.trim();
-      if (fileName && fileName.includes('.')) {
+      if (fileName) {
         vscode.postMessage({ type: 'openAttachment', file: { name: fileName } });
       }
     }
