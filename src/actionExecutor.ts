@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getVaultDir } from './config';
-import { openDocument } from './fsUtils';
+import { openDocument, resolveLlemPath } from './fsUtils';
 import { safeResolveActionPath } from './security';
 import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
@@ -42,23 +42,8 @@ interface ActionHandlerContext extends ActionReportContext {
 
 type ActionHandler = (ctx: ActionHandlerContext) => Promise<void>;
 
-function resolveActionPath(rootPath: string, requestedPath: string) {
-    const vaultRoot = getVaultDir();
-    let finalPath = requestedPath;
-
-    // If AI tries to save to a relative "Vault/" folder, redirect to the actual vault directory
-    if (!path.isAbsolute(requestedPath)) {
-        const normalized = requestedPath.replace(/\\/g, '/');
-        if (normalized.toLowerCase().startsWith('vault/')) {
-            const subPath = normalized.slice(6);
-            finalPath = path.join(vaultRoot, subPath);
-        }
-    }
-
-    return safeResolveActionPath(rootPath, finalPath, {
-        extraAllowedRoots: [vaultRoot],
-        vaultRoot
-    });
+async function resolveActionPath(rootPath: string, requestedPath: string) {
+    return resolveLlemPath(rootPath, requestedPath);
 }
 
 function applyFileActionResult(ctx: ActionHandlerContext, result: FileActionResult): void {

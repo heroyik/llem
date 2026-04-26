@@ -57,3 +57,14 @@ export interface BrainFilesCache {
     files: string[];
     expiresAt: number;
 }
+
+export interface ChatHistoryMetadata {
+    id: string;
+    title: string;
+    lastModified: number;
+}
+
+export interface ChatHistoryItem extends ChatHistoryMetadata {
+    chatHistory: ChatMessage[];
+    displayMessages: DisplayMessage[];
+}

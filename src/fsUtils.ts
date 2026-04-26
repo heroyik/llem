@@ -1,5 +1,8 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
+import { getVaultDir } from './config';
+import { safeResolveActionPath, SafePathResult } from './security';
 
 export async function openDocument(uri: vscode.Uri): Promise<void> {
     if (uri.fsPath.toLowerCase().endsWith('.md')) {
@@ -35,4 +38,26 @@ export async function pathExists(filePath: string): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+/**
+ * Resolves a requested path (relative or absolute) within the context of the LLeM application.
+ * Handles redirection of "Vault/" prefix to the actual vault directory.
+ */
+export async function resolveLlemPath(workspaceRoot: string, requestedPath: string): Promise<SafePathResult> {
+    const vaultRoot = getVaultDir();
+    let finalPath = requestedPath;
+
+    if (!path.isAbsolute(requestedPath)) {
+        const normalized = requestedPath.replace(/\\/g, '/');
+        if (normalized.toLowerCase().startsWith('vault/')) {
+            const subPath = normalized.slice(6);
+            finalPath = path.join(vaultRoot, subPath);
+        }
+    }
+
+    return safeResolveActionPath(workspaceRoot, finalPath, {
+        extraAllowedRoots: [vaultRoot],
+        vaultRoot
+    });
 }

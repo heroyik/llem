@@ -24,6 +24,11 @@ try {
   const settingsBtn = document.getElementById('settingsBtn');
   const brainBtn = document.getElementById('brainBtn');
   const internetBtn = document.getElementById('internetBtn');
+  const historyBtn = document.getElementById('historyBtn');
+  const historyView = document.getElementById('historyView');
+  const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+  const historySearch = document.getElementById('historySearch');
+  const historyList = document.getElementById('historyList');
   const attachBtn = document.getElementById('attachBtn');
   const injectLocalBtn = document.getElementById('injectLocalBtn');
   const inputBox = document.getElementById('inputBox');
@@ -49,6 +54,7 @@ try {
   let streamLastRender = 0;
   let streamStartedAt = 0;
   let streamChunkCount = 0;
+  let historyItems = [];
   const STREAM_RENDER_INTERVAL = 80;
   const STREAM_META_INTERVAL = 250;
   const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
@@ -807,6 +813,67 @@ try {
     });
   }
 
+  function renderHistory(items) {
+    historyList.innerHTML = '';
+    const filtered = items.filter(function(item) {
+      const q = historySearch.value.toLowerCase();
+      return (item.title || '').toLowerCase().includes(q);
+    });
+
+    if (filtered.length === 0) {
+      historyList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-faint);">No threads found.</div>';
+      return;
+    }
+
+    filtered.forEach(function(item) {
+      const el = document.createElement('div');
+      el.className = 'history-item';
+      const title = document.createElement('div');
+      title.className = 'history-item-title';
+      title.textContent = item.title || 'Untitled Thread';
+      const meta = document.createElement('div');
+      meta.className = 'history-item-meta';
+      const date = new Date(item.lastModified).toLocaleDateString();
+      meta.innerHTML = '<span>' + date + '</span>';
+
+      const actions = document.createElement('div');
+      actions.className = 'history-item-actions';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-history';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (confirm('Delete this thread?')) {
+          vscode.postMessage({ type: 'deleteHistory', id: item.id });
+        }
+      });
+      actions.appendChild(delBtn);
+      meta.appendChild(actions);
+
+      el.appendChild(title);
+      el.appendChild(meta);
+      el.addEventListener('click', function() {
+        vscode.postMessage({ type: 'loadHistory', id: item.id });
+        toggleHistory(false);
+      });
+      historyList.appendChild(el);
+    });
+  }
+
+  function toggleHistory(show) {
+    if (show) {
+      historyView.classList.add('visible');
+      vscode.postMessage({ type: 'getHistory' });
+      historySearch.focus();
+    } else {
+      historyView.classList.remove('visible');
+    }
+  }
+
+  historyBtn.addEventListener('click', function() { toggleHistory(true); });
+  closeHistoryBtn.addEventListener('click', function() { toggleHistory(false); });
+  historySearch.addEventListener('input', function() { renderHistory(historyItems); });
+
   function send() {
     const text = input.value.trim();
     if ((!text && pendingFiles.length === 0) || sending) return;
@@ -1071,6 +1138,14 @@ try {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 150) + 'px';
         send();
+        break;
+      case 'historyList':
+        historyItems = msg.value || [];
+        renderHistory(historyItems);
+        break;
+      case 'historyLoaded':
+        // The chat session is restored by the backend sending 'restoreMessages'
+        // This case can be used for UI cleanup or notifications
         break;
       case 'fetchedUris':
         appendAttachmentRecords(msg.files || []);

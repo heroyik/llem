@@ -43,6 +43,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
     <div class="header-right">
       <select id="modelSel"></select>
+      <button class="btn-icon" id="historyBtn" title="Chat history">🕒</button>
       <button class="btn-icon" id="internetBtn" title="Live web: OFF">🌐</button>
       <button class="btn-icon" id="brainBtn" title="Vault tools">⟡</button>
       <button class="btn-icon" id="settingsBtn" title="Tune LLeM">⚙</button>
@@ -51,6 +52,16 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
   </div>
   <div class="thinking-bar" id="thinkingBar"></div>
   <div class="main-view" id="mainView">
+    <div class="history-view" id="historyView">
+      <div class="history-header">
+        <div class="history-title">Chat History</div>
+        <button class="btn-close" id="closeHistoryBtn">✕</button>
+      </div>
+      <div class="history-search">
+        <input type="text" id="historySearch" placeholder="Search threads...">
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
     <div class="drop-overlay" id="dropOverlay">
       <div class="drop-card">
         <div class="drop-title">Drop files to attach</div>

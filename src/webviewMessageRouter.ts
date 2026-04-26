@@ -13,6 +13,9 @@ export interface WebviewMessageRouterHost {
     stopGeneration(): void;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
     openAttachment(file: { name?: string; sourceUri?: string }): Promise<void>;
+    getHistory(): Promise<void>;
+    loadHistory(id: string): Promise<void>;
+    deleteHistory(id: string): Promise<void>;
 }
 
 export async function routeWebviewMessage(message: any, host: WebviewMessageRouterHost): Promise<void> {
@@ -27,7 +30,7 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             await host.handlePromptWithFile(message.value, message.model, message.files, message.internet);
             break;
         case 'newChat':
-            host.resetChat();
+            await host.resetChat();
             break;
         case 'ready':
             host.restoreDisplayMessages();
@@ -58,6 +61,15 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'openAttachment':
             await host.openAttachment(message.file || {});
+            break;
+        case 'getHistory':
+            await host.getHistory();
+            break;
+        case 'loadHistory':
+            await host.loadHistory(message.id);
+            break;
+        case 'deleteHistory':
+            await host.deleteHistory(message.id);
             break;
     }
 }

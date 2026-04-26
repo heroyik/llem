@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import type { ChatMessage, DisplayMessage } from './types';
 
@@ -11,19 +12,24 @@ interface SavedChatState {
 export class ChatSession {
     public chatHistory: ChatMessage[] = [];
     public displayMessages: DisplayMessage[] = [];
+    public id: string;
+    public title: string = 'New Thread';
 
     constructor(
         private readonly ctx: vscode.ExtensionContext,
         private readonly getSystemPrompt: () => string
     ) {
+        this.id = crypto.randomUUID();
         this.restore();
     }
 
     public restore(): void {
-        const saved = this.ctx.workspaceState.get<SavedChatState>('chatState');
+        const saved = this.ctx.workspaceState.get<SavedChatState & { id?: string, title?: string }>('chatState');
         if (saved && saved.chat && saved.chat.length > 1) {
             this.chatHistory = saved.chat;
             this.displayMessages = saved.display || [];
+            this.id = saved.id || crypto.randomUUID();
+            this.title = saved.title || 'Restored Thread';
             return;
         }
 
@@ -33,17 +39,29 @@ export class ChatSession {
     public save(): void {
         this.ctx.workspaceState.update('chatState', {
             chat: this.chatHistory,
-            display: this.displayMessages
+            display: this.displayMessages,
+            id: this.id,
+            title: this.title
         });
     }
 
     public init(): void {
         this.chatHistory = [{ role: 'system', content: this.getSystemPrompt() }];
         this.displayMessages = [];
+        this.id = crypto.randomUUID();
+        this.title = 'New Thread';
     }
 
     public reset(): void {
         this.init();
+        this.save();
+    }
+
+    public load(item: SavedChatState & { id: string, title: string }): void {
+        this.chatHistory = item.chat;
+        this.displayMessages = item.display;
+        this.id = item.id;
+        this.title = item.title;
         this.save();
     }
 
