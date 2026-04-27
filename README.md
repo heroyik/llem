@@ -186,6 +186,12 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.96
+
+- Bumped the VSIX build from `2.2.95` to `2.2.96`.
+- Restrict file clickability to existing workspace files
+- Packaged `release/llem-2.2.96.vsix`.
+
 ### v2.2.94
 
 - Bumped the VSIX build from `2.2.93` to `2.2.94`.

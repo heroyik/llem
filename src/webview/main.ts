@@ -68,6 +68,7 @@ try {
   let streamStartedAt = 0;
   let streamChunkCount = 0;
   let historyItems = [];
+  let workspaceFiles = new Set();
   const STREAM_RENDER_INTERVAL = 80;
   const STREAM_META_INTERVAL = 250;
   const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
@@ -186,15 +187,29 @@ try {
 
     function isLikelyFile(name) {
       const text = String(name || '').trim();
-      if (!text || text.includes(' ') || text.includes('\\n') || text.includes('(') || text.includes(')') || text.includes('{') || text.includes('}')) return false;
-      const dotIndex = text.lastIndexOf('.');
-      if (dotIndex < 0) {
-        const lower = text.toLowerCase();
-        if (lower === 'makefile' || lower === 'dockerfile' || lower === '.gitignore' || lower === '.npmignore') return true;
+      if (!text || text.includes(' ') || text.includes('\n')) return false;
+
+      // 1. Check absolute path (rough check for Windows/POSIX)
+      if (text.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(text)) {
+        const dotIndex = text.lastIndexOf('.');
+        if (dotIndex > 0) {
+          const ext = text.slice(dotIndex).toLowerCase();
+          if (COMMON_EXTENSIONS.has(ext)) return true;
+        }
         return false;
       }
-      const ext = text.slice(dotIndex).toLowerCase();
-      return COMMON_EXTENSIONS.has(ext);
+
+      // 2. Check relative path in workspace
+      let normalized = text.replace(/\\/g, '/');
+      if (normalized.startsWith('./')) normalized = normalized.slice(2);
+      if (workspaceFiles.has(normalized)) return true;
+
+      // 3. Special cases like .gitignore (only if they exist in workspaceFiles)
+      if (normalized === '.gitignore' || normalized === 'Makefile' || normalized === 'Dockerfile') {
+        if (workspaceFiles.has(normalized)) return true;
+      }
+
+      return false;
     }
 
     const defaultCodeInline = md.renderer.rules.code_inline || function(tokens, idx, options, env, self) {
@@ -1312,13 +1327,18 @@ try {
         log('[DROP] Fetched ' + (msg.files || []).length + ' URI attachment(s)');
         appendAttachmentRecords(msg.files || []);
         break;
+      case 'workspaceFilesList':
+        workspaceFiles = new Set(msg.value || []);
+        log('[FILES] Synchronized ' + workspaceFiles.size + ' workspace file path(s)');
+        break;
       default:
         log('[MSG←] Unhandled message type: ' + msg.type, 'error');
     }
   });
 
-  log('[INIT] Webview loaded — requesting models and ready signal');
+  log('[INIT] Webview loaded — requesting models, files and ready signal');
   vscode.postMessage({ type: 'getModels' });
+  vscode.postMessage({ type: 'getWorkspaceFiles' });
   setTimeout(function() {
     log('[INIT] Posting ready signal to extension host');
     vscode.postMessage({ type: 'ready' });

@@ -194,7 +194,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 if (event.affectsConfiguration('llem.vaultPath')) {
                     this.invalidateContextCaches({ brain: true });
                 }
-            })
+            }),
+            vscode.workspace.onDidCreateFiles(() => this._sendWorkspaceFiles()),
+            vscode.workspace.onDidDeleteFiles(() => this._sendWorkspaceFiles()),
+            vscode.workspace.onDidRenameFiles(() => this._sendWorkspaceFiles())
         );
     }
 
@@ -341,6 +344,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         };
 
         surface.webview.onDidReceiveMessage(async (msg) => {
+            if (msg.type === 'ready') {
+                this._sendWorkspaceFiles();
+            }
             if (msg.type !== 'log') {
                 logInfo('[MSG→] Received from webview: ' + msg.type);
             }
@@ -384,6 +390,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             loadHistory: (id) => this.loadHistory(id),
             deleteHistory: (id) => this.deleteHistory(id),
             requestDeleteHistory: (id, title) => this.requestDeleteHistory(id, title),
+            getWorkspaceFiles: () => this._sendWorkspaceFiles(),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -631,5 +638,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     public async requestDeleteHistory(id: string, title: string) {
         logInfo('[HISTORY] requestDeleteHistory(' + id + ', ' + title + ')');
         this._view?.webview.postMessage({ type: 'requestDeleteHistory', id, title });
+    }
+
+    private async _sendWorkspaceFiles(): Promise<void> {
+        if (!this._view) { return; }
+        try {
+            const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+            const relativePaths = files.map(f => vscode.workspace.asRelativePath(f, false));
+            logInfo(`[WEBVIEW] Sending ${relativePaths.length} workspace file paths`);
+            this._view.webview.postMessage({ type: 'workspaceFilesList', value: relativePaths });
+        } catch (err) {
+            logError('[WEBVIEW] Failed to fetch workspace files', err);
+        }
     }
 }
