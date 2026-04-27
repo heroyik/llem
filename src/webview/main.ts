@@ -151,7 +151,7 @@ try {
       html: false,
       linkify: true,
       typographer: true,
-      breaks: false
+      breaks: true
     });
     md.validateLink = function(url) {
       const value = String(url || '').trim().toLowerCase();
@@ -223,7 +223,7 @@ try {
     function pushBlock(html) {
       const token = '@@LLEM_BLOCK_' + blocks.length + '@@';
       blocks.push({ token, html });
-      return '\n\n' + token + '\n\n';
+      return token;
     }
 
     value = value.replace(/(?:<|call:)\s*create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_, filePath, content) {
@@ -240,13 +240,15 @@ try {
     if (!md) {
       let fallback = esc(value).replace(/\n/g, '<br>');
       blocks.forEach(function(block) {
-        fallback = fallback.split(esc(block.token)).join(block.html);
+        fallback = fallback.split(block.token).join(block.html);
       });
       return fallback;
     }
 
     let html = md.render(value);
     blocks.forEach(function(block) {
+      // Replace token. If markdown-it wrapped it in <p> because it was on its own line, we try to unwrap it
+      // to keep the layout clean, but split/join handles inline cases perfectly.
       const wrapped = new RegExp('<p>\\s*' + escapeRegExp(block.token) + '\\s*<\\/p>', 'g');
       html = html.replace(wrapped, block.html).split(block.token).join(block.html);
     });

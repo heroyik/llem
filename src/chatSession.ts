@@ -2,11 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import type { ChatMessage, DisplayMessage } from './types';
+import type { ChatMessage, DisplayMessage, ChatHistoryItem } from './types';
 
 interface SavedChatState {
-    chat: ChatMessage[];
-    display: DisplayMessage[];
+    chatHistory: ChatMessage[];
+    displayMessages: DisplayMessage[];
 }
 
 export class ChatSession {
@@ -25,13 +25,13 @@ export class ChatSession {
     }
 
     public restore(): void {
-        const saved = this.ctx.workspaceState.get<SavedChatState & { id?: string, title?: string }>('chatState');
-        if (saved && saved.chat && saved.chat.length > 1) {
-            this.chatHistory = saved.chat;
-            this.displayMessages = saved.display || [];
+        const saved = this.ctx.workspaceState.get<SavedChatState & { id?: string, title?: string, lastModified?: number }>('chatState');
+        if (saved && saved.chatHistory && saved.chatHistory.length > 1) {
+            this.chatHistory = saved.chatHistory;
+            this.displayMessages = saved.displayMessages || [];
             this.id = saved.id || crypto.randomUUID();
             this.title = saved.title || 'Restored Thread';
-            this.lastModified = (saved as any).lastModified || Date.now();
+            this.lastModified = saved.lastModified || Date.now();
             return;
         }
 
@@ -41,8 +41,8 @@ export class ChatSession {
     public save(): void {
         this.lastModified = Date.now();
         this.ctx.workspaceState.update('chatState', {
-            chat: this.chatHistory,
-            display: this.displayMessages,
+            chatHistory: this.chatHistory,
+            displayMessages: this.displayMessages,
             id: this.id,
             title: this.title,
             lastModified: this.lastModified
@@ -62,9 +62,9 @@ export class ChatSession {
         this.save();
     }
 
-    public load(item: SavedChatState & { id: string, title: string, lastModified?: number }): void {
-        this.chatHistory = item.chat;
-        this.displayMessages = item.display;
+    public load(item: ChatHistoryItem): void {
+        this.chatHistory = item.chatHistory || [];
+        this.displayMessages = item.displayMessages || [];
         this.id = item.id;
         this.title = item.title;
         this.lastModified = item.lastModified || Date.now();

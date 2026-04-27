@@ -79,11 +79,8 @@ export class HistoryManager {
         try {
             const data = await fs.promises.readFile(this.METADATA_PATH, 'utf8');
             const history = JSON.parse(data) as ChatHistoryMetadata[];
-            // Ensure all items have a valid timestamp
-            return history.map(item => ({
-                ...item,
-                lastModified: item.lastModified || Date.now()
-            }));
+            // Return sorted by lastModified (descending) just in case
+            return history.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
         } catch (error) {
             console.error('Failed to read chat history metadata:', error);
             return [];
