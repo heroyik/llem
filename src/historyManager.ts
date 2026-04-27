@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ChatHistoryItem, ChatHistoryMetadata } from './types';
+import { logInfo, logError } from './logger';
 
 export class HistoryManager {
     private readonly STORAGE_ROOT = path.join(os.homedir(), '.llem-history');
@@ -23,38 +24,52 @@ export class HistoryManager {
     }
 
     public async saveSession(item: ChatHistoryItem): Promise<void> {
-        this.ensureStorageDir();
-        const history = await this.listSessions();
-        const existingIndex = history.findIndex(h => h.id === item.id);
+        try {
+            logInfo(`[HISTORY] saveSession: Starting save for session ID=${item.id}, Title="${item.title}"`);
+            this.ensureStorageDir();
+            const history = await this.listSessions();
+            const existingIndex = history.findIndex(h => h.id === item.id);
 
-        if (existingIndex >= 0) {
-            history[existingIndex] = {
-                id: item.id,
-                title: item.title,
-                lastModified: item.lastModified
-            };
-        } else {
-            history.unshift({
-                id: item.id,
-                title: item.title,
-                lastModified: item.lastModified
-            });
-        }
+            if (existingIndex >= 0) {
+                logInfo(`[HISTORY] saveSession: Updating existing session metadata for ${item.id}`);
+                history[existingIndex] = {
+                    id: item.id,
+                    title: item.title,
+                    lastModified: item.lastModified
+                };
+            } else {
+                logInfo(`[HISTORY] saveSession: Adding new session metadata for ${item.id}`);
+                history.unshift({
+                    id: item.id,
+                    title: item.title,
+                    lastModified: item.lastModified
+                });
+            }
 
-        // Limit history to 100 items for performance
-        if (history.length > 100) {
-            const removed = history.pop();
-            if (removed) {
-                const sessionPath = path.join(this.SESSIONS_DIR, `${removed.id}.json`);
-                if (fs.existsSync(sessionPath)) {
-                    await fs.promises.unlink(sessionPath);
+            // Limit history to 100 items for performance
+            if (history.length > 100) {
+                const removed = history.pop();
+                if (removed) {
+                    logInfo(`[HISTORY] saveSession: Reached history limit, removing oldest session ${removed.id}`);
+                    const sessionPath = path.join(this.SESSIONS_DIR, `${removed.id}.json`);
+                    if (fs.existsSync(sessionPath)) {
+                        await fs.promises.unlink(sessionPath);
+                    }
                 }
             }
-        }
 
-        await fs.promises.writeFile(this.METADATA_PATH, JSON.stringify(history, null, 2));
-        const sessionPath = path.join(this.SESSIONS_DIR, `${item.id}.json`);
-        await fs.promises.writeFile(sessionPath, JSON.stringify(item, null, 2));
+            logInfo(`[HISTORY] saveSession: Writing metadata to ${this.METADATA_PATH}`);
+            await fs.promises.writeFile(this.METADATA_PATH, JSON.stringify(history, null, 2));
+            
+            const sessionPath = path.join(this.SESSIONS_DIR, `${item.id}.json`);
+            logInfo(`[HISTORY] saveSession: Writing session data to ${sessionPath}`);
+            await fs.promises.writeFile(sessionPath, JSON.stringify(item, null, 2));
+            logInfo(`[HISTORY] saveSession: Successfully saved session ${item.id}`);
+        } catch (error) {
+            logError(`[HISTORY] saveSession: Failed to save session ${item.id}`, error);
+            // Re-throw to let the UI know, or handle gracefully depending on importance
+            throw error;
+        }
     }
 
     public async listSessions(): Promise<ChatHistoryMetadata[]> {
@@ -63,7 +78,12 @@ export class HistoryManager {
         }
         try {
             const data = await fs.promises.readFile(this.METADATA_PATH, 'utf8');
-            return JSON.parse(data);
+            const history = JSON.parse(data) as ChatHistoryMetadata[];
+            // Ensure all items have a valid timestamp
+            return history.map(item => ({
+                ...item,
+                lastModified: item.lastModified || Date.now()
+            }));
         } catch (error) {
             console.error('Failed to read chat history metadata:', error);
             return [];
@@ -85,14 +105,26 @@ export class HistoryManager {
     }
 
     public async deleteSession(id: string): Promise<void> {
-        let history = await this.listSessions();
-        history = history.filter(h => h.id !== id);
-        
-        await fs.promises.writeFile(this.METADATA_PATH, JSON.stringify(history, null, 2));
-        
-        const sessionPath = path.join(this.SESSIONS_DIR, `${id}.json`);
-        if (fs.existsSync(sessionPath)) {
-            await fs.promises.unlink(sessionPath);
+        try {
+            logInfo(`[HISTORY] deleteSession: Starting deletion for session ID=${id}`);
+            let history = await this.listSessions();
+            const originalCount = history.length;
+            history = history.filter(h => h.id !== id);
+            
+            if (history.length < originalCount) {
+                logInfo(`[HISTORY] deleteSession: Updating metadata, removed ${id}`);
+                await fs.promises.writeFile(this.METADATA_PATH, JSON.stringify(history, null, 2));
+            }
+            
+            const sessionPath = path.join(this.SESSIONS_DIR, `${id}.json`);
+            if (fs.existsSync(sessionPath)) {
+                logInfo(`[HISTORY] deleteSession: Deleting file ${sessionPath}`);
+                await fs.promises.unlink(sessionPath);
+            }
+            logInfo(`[HISTORY] deleteSession: Successfully deleted session ${id}`);
+        } catch (error) {
+            logError(`[HISTORY] deleteSession: Failed to delete session ${id}`, error);
+            throw error;
         }
     }
 

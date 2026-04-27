@@ -18,6 +18,7 @@ import type { WebviewMessageRouterHost } from './webviewMessageRouter';
 import type { AttachedFile, ChatMessage } from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { getLlemTerminal } from './terminalManager';
+import { logInfo, logError } from './logger';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
@@ -157,10 +158,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getTopP: () => this._topP,
             postWebviewMessage: (message) => this._view?.webview.postMessage(message),
             readBrainFile: (filename) => this._contextBuilder.readBrainFile(filename),
-            saveHistory: async () => {
-                this._chatSession.save();
-                await this._historyManager.saveSession(this._chatSession);
-            },
+            saveHistory: async () => this.saveHistory(),
             setAbortController: (controller) => { this._abortController = controller; },
             setLastPrompt: (prompt, modelName, files, internetEnabled) => {
                 this._lastPrompt = prompt;
@@ -213,8 +211,16 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     public async resetChat() {
-        if (this._chatSession.chatHistory.length > 0) {
-            await this._historyManager.saveSession(this._chatSession);
+        logInfo('[NEW CHAT] resetChat() called (history length=' + this._chatSession.chatHistory.length + ', display length=' + this._chatSession.displayMessages.length + ')');
+        if (this._chatSession.displayMessages.length > 0) {
+            try {
+                logInfo('[NEW CHAT] Saving current session before reset (id=' + this._chatSession.id + ')');
+                await this._historyManager.saveSession(this._chatSession);
+            } catch (err) {
+                logError('[NEW CHAT] Failed to save session during reset. Proceeding with reset anyway.', err);
+            }
+        } else {
+            logInfo('[NEW CHAT] Skipping save for empty session');
         }
         this._chatSession.reset();
         this._lastPrompt = undefined;
@@ -222,8 +228,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._lastFiles = undefined;
         this._lastInternetEnabled = undefined;
         this._view?.webview.postMessage({ type: 'clearChat' });
-        logInfo('New chat thread initialized.');
-        vscode.window.showInformationMessage('LLeM spun up a fresh thread.');
+        logInfo('[NEW CHAT] clearChat posted to webview — new thread ready');
     }
 
     public async exportChat() {
@@ -310,6 +315,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _attachWebviewSurface(surface: ChatWebviewSurface): void {
+        logInfo('[WEBVIEW] Attaching webview surface');
         this._view = surface;
         this.ensureFirstRunSetup();
         surface.webview.options = {
@@ -318,10 +324,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         };
 
         surface.webview.onDidReceiveMessage(async (msg) => {
+            if (msg.type !== 'log') {
+                logInfo('[MSG→] Received from webview: ' + msg.type);
+            }
             await routeWebviewMessage(msg, this._webviewMessageRouterHost());
         });
 
         surface.webview.html = this._getHtml(surface.webview);
+        logInfo('[WEBVIEW] Webview surface ready, HTML injected');
     }
 
     private _revealSurface(preserveFocus: boolean): void {
@@ -356,6 +366,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
             deleteHistory: (id) => this.deleteHistory(id),
+            requestDeleteHistory: (id, title) => this.requestDeleteHistory(id, title),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -501,7 +512,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _sendModels() {
         if (!this._view) { return; }
-        this._view.webview.postMessage({ type: 'modelsList', value: await getInstalledModels() });
+        const models = await getInstalledModels();
+        logInfo('[MODELS] Sending ' + models.length + ' model(s) to webview: ' + models.join(', '));
+        this._view.webview.postMessage({ type: 'modelsList', value: models });
     }
 
     private async _handleBrainMenu() {
@@ -514,7 +527,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _restoreDisplayMessages() {
-        if (!this._view || this._chatSession.displayMessages.length === 0) { return; }
+        const count = this._chatSession.displayMessages.length;
+        logInfo('[RESTORE] Restoring display messages (count=' + count + ')');
+        if (!this._view || count === 0) {
+            logInfo('[RESTORE] Nothing to restore — no view or empty displayMessages');
+            return;
+        }
         this._view.webview.postMessage({
             type: 'restoreMessages',
             value: this._chatSession.displayMessages
@@ -532,12 +550,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handlePromptWithFile(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
-        if (!this._view) { return; }
+        if (!this._view) { logError('[PROMPT] handlePromptWithFile called but no view', false); return; }
+        logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', internet=' + !!internetEnabled + ')');
         await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
     }
 
     private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
-        if (!this._view) { return; }
+        if (!this._view) { logError('[PROMPT] handlePrompt called but no view', false); return; }
+        logInfo('[PROMPT] handlePrompt (model=' + modelName + ', internet=' + !!internetEnabled + ', len=' + prompt.length + ')');
         await this._chatPipeline.handlePrompt(prompt, modelName, internetEnabled);
     }
 
@@ -549,6 +569,18 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    private async saveHistory() {
+        if (this._chatSession) {
+            try {
+                logInfo(`[SIDEBAR] saveHistory: Saving session ${this._chatSession.id}`);
+                await this._historyManager.saveSession(this._chatSession);
+            } catch (err) {
+                logError(`[SIDEBAR] saveHistory: Failed to save session ${this._chatSession.id}`, err);
+                // We don't throw here to avoid interrupting the chat pipeline if saving fails
+            }
+        }
+    }
+
     private _getHtml(webview: vscode.Webview): string {
         const version = String(this._ctx.extension.packageJSON.version || 'dev');
         return getChatWebviewHtml(this._extensionUri, webview, version);
@@ -557,25 +589,51 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     public async getHistory() {
         if (!this._view) { return; }
         const history = await this._historyManager.listSessions();
+        logInfo('[HISTORY] Listing ' + history.length + ' session(s)');
         this._view.webview.postMessage({ type: 'historyList', value: history });
     }
 
     public async loadHistory(id: string) {
         if (!this._view) { return; }
+        logInfo('[HISTORY] Loading session: ' + id);
         const sessionData = await this._historyManager.getSession(id);
         if (sessionData) {
-            // Save current session before loading another if it has messages
             if (this._chatSession.chatHistory.length > 0) {
+                logInfo('[HISTORY] Saving current session before loading: ' + id);
                 await this._historyManager.saveSession(this._chatSession);
             }
             this._chatSession.load(sessionData);
+            logInfo('[HISTORY] Session loaded, restoring display messages');
             this._restoreDisplayMessages();
             this._view.webview.postMessage({ type: 'historyLoaded', id });
+        } else {
+            logError('[HISTORY] Session not found: ' + id, false);
         }
     }
 
     public async deleteHistory(id: string) {
+        logInfo('[HISTORY] Deleting session: ' + id);
         await this._historyManager.deleteSession(id);
+        
+        // If we just deleted the active session, reset the UI
+        if (this._chatSession.id === id) {
+            logInfo('[HISTORY] Deleted active session, resetting current view');
+            this._chatSession.reset();
+            this._view?.webview.postMessage({ type: 'clearChat' });
+        }
+        
         await this.getHistory();
+    }
+
+    public async requestDeleteHistory(id: string, title: string) {
+        const result = await vscode.window.showWarningMessage(
+            `Delete thread "${title || 'Untitled'}"?`,
+            { modal: true },
+            'Delete'
+        );
+
+        if (result === 'Delete') {
+            await this.deleteHistory(id);
+        }
     }
 }

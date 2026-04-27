@@ -14,6 +14,7 @@ export class ChatSession {
     public displayMessages: DisplayMessage[] = [];
     public id: string;
     public title: string = 'New Thread';
+    public lastModified: number = Date.now();
 
     constructor(
         private readonly ctx: vscode.ExtensionContext,
@@ -30,6 +31,7 @@ export class ChatSession {
             this.displayMessages = saved.display || [];
             this.id = saved.id || crypto.randomUUID();
             this.title = saved.title || 'Restored Thread';
+            this.lastModified = (saved as any).lastModified || Date.now();
             return;
         }
 
@@ -37,11 +39,13 @@ export class ChatSession {
     }
 
     public save(): void {
+        this.lastModified = Date.now();
         this.ctx.workspaceState.update('chatState', {
             chat: this.chatHistory,
             display: this.displayMessages,
             id: this.id,
-            title: this.title
+            title: this.title,
+            lastModified: this.lastModified
         });
     }
 
@@ -50,6 +54,7 @@ export class ChatSession {
         this.displayMessages = [];
         this.id = crypto.randomUUID();
         this.title = 'New Thread';
+        this.lastModified = Date.now();
     }
 
     public reset(): void {
@@ -57,11 +62,12 @@ export class ChatSession {
         this.save();
     }
 
-    public load(item: SavedChatState & { id: string, title: string }): void {
+    public load(item: SavedChatState & { id: string, title: string, lastModified?: number }): void {
         this.chatHistory = item.chat;
         this.displayMessages = item.display;
         this.id = item.id;
         this.title = item.title;
+        this.lastModified = item.lastModified || Date.now();
         this.save();
     }
 
@@ -106,5 +112,19 @@ export class ChatSession {
         const doc = await vscode.workspace.openTextDocument(filePath);
         await vscode.window.showTextDocument(doc);
         vscode.window.showInformationMessage(`Thread saved as ${path.basename(filePath)}.`);
+    }
+
+    /**
+     * Controls what gets serialized by JSON.stringify.
+     * Prevents serializing the VS Code ExtensionContext (ctx), which triggers the extensionRuntime error.
+     */
+    public toJSON() {
+        return {
+            id: this.id,
+            title: this.title,
+            chatHistory: this.chatHistory,
+            displayMessages: this.displayMessages,
+            lastModified: this.lastModified
+        };
     }
 }

@@ -186,6 +186,51 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.90
+
+- Bumped the VSIX build from `2.2.89` to `2.2.90`.
+- Fix extensionRuntime crash during serialization
+- fix New Chat and Delete History reliability
+- add detailed logging.
+- Packaged `release/llem-2.2.90.vsix`.
+
+### v2.2.89
+
+- Bumped the VSIX build from `2.2.88` to `2.2.89`.
+- Fix delete confirmation, resolve date rendering issues, and improve session reset reliability.
+- Packaged `release/llem-2.2.89.vsix`.
+
+### v2.2.88
+
+- Bumped the VSIX build from `2.2.87` to `2.2.88`.
+- Fix new chat functionality, clarify attachment icon, and sync live web mode state.
+- Packaged `release/llem-2.2.88.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.87` to `2.2.87`.
+- Fix Invalid Date in history: add lastModified field to ChatSession, add relative time display in history list.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.87` to `2.2.87`.
+- Add comprehensive logging to Output > LLeM channel for all UI events, messages, streams, history, and resets.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.87` to `2.2.87`.
+- Fix New Chat button: fully reset stream, loader, sending state on clearChat
+- remove distracting toast.
+- Packaged `release/llem-2.2.87.vsix`.
+
+### v2.2.87
+
+- Bumped the VSIX build from `2.2.87` to `2.2.87`.
+- Fix extensionRuntime proposed API error by removing terminal forced show at activation time.
+- Packaged `release/llem-2.2.87.vsix`.
+
 ### v2.2.87
 
 - Bumped the VSIX build from `2.2.87` to `2.2.87`.

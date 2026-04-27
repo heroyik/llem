@@ -46,6 +46,7 @@ try {
   let pendingFiles = [];
   let internetEnabled = false;
   if (internetBtn) {
+    log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
     internetBtn.classList.toggle('active', internetEnabled);
     internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
   }
@@ -841,8 +842,26 @@ try {
       title.textContent = item.title || 'Untitled Thread';
       const meta = document.createElement('div');
       meta.className = 'history-item-meta';
-      const date = new Date(item.lastModified).toLocaleDateString();
-      meta.innerHTML = '<span>' + date + '</span>';
+      var dateStr = 'Unknown date';
+      if (item.lastModified) {
+        var d = new Date(item.lastModified);
+        if (!isNaN(d.getTime())) {
+          var now = Date.now();
+          var diff = now - d.getTime();
+          if (diff < 60000) {
+            dateStr = 'Just now';
+          } else if (diff < 3600000) {
+            dateStr = Math.floor(diff / 60000) + 'm ago';
+          } else if (diff < 86400000) {
+            dateStr = Math.floor(diff / 3600000) + 'h ago';
+          } else if (diff < 604800000) {
+            dateStr = Math.floor(diff / 86400000) + 'd ago';
+          } else {
+            dateStr = d.toLocaleDateString();
+          }
+        }
+      }
+      meta.innerHTML = '<span>' + dateStr + '</span>';
 
       const actions = document.createElement('div');
       actions.className = 'history-item-actions';
@@ -851,9 +870,11 @@ try {
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        if (confirm('Delete this thread?')) {
-          vscode.postMessage({ type: 'deleteHistory', id: item.id });
-        }
+        vscode.postMessage({ 
+          type: 'requestDeleteHistory', 
+          id: item.id, 
+          title: item.title || 'Untitled Thread' 
+        });
       });
       actions.appendChild(delBtn);
       meta.appendChild(actions);
@@ -1008,33 +1029,44 @@ try {
     if (el) el.addEventListener(event, handler);
   }
 
-  safeListen(sendBtn, 'click', send);
+  safeListen(sendBtn, 'click', function() {
+    log('[UI] Send button clicked (pendingFiles=' + pendingFiles.length + ', sending=' + sending + ')');
+    send();
+  });
   safeListen(input, 'keydown', function(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
+      log('[UI] Enter key pressed to send');
       send();
     }
   });
   safeListen(newChatBtn, 'click', function() {
-    log('New chat button clicked');
+    log('[UI] New chat button (header) clicked → posting newChat');
     vscode.postMessage({ type: 'newChat' });
   });
   safeListen(newChatHistoryBtn, 'click', function() {
-    log('New chat (history) button clicked');
+    log('[UI] New chat (from history) button clicked → posting newChat');
     vscode.postMessage({ type: 'newChat' });
     if (historyView) historyView.classList.remove('visible');
     if (input) input.focus();
   });
-  safeListen(settingsBtn, 'click', function() { vscode.postMessage({ type: 'openSettings' }); });
-  safeListen(brainBtn, 'click', function() { vscode.postMessage({ type: 'syncBrain' }); });
+  safeListen(settingsBtn, 'click', function() {
+    log('[UI] Settings button clicked');
+    vscode.postMessage({ type: 'openSettings' });
+  });
+  safeListen(brainBtn, 'click', function() {
+    log('[UI] Brain sync button clicked');
+    vscode.postMessage({ type: 'syncBrain' });
+  });
   safeListen(stopBtn, 'click', function() {
+    log('[UI] Stop button clicked → posting stopGeneration');
     vscode.postMessage({ type: 'stopGeneration' });
     hideLoader();
     finalizeStream('stopped');
   });
   safeListen(internetBtn, 'click', function() {
     internetEnabled = !internetEnabled;
-    log('Live web mode toggled: ' + (internetEnabled ? 'ON' : 'OFF'));
+    log('[UI] Live web mode toggled: ' + (internetEnabled ? 'ON' : 'OFF'));
     internetBtn.classList.toggle('active', internetEnabled);
     internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
     const info = document.createElement('div');
@@ -1044,6 +1076,8 @@ try {
     chat.scrollTop = chat.scrollHeight;
   });
   safeListen(historyBtn, 'click', function() {
+    const opening = historyView && !historyView.classList.contains('visible');
+    log('[UI] History button clicked (opening=' + opening + ')');
     if (historyView) historyView.classList.toggle('visible');
     if (historyView && historyView.classList.contains('visible')) {
       vscode.postMessage({ type: 'getHistory' });
@@ -1051,6 +1085,7 @@ try {
     }
   });
   safeListen(closeHistoryBtn, 'click', function() {
+    log('[UI] Close history button clicked');
     if (historyView) historyView.classList.remove('visible');
   });
   safeListen(injectLocalBtn, 'click', function() {
@@ -1058,14 +1093,18 @@ try {
       alert('Attach files first, then drop them into the vault.');
       return;
     }
+    log('[UI] Inject local brain clicked (files=' + pendingFiles.length + ')');
     vscode.postMessage({ type: 'injectLocalBrain', files: pendingFiles });
     pendingFiles = [];
     renderPreview();
   });
   safeListen(attachBtn, 'click', function() {
+    log('[UI] Attach button clicked');
     if (fileInput) fileInput.click();
   });
   safeListen(fileInput, 'change', function() {
+    const count = (fileInput.files || []).length;
+    log('[UI] File input changed (files=' + count + ')');
     void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
     fileInput.value = '';
   });
@@ -1075,13 +1114,18 @@ try {
 
   window.addEventListener('message', function(event) {
     const msg = event.data;
+    if (msg.type !== 'streamChunk') {
+      log('[MSG←] ' + msg.type + (msg.id ? ' id=' + msg.id : '') + (msg.value && typeof msg.value === 'string' ? ' len=' + msg.value.length : ''));
+    }
     switch (msg.type) {
       case 'response':
         hideLoader();
         setSending(false);
+        log('[STREAM] Response received (len=' + (msg.value || '').length + ')');
         addMsg(msg.value, 'ai');
         break;
       case 'error':
+        log('[ERROR] Extension error: ' + msg.value, 'error');
         if (streamEl) {
           finalizeStream('stopped');
         } else {
@@ -1091,6 +1135,7 @@ try {
         addMsg(msg.value, 'error');
         break;
       case 'streamStart': {
+        log('[STREAM] Stream started');
         hideLoader();
         resetStreamRefs();
         streamStartedAt = Date.now();
@@ -1137,9 +1182,11 @@ try {
         scheduleStreamRender(false);
         break;
       case 'streamEnd':
+        log('[STREAM] Stream ended (chunks=' + streamChunkCount + ', chars=' + streamRaw.length + ')');
         finalizeStream('done');
         break;
       case 'streamAbort':
+        log('[STREAM] Stream aborted');
         finalizeStream('stopped');
         break;
       case 'modelsList':
@@ -1150,9 +1197,16 @@ try {
           option.textContent = model;
           modelSel.appendChild(option);
         });
+        log('[MODELS] Loaded ' + msg.value.length + ' model(s): ' + msg.value.join(', '));
         break;
       case 'clearChat':
-        log('Clearing chat UI');
+        log('[RESET] clearChat received — resetting all UI state (streamEl=' + !!streamEl + ', sending=' + sending + ')');
+        if (streamEl) {
+          log('[RESET] Aborting active stream before reset');
+          resetStreamRefs();
+        }
+        hideLoader();
+        setSending(false);
         document.body.classList.add('init');
         chat.innerHTML = welcomeMarkup();
         pendingFiles = [];
@@ -1166,23 +1220,29 @@ try {
           internetBtn.classList.remove('active');
           internetBtn.title = 'Live web: OFF';
         }
+        log('[RESET] Chat UI fully reset — new thread ready');
+        setTimeout(function() { if (input) input.focus(); }, 50);
         break;
       case 'restoreMessages':
         chat.innerHTML = '';
         if (msg.value && msg.value.length > 0) {
+          log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
           document.body.classList.remove('init');
           msg.value.forEach(function(item) {
             addMsg(item.text, item.role, item.files);
           });
         } else {
+          log('[RESTORE] No messages to restore — showing welcome screen');
           document.body.classList.add('init');
           chat.innerHTML = welcomeMarkup();
         }
         break;
       case 'focusInput':
+        log('[UI] focusInput received');
         input.focus();
         break;
       case 'injectPrompt':
+        log('[UI] injectPrompt received (len=' + (msg.value || '').length + ')');
         input.value = msg.value;
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 150) + 'px';
@@ -1190,20 +1250,27 @@ try {
         break;
       case 'historyList':
         historyItems = msg.value || [];
+        log('[HISTORY] Received ' + historyItems.length + ' history item(s)');
         renderHistory(historyItems);
         break;
       case 'historyLoaded':
-        // The chat session is restored by the backend sending 'restoreMessages'
-        // This case can be used for UI cleanup or notifications
+        log('[HISTORY] Session loaded: ' + msg.id);
         break;
       case 'fetchedUris':
+        log('[DROP] Fetched ' + (msg.files || []).length + ' URI attachment(s)');
         appendAttachmentRecords(msg.files || []);
         break;
+      default:
+        log('[MSG←] Unhandled message type: ' + msg.type, 'error');
     }
   });
 
+  log('[INIT] Webview loaded — requesting models and ready signal');
   vscode.postMessage({ type: 'getModels' });
-  setTimeout(function() { vscode.postMessage({ type: 'ready' }); }, 300);
+  setTimeout(function() {
+    log('[INIT] Posting ready signal to extension host');
+    vscode.postMessage({ type: 'ready' });
+  }, 300);
 } catch (err) {
   document.body.textContent = '';
   const crash = document.createElement('div');

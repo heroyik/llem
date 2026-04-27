@@ -85,7 +85,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         <div class="input-footer">
           <span class="input-hint">Enter sends · Shift+Enter adds a line · Drop files to attach</span>
           <div class="input-btns">
-            <button class="attach-btn" id="attachBtn" title="Attach files">+</button>
+            <button class="attach-btn" id="attachBtn" title="Attach files">📎</button>
             <button class="attach-btn" id="injectLocalBtn" title="Drop files into the vault">✦</button>
             <button class="stop-btn" id="stopBtn" title="Stop generating">■</button>
             <button class="send-btn" id="sendBtn" title="Send message">↑</button>
