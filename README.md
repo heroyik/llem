@@ -186,6 +186,14 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v2.2.91
+
+- Bumped the VSIX build from `2.2.90` to `2.2.91`.
+- Unified tool loop
+- fixed syntax highlighter backreference bug
+- updated delete modal
+- Packaged `release/llem-2.2.91.vsix`.
+
 ### v2.2.90
 
 - Bumped the VSIX build from `2.2.89` to `2.2.90`.

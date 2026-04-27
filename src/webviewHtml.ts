@@ -96,6 +96,19 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
   </div>
 
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-title">Delete Thread?</div>
+      <div class="modal-body">
+        Are you sure you want to delete "<span id="deleteThreadTitle"></span>"? This cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button id="cancelDeleteBtn" class="btn-secondary">Cancel</button>
+        <button id="confirmDeleteBtn" class="btn-danger">Delete Thread</button>
+      </div>
+    </div>
+  </div>
+
   <script nonce="${nonce}" src="${markdownItUri}"></script>
   <script nonce="${nonce}" src="${mainScriptUri}"></script>
 </body>

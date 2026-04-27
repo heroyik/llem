@@ -231,6 +231,23 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         logInfo('[NEW CHAT] clearChat posted to webview — new thread ready');
     }
 
+    public async deleteHistory(id: string) {
+        logInfo('[HISTORY] deleteHistory(' + id + ') requested');
+        try {
+            await this._historyManager.deleteSession(id);
+            logInfo('[HISTORY] Session ' + id + ' deleted from disk');
+            if (this._chatSession.id === id) {
+                logInfo('[HISTORY] Deleting current active session — resetting chat');
+                this.resetChat();
+            } else {
+                logInfo('[HISTORY] Refreshing history list after deletion');
+                await this.getHistory();
+            }
+        } catch (err) {
+            logError('[HISTORY] Failed to delete session ' + id, err);
+        }
+    }
+
     public async exportChat() {
         await this._chatSession.exportMarkdown();
     }
@@ -611,29 +628,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public async deleteHistory(id: string) {
-        logInfo('[HISTORY] Deleting session: ' + id);
-        await this._historyManager.deleteSession(id);
-        
-        // If we just deleted the active session, reset the UI
-        if (this._chatSession.id === id) {
-            logInfo('[HISTORY] Deleted active session, resetting current view');
-            this._chatSession.reset();
-            this._view?.webview.postMessage({ type: 'clearChat' });
-        }
-        
-        await this.getHistory();
-    }
-
     public async requestDeleteHistory(id: string, title: string) {
-        const result = await vscode.window.showWarningMessage(
-            `Delete thread "${title || 'Untitled'}"?`,
-            { modal: true },
-            'Delete'
-        );
-
-        if (result === 'Delete') {
-            await this.deleteHistory(id);
-        }
+        logInfo('[HISTORY] requestDeleteHistory(' + id + ', ' + title + ')');
+        this._view?.webview.postMessage({ type: 'requestDeleteHistory', id, title });
     }
 }

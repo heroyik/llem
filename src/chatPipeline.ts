@@ -92,7 +92,8 @@ export class ChatPipeline {
             abortController = new AbortController();
             this.host.setAbortController(abortController);
 
-            let aiMessage = await this.streamMessages(
+            let fullAiMessage = '';
+            let currentAiResponse = await this.streamMessages(
                 endpoint,
                 reqMessages,
                 selectedModel,
@@ -100,21 +101,64 @@ export class ChatPipeline {
                 abortController.signal
             );
 
-            aiMessage = await this.resolveModelReadRequests(
-                aiMessage,
-                reqMessages,
-                endpoint,
-                selectedModel,
-                config.timeout,
-                abortController.signal
-            );
+            let turn = 0;
+            const maxTurns = 10;
 
-            this.host.getChatHistory().push({ role: 'assistant', content: aiMessage });
+            while (turn < maxTurns) {
+                let turnExecuted = false;
+                let combinedSystemFeedback = '';
+                let combinedUiFeedback = '';
+                let cleanedAiResponse = currentAiResponse;
 
-            const report = await this.host.executeActions(aiMessage);
-            const finalMessage = this.appendAgentReport(aiMessage, report);
+                // 1. Resolve internal read requests (vault, url)
+                const internalResult = await this.resolveInternalActions(currentAiResponse, endpoint, selectedModel, config.timeout, abortController.signal);
+                if (internalResult.executed) {
+                    turnExecuted = true;
+                    cleanedAiResponse = internalResult.cleanedResponse;
+                    combinedSystemFeedback += internalResult.systemFeedback + '\n';
+                    combinedUiFeedback += internalResult.uiFeedback;
+                }
+
+                // 2. Resolve external actions (file, terminal)
+                // Note: executeActions already handles history and UI chunking for external tools
+                const externalReport = await this.host.executeActions(currentAiResponse);
+                if (externalReport.length > 0) {
+                    turnExecuted = true;
+                    const reportMsg = `\n\n---\n**Action Report**\n${externalReport.join('\n')}`;
+                    combinedUiFeedback += reportMsg;
+                    // System feedback for external tools is already appended to history by executeActions
+                }
+
+                if (turnExecuted) {
+                    // Update full AI message with what we've processed so far
+                    // We strip action tags from the display version later, but we need the feedback here
+                    fullAiMessage += cleanedAiResponse + combinedUiFeedback;
+                    
+                    // The assistant message is pushed to history here if it wasn't already (or we ensure it's handled)
+                    // resolveInternalActions doesn't push to history, but executeActions DOES.
+                    // Wait! If BOTH run, executeActions pushes the RAW ai message to history.
+                    // If ONLY internal runs, we need to push it.
+                    
+                    if (!externalReport.length) {
+                        // If no external actions, executeActions wasn't there to push history
+                        this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse });
+                        this.host.getChatHistory().push({ role: 'user', content: combinedSystemFeedback || '[SYSTEM: Actions completed. Proceed with next steps.]' });
+                    }
+                    
+                    // Re-prompt
+                    const nextReqMessages = this.host.buildRequestMessages(options.internetEnabled, DEFAULT_BACKGROUND_LABEL);
+                    currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal);
+                    turn++;
+                    continue;
+                }
+
+                // No more actions
+                fullAiMessage += currentAiResponse;
+                break;
+            }
+
             this.host.postWebviewMessage({ type: 'streamEnd' });
-            this.host.getDisplayMessages().push({ text: this.stripActionTags(finalMessage), role: 'ai' });
+            this.host.getDisplayMessages().push({ text: this.stripActionTags(fullAiMessage), role: 'ai' });
             this.trimHistory();
             await this.host.saveHistory();
         } catch (error: any) {
@@ -242,19 +286,18 @@ export class ChatPipeline {
         }
     }
 
-    private async resolveModelReadRequests(
+    private async resolveInternalActions(
         aiMessage: string,
-        reqMessages: ChatMessage[],
         endpoint: AIEndpoint,
         selectedModel: string,
         timeout: number,
         signal?: AbortSignal
-    ): Promise<string> {
+    ): Promise<{ cleanedResponse: string; uiFeedback: string; systemFeedback: string; executed: boolean }> {
         const brainReads = [...aiMessage.matchAll(/<read_(?:brain|vault)>([\s\S]*?)<\/read_(?:brain|vault)>/g)];
         const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
 
         if (brainReads.length === 0 && urlReads.length === 0) {
-            return aiMessage;
+            return { cleanedResponse: aiMessage, uiFeedback: '', systemFeedback: '', executed: false };
         }
 
         let fetchedContent = '';
@@ -293,19 +336,12 @@ export class ChatPipeline {
             this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
         }
 
-        reqMessages.push({ role: 'assistant', content: cleanedResponse || 'Digging through the context...' });
-        reqMessages.push({
-            role: 'user',
-            content: `[SYSTEM: The following vault notes and web contents were retrieved based on your actions. Use them to answer the user's original question accurately.]\n${fetchedContent}\n\nNow answer the user's question using the knowledge above. Do NOT output <read_vault>, <read_brain>, or <read_url> again. Answer directly.`
-        });
-
-        return cleanedResponse + uiFeedbackStr + await this.streamMessages(
-            endpoint,
-            reqMessages,
-            selectedModel,
-            timeout,
-            signal
-        );
+        return {
+            cleanedResponse,
+            uiFeedback: uiFeedbackStr,
+            systemFeedback: `[SYSTEM: The following vault notes and web contents were retrieved based on your actions. Use them to answer the user's original question accurately.]\n${fetchedContent}\n\nNow answer the user's question using the knowledge above. Do NOT output <read_vault>, <read_brain>, or <read_url> again. Answer directly.`,
+            executed: true
+        };
     }
 
     private async streamMessages(
@@ -373,14 +409,18 @@ export class ChatPipeline {
     }
 
     private stripActionTags(text: string): string {
+        if (!text) { return ''; }
+        // Remove all tool call tags: <call:name attr="...">...</call:name>
+        // and also <run_command>...</run_command> etc.
         return text
-            .replace(/(?:<|call:)\s*(?:create_file|file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file)>/gi, '')
-            .replace(/(?:<|call:)\s*(?:edit_file|edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
-            .replace(/(?:<|call:)\s*(?:delete_file|delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
-            .replace(/(?:<|call:)\s*(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
-            .replace(/(?:<|call:)\s*(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
-            .replace(/(?:<|call:)\s*(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
-            .replace(/(?:<|call:)\s*(?:read_brain|read_vault)>[\s\S]*?<\/(?:read_brain|read_vault)>/gi, '')
+            .replace(/<call:[^>]+>[\s\S]*?<\/call:[^>]+>/gi, '')
+            .replace(/<run_command[^>]*>[\s\S]*?<\/run_command>/gi, '')
+            .replace(/<run_python[^>]*>[\s\S]*?<\/run_python>/gi, '')
+            .replace(/<read_file[^>]*>[\s\S]*?<\/read_file>/gi, '')
+            .replace(/<write_file[^>]*>[\s\S]*?<\/write_file>/gi, '')
+            .replace(/<search_web[^>]*>[\s\S]*?<\/search_web>/gi, '')
+            .replace(/<fetch_url[^>]*>[\s\S]*?<\/fetch_url>/gi, '')
+            .replace(/<apply_diff[^>]*>[\s\S]*?<\/apply_diff>/gi, '')
             .trim();
     }
 

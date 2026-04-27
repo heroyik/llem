@@ -24,7 +24,12 @@ try {
   const stopBtn = document.getElementById('stopBtn');
   const modelSel = document.getElementById('modelSel');
   const newChatBtn = document.getElementById('newChatBtn');
-  const settingsBtn = document.getElementById('settingsBtn');
+  const newChatHistoryBtn = document.getElementById('newChatHistoryBtn');
+  const deleteModal = document.getElementById('deleteModal');
+  const deleteThreadTitle = document.getElementById('deleteThreadTitle');
+  const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+  const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+  let currentDeletingId = null;
   const brainBtn = document.getElementById('brainBtn');
   const internetBtn = document.getElementById('internetBtn');
   const historyBtn = document.getElementById('historyBtn');
@@ -32,7 +37,6 @@ try {
   const closeHistoryBtn = document.getElementById('closeHistoryBtn');
   const historySearch = document.getElementById('historySearch');
   const historyList = document.getElementById('historyList');
-  const newChatHistoryBtn = document.getElementById('newChatHistoryBtn');
   const attachBtn = document.getElementById('attachBtn');
   const injectLocalBtn = document.getElementById('injectLocalBtn');
   const inputBox = document.getElementById('inputBox');
@@ -101,11 +105,31 @@ try {
 
   function highlight(code) {
     let html = esc(code);
-    html = html.replace(/(\/\/[^\n]*)/g, '<span class="tok-comment">$1</span>');
-    html = html.replace(/(#.*)/g, '<span class="tok-comment">$1</span>');
-    html = html.replace(/(&quot;[^&]*?&quot;|&#x27;[^&]*?&#x27;)/g, '<span class="tok-string">$1</span>');
+    const tokens = [];
+
+    // 1. Protect comments
+    html = html.replace(/(\/\/[^\n]*|#.*)/g, (m) => {
+      const id = '@@LLEM_TOK_' + tokens.length + '@@';
+      tokens.push('<span class="tok-comment">' + m + '</span>');
+      return id;
+    });
+
+    // 2. Protect strings
+    html = html.replace(/(&quot;[^&]*?&quot;|&#x27;[^&]*?&#x27;)/g, (m) => {
+      const id = '@@LLEM_TOK_' + tokens.length + '@@';
+      tokens.push('<span class="tok-string">' + m + '</span>');
+      return id;
+    });
+
+    // 3. Highlight keywords & numbers on the clean text
     html = html.replace(/\b(function|const|let|var|return|if|else|for|while|class|import|export|from|default|async|await|try|catch|throw|new|this|def|self|print|lambda|yield|with|as|raise|except|finally)\b/g, '<span class="tok-keyword">$1</span>');
     html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="tok-number">$1</span>');
+
+    // Step 4: Restore tokens
+    for (let i = 0; i < tokens.length; i++) {
+      // Use function to avoid $1 backreference bug if tokens[i] contains $
+      html = html.replace('@@LLEM_TOK_' + i + '@@', function() { return tokens[i]; });
+    }
     return html;
   }
 
@@ -339,6 +363,17 @@ try {
     el.appendChild(body);
     chat.appendChild(el);
     chat.scrollTop = chat.scrollHeight;
+  }
+
+  function showDeleteModal(id, title) {
+    currentDeletingId = id;
+    if (deleteThreadTitle) deleteThreadTitle.textContent = title;
+    if (deleteModal) deleteModal.classList.add('visible');
+  }
+
+  function hideDeleteModal() {
+    currentDeletingId = null;
+    if (deleteModal) deleteModal.classList.remove('visible');
   }
 
   function showLoader() {
@@ -1050,6 +1085,17 @@ try {
     if (historyView) historyView.classList.remove('visible');
     if (input) input.focus();
   });
+  safeListen(confirmDeleteBtn, 'click', function() {
+    if (currentDeletingId) {
+      log('[UI] Confirm delete clicked for: ' + currentDeletingId);
+      vscode.postMessage({ type: 'deleteHistory', id: currentDeletingId });
+      hideDeleteModal();
+    }
+  });
+  safeListen(cancelDeleteBtn, 'click', function() {
+    log('[UI] Cancel delete clicked');
+    hideDeleteModal();
+  });
   safeListen(settingsBtn, 'click', function() {
     log('[UI] Settings button clicked');
     vscode.postMessage({ type: 'openSettings' });
@@ -1252,6 +1298,10 @@ try {
         historyItems = msg.value || [];
         log('[HISTORY] Received ' + historyItems.length + ' history item(s)');
         renderHistory(historyItems);
+        break;
+      case 'requestDeleteHistory':
+        log('[UI] requestDeleteHistory received for: ' + msg.id);
+        showDeleteModal(msg.id, msg.title);
         break;
       case 'historyLoaded':
         log('[HISTORY] Session loaded: ' + msg.id);
