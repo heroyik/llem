@@ -186,6 +186,18 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v3.0.5
+
+- Bumped the VSIX build from `3.0.4` to `3.0.5`.
+- Finalized LLeM branding with a professional new icon and persistent webview logo styles.
+- Packaged `release/llem-3.0.5.vsix`.
+
+### v3.0.4
+
+- Bumped the VSIX build from `3.0.3` to `3.0.4`.
+- Updated LLeM branding with a professional new icon and refreshed webview logo.
+- Packaged `release/llem-3.0.4.vsix`.
+
 ### v3.0.3
 
 - Bumped the VSIX build from `3.0.2` to `3.0.3`.

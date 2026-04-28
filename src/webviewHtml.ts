@@ -20,6 +20,9 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     const mainScriptUri = webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'assets', 'webview.js')
     );
+    const iconUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'assets', 'icon.png')
+    );
     const nonce = crypto.randomBytes(16).toString('base64');
     const safeExtensionVersion = escapeHtml(extensionVersion || 'dev');
 
@@ -35,7 +38,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
 <body class="init" data-version="${safeExtensionVersion}">
   <div class="header">
     <div class="header-left">
-      <div class="logo">LL</div>
+      <div class="logo"><img src="${iconUri}" alt="LLeM"></div>
       <div class="brand-stack">
         <div class="brand-line"><span class="brand">LLeM</span><span class="version-badge">v${safeExtensionVersion}</span></div>
         <span class="subbrand">Local-first code sidekick</span>
@@ -79,7 +82,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
     <div class="chat" id="chat">
       <div class="welcome">
-        <div class="welcome-logo">LL</div>
+        <div class="welcome-logo"><img src="${iconUri}" alt="LLeM"></div>
         <div class="welcome-title">LLeM<span class="welcome-version">v${safeExtensionVersion}</span></div>
         <div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div>
       </div>

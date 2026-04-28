@@ -228,7 +228,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 logInfo('[NEW CHAT] Saving current session before reset (id=' + this._chatSession.id + ')');
                 await this._historyManager.saveSession(this._chatSession);
             } catch (err) {
-                logError('[NEW CHAT] Failed to save session during reset. Proceeding with reset anyway.', err);
+                logError('[NEW CHAT] Failed to save session during reset. Proceeding with reset anyway. ' + (err instanceof Error ? err.message : String(err)));
             }
         } else {
             logInfo('[NEW CHAT] Skipping save for empty session');
@@ -255,7 +255,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 await this.getHistory();
             }
         } catch (err) {
-            logError('[HISTORY] Failed to delete session ' + id, err);
+            logError('[HISTORY] Failed to delete session ' + id + ': ' + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -607,7 +607,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 logInfo(`[SIDEBAR] saveHistory: Saving session ${this._chatSession.id}`);
                 await this._historyManager.saveSession(this._chatSession);
             } catch (err) {
-                logError(`[SIDEBAR] saveHistory: Failed to save session ${this._chatSession.id}`, err);
+                logError(`[SIDEBAR] saveHistory: Failed to save session ${this._chatSession.id}: ` + (err instanceof Error ? err.message : String(err)));
                 // We don't throw here to avoid interrupting the chat pipeline if saving fails
             }
         }
@@ -656,7 +656,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             logInfo(`[WEBVIEW] Sending ${relativePaths.length} workspace file paths`);
             this._view.webview.postMessage({ type: 'workspaceFilesList', value: relativePaths });
         } catch (err) {
-            logError('[WEBVIEW] Failed to fetch workspace files', err);
+            logError('[WEBVIEW] Failed to fetch workspace files: ' + (err instanceof Error ? err.message : String(err)));
         }
     }
 }
