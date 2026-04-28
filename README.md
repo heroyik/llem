@@ -186,6 +186,12 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v3.0.2
+
+- Bumped the VSIX build from `3.0.1` to `3.0.2`.
+- LLeM 3.0.2: Updated default LLM model to gemma4:e4b and fixed UI icons
+- Packaged `release/llem-3.0.2.vsix`.
+
 ### v3.0.1
 
 - Bumped the VSIX build from `3.0.0` to `3.0.1`.
