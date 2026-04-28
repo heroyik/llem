@@ -20,13 +20,35 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ---
 
+## 📥 Installation
+
+Since **LLeM** is currently in early flight, we distribute it via `.vsix` files. Follow these steps to get airborne:
+
+### 1. Download the Extension
+1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
+2. Look at the **Releases** section on the right sidebar.
+3. Click on the latest release tag (e.g., `v3.0.5`).
+4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.0.5.vsix`) to download it to your machine.
+
+### 2. Install in VS Code or Cursor
+1. Open **VS Code** or **Cursor**.
+2. Open the **Extensions** view by clicking the square icon in the left sidebar or pressing `Cmd+Shift+X` (macOS) or `Ctrl+Shift+X` (Windows/Linux).
+3. Click the **`...` (More Actions)** menu icon in the top right corner of the Extensions view title bar.
+4. Select **Install from VSIX...** from the dropdown menu.
+5. Locate and select the `.vsix` file you just downloaded.
+6. Once installed, you might need to click **Reload** or restart your editor.
+
+---
+
 ## ✨ Features
 
-- **🛡️ Local-First Workflow**: Connects directly to local engines like **Ollama** or **LM Studio**.
-- **🚀 Live Streaming**: Real-time output rendered inside a custom VS Code chat panel.
-- **🛠️ Agentic Actions**: Trigger file creations, edits, and terminal commands directly from the AI's response.
-- **📚 Markdown Vault**: Use an Obsidian-compatible vault as a long-lived knowledge base for your projects.
-- **🖱️ Drag-and-Drop**: Build context instantly by dropping files or folders into the chat.
+- **🛡️ Local-First Workflow**: Connects directly to local engines like **Ollama** or **LM Studio**. No cloud, no API costs.
+- **🚀 Live Streaming**: Real-time output rendered inside a custom VS Code chat panel with full Markdown and code block support.
+- **🛠️ Agentic Actions**: Trigger file creations, non-destructive edits, and terminal commands directly from the AI's response.
+- **🗂️ Persistent History**: Conversations are automatically saved to `~/.llem-history`, supporting session recovery, renaming, and bulk deletion.
+- **🔍 Workspace Awareness**: Real-time monitoring of your project files. Drop files/folders into chat for instant, high-fidelity context injection.
+- **🧠 The Brain (Markdown Vault)**: Sync your notes with an Obsidian-compatible vault. Supports visual network maps and local Git synchronization.
+- **⚡ Performance First**: Multi-layered caching, request throttling, and token-usage monitoring to keep your dev environment snappy.
 
 ---
 
@@ -67,7 +89,8 @@ Open your VS Code `settings.json` to customize the experience.
 | `llem.requestTimeout` | Request timeout in seconds. | `300` |
 | `llem.vaultPath` | Path to your markdown vault. | `~/.llem-vault` |
 | `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
-| `llem.bridgeToken` | Security token for bridge callers. | `(empty)` |
+| `llem.bridgeToken` | Security token for authenticated bridge callers. | `(empty)` |
+| `llem.maxHistoryItems` | Maximum number of sessions to keep in history. | `100` |
 
 > [!TIP]
 > If you're using a slower model or long prompts, try bumping up the `llem.requestTimeout`.
@@ -104,6 +127,9 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 - **Branding on Point**: We ditched the boring stuff for a fresh icon and a UI that actually looks good.
 - **Gemma Optimization**: We tweaked the engine to hunt down Ollama's or LM Studio's default model automatically.
+- **Chat History 2.0**: Full persistence layer implemented. Your conversations now survive VS Code restarts.
+- **Workspace Sync**: Instant UI updates when you rename, delete, or add files to your project.
+- **Security Audit**: Completed a deep-dive security pass on the Bridge Server, adding rate limiting and token-based auth.
 - **Better Vibes**: Smoother logging and descriptive errors so you're never left guessing.
 - **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
 
