@@ -32,15 +32,14 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
         if (engineUrl) {
             await getLlemSettings().update('engineUrl', engineUrl, vscode.ConfigurationTarget.Global);
             
-            // Prioritize gemma4:e4b if discovered, otherwise use the first one
-            let targetDefault = discoveredModels.find(m => m === 'gemma4:e4b' || m === 'gemma:latest') || discoveredModels[0];
-            
-            // For this specific update, we want to FORCE gemma4:e4b if it's available
-            if (discoveredModels.includes('gemma4:e4b')) {
-                targetDefault = 'gemma4:e4b';
-            }
+            // Select a sane default model from the discovered list.
+            // We look for 'gemma4:e4b' (preferred), then 'gemma:latest', then just the first one.
+            const targetDefault = discoveredModels.find(m => m === 'gemma4:e4b') 
+                               || discoveredModels.find(m => m === 'gemma:latest')
+                               || discoveredModels[0];
 
             if (targetDefault) {
+                // We only update if we found a valid candidate.
                 await getLlemSettings().update('defaultModel', targetDefault, vscode.ConfigurationTarget.Global);
             }
         }
@@ -78,15 +77,14 @@ export async function getInstalledModels(): Promise<string[]> {
             return [defaultModel];
         }
         
-        // Ensure defaultModel is always first in the list
-        // Normalize comparison to handle potential case/tag mismatches if needed, 
-        // but for now we stick to exact match as per user request.
+        if (models.length === 0) {
+            return [defaultModel];
+        }
+        
+        // Ensure defaultModel is first in the list if it's actually installed.
+        // If it's not installed, we don't force it to the top to avoid confusing the user.
         if (models.includes(defaultModel)) {
             models = [defaultModel, ...models.filter(m => m !== defaultModel)];
-        } else {
-            // If the configured default isn't in the list, we still put it at the top
-            // to ensure it shows up in the UI as the active selection.
-            models = [defaultModel, ...models];
         }
         
         return models;
