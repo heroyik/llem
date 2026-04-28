@@ -1,185 +1,110 @@
-# LLeM
+# 🛫 LLeM
 
-A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device without shipping your code to the cloud.
+**A local-first coding sidekick for VS Code and Cursor.** Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device without shipping your soul to the cloud.
 
-## Features
+---
 
-- **Local-first model workflow**: Points at a local engine (Ollama, LM Studio) and keeps your code on your machine.
-- **Live streaming output**: Renders replies inside a custom chat panel with real-time streaming for immediate feedback.
-- **File & Terminal Actions**: Trigger file creations, edits, and terminal commands directly from model output.
-- **Markdown Vault**: Optionally use a markdown vault (Obsidian compatible) as a long-lived note layer for project context.
-- **Drag-and-Drop**: Easily attach files or folders to the chat to build context instantly.
+## ✈️ The Story
 
-## Requirements
+This extension was built because I was tired of being ghosted by AI every time I hit 30,000 feet. No Wi-Fi? No problem. **LLeM** was made specifically for those long-haul flights where you just want to vibe and code without needing an internet connection.
 
-To get real responses, you need one local model runtime running:
+> [!NOTE]
+> **Credits & Origin**: Huge shoutout to the OG inspiration, [connect-ai](https://github.com/wonseokjung/connect-ai). We took that foundation, gave it a massive refactor, and cranked everything up to eleven. We’re talking boosted performance, fresh features, and a serious security audit to keep your local workflow locked down. We didn't just download it; we leveled it up.
+>
+> **Special Thanks**: Seriously, LLeM wouldn't even exist if it weren't for the [connect-ai](https://github.com/wonseokjung/connect-ai) sharing their code with the world. Major respect for that open-source energy—you guys made this happen. 🫶
+>
+> **Fair Play**: If you're planning to build on top of this or create something new based on this code, please keep the good karma flowing and make sure to shout out the original creators [connect-ai](https://github.com/wonseokjung/connect-ai) and their contributions. Respect the hustle! ✌️
 
-- Ollama
-- LM Studio
+> [!IMPORTANT]
+> **LLeM is 100% local.** Your code never leaves your machine. No cloud, no drama, just pure local intelligence.
 
-LLeM can auto-detect common local endpoints, but you can also set them manually.
+---
 
-## Engine Setup
+## ✨ Features
 
-### Ollama
+- **🛡️ Local-First Workflow**: Connects directly to local engines like **Ollama** or **LM Studio**.
+- **🚀 Live Streaming**: Real-time output rendered inside a custom VS Code chat panel.
+- **🛠️ Agentic Actions**: Trigger file creations, edits, and terminal commands directly from the AI's response.
+- **📚 Markdown Vault**: Use an Obsidian-compatible vault as a long-lived knowledge base for your projects.
+- **🖱️ Drag-and-Drop**: Build context instantly by dropping files or folders into the chat.
 
-Typical local URL:
+---
 
-```text
-http://127.0.0.1:11434
-```
+## 🚀 Quick Start
 
-Common flow:
+To get started, you'll need a local model runtime running on your machine.
+
+### 1. Choose Your Engine
+
+#### **Ollama**
+
+Typical URL: `http://127.0.0.1:11434`
 
 ```bash
-ollama pull gemma4:e2b
-ollama list
+# Pull a model and serve
+ollama pull gemma4:e4b
 ollama serve
 ```
 
-If Ollama is running and the chosen model exists, LLeM can talk to it directly.
+#### **LM Studio**
 
-### LM Studio
+Typical URL: `http://127.0.0.1:1234`
 
-Typical local URL:
+1. Download and load your favorite model.
+2. Enable the **Local Server**.
+3. Confirm the server is active.
 
-```text
-http://127.0.0.1:1234
-```
+---
 
-In LM Studio:
+## ⚙️ Configuration
 
-1. download or select a model
-2. load the model
-3. enable the local server
-4. confirm the server is available
+Open your VS Code `settings.json` to customize the experience.
 
-Once the LM Studio server is up, LLeM can target it using the same chat flow.
+| Setting | Description | Default |
+| :--- | :--- | :--- |
+| `llem.engineUrl` | Local/remote model endpoint URL. | `http://127.0.0.1:11434` |
+| `llem.defaultModel` | The default model slug used for requests. | `gemma4:e4b` |
+| `llem.requestTimeout` | Request timeout in seconds. | `300` |
+| `llem.vaultPath` | Path to your markdown vault. | `~/.llem-vault` |
+| `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
+| `llem.bridgeToken` | Security token for bridge callers. | `(empty)` |
 
-## Configuration
+> [!TIP]
+> If you're using a slower model or long prompts, try bumping up the `llem.requestTimeout`.
 
-To change settings such as `llem.engineUrl` or `llem.defaultModel`, you should open
-your VS Code settings in JSON format.
+---
 
-- **macOS**: Press `CMD+SHIFT+P`, then select **Preferences: Open User Settings (JSON)**.
-- **Windows**: Press `CTRL+SHIFT+P`, then select **Preferences: Open User Settings (JSON)**.
-
-LLeM exposes a small set of settings under the `llem` namespace.
-
-### `llem.engineUrl`
-
-The local or remote model endpoint URL.
-
-Default:
-
-```text
-http://127.0.0.1:11434
-```
-
-Use this to switch between Ollama and LM Studio. If you are connecting to a
-**remote Ollama server**, specify the IP address or hostname:
-
-```text
-http://192.168.1.100:11434
-```
-
-### `llem.defaultModel`
-
-The default model slug used for requests.
-
-Default:
-
-```text
-gemma4:e2b
-```
-
-Use a model name that exists in your local engine.
-
-### `llem.requestTimeout`
-
-The request timeout in seconds.
-
-Default:
-
-```text
-300
-```
-
-If long prompts or slower models are timing out, raise this number.
-
-### `llem.vaultPath`
-
-Optional custom path to the markdown vault.
-
-If this value is empty, LLeM uses:
-
-```text
-~/.llem-vault
-```
-
-### `llem.bridgeEnabled`
-
-Whether LLeM should start the optional local HTTP bridge on `127.0.0.1:4825`.
-
-Default:
-
-```text
-false
-```
-
-Keep this off unless you intentionally connect another local tool to LLeM.
-
-### `llem.bridgeToken`
-
-Optional token for the local HTTP bridge.
-
-Default:
-
-```text
-empty
-```
-
-When set, bridge callers must send either:
-
-```text
-Authorization: Bearer <token>
-X-LLeM-Token: <token>
-```
-
-Bridge requests are also origin-checked, rate-limited, and validated for payload type and size before they reach the local model or vault writer.
-
-## Development
+## 🛠️ Development
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
-- npm
+- **Node.js** (v18+)
+- **npm**
 
-### Build and Package
+### Commands
 
-To compile the extension and webview assets:
+- **Compile**: `npm run compile`
+- **Build VSIX**: `npm run package:vsix`
+- **Local Test VSIX**: `npm run package:vsix:local`
 
-```bash
-npm run compile
-```
+---
 
-To build a production VSIX package:
+## ⚠️ Known Issues
 
-```bash
-npm run package:vsix
-```
+- **Context Limits**: Large file attachments might hit the context window limit of your local model.
+- **Server Check**: Make sure your local engine (Ollama/LM Studio) is actually running before you start chatting.
 
-The resulting file will be generated in the `release/` directory.
+---
 
-### Local Development VSIX
+## 📝 Release Notes
 
-To build a VSIX for local testing (using local scripts):
+### v3.0.5 — The "First Flight" Public Drop ✈️
 
-```bash
-npm run package:vsix:local
-```
+Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first public release**. 🚀
 
-## Known Issues
+- **Branding on Point**: We ditched the boring stuff for a fresh icon and a UI that actually looks good.
+- **Gemma Optimization**: We tweaked the engine to hunt down Ollama's or LM Studio's default model automatically.
+- **Better Vibes**: Smoother logging and descriptive errors so you're never left guessing.
+- **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
 
-- Large file attachments may impact context window limits depending on the local model's capability.
-- Ensure your local server is running before attempting to chat.
+**Local-first, offline-always. Let's cook.** 🛫💻
