@@ -206,11 +206,19 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     public ensureFirstRunSetup(): void {
-        if (this._setupStarted || this._ctx.globalState.get('setupComplete')) {
+        const currentVersion = this._ctx.extension.packageJSON.version;
+        const lastSetupVersion = this._ctx.globalState.get<string>('lastSetupVersion');
+
+        if (this._setupStarted) {
             return;
         }
-        this._setupStarted = true;
-        void runFirstRunSetup(this._ctx);
+
+        // Run if setup not complete OR if we just updated to a new version (to ensure new defaults)
+        if (!this._ctx.globalState.get('setupComplete') || lastSetupVersion !== currentVersion) {
+            this._setupStarted = true;
+            this._ctx.globalState.update('lastSetupVersion', currentVersion);
+            void runFirstRunSetup(this._ctx);
+        }
     }
 
     public async resetChat() {

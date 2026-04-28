@@ -186,6 +186,18 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v3.0.3
+
+- Bumped the VSIX build from `3.0.3` to `3.0.3`.
+- Fix default model selection logic and force setup on update
+- Packaged `release/llem-3.0.3.vsix`.
+
+### v3.0.2
+
+- Bumped the VSIX build from `3.0.2` to `3.0.2`.
+- Fix model selection default behavior
+- Packaged `release/llem-3.0.2.vsix`.
+
 ### v3.0.2
 
 - Bumped the VSIX build from `3.0.1` to `3.0.2`.
