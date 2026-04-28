@@ -186,6 +186,12 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v3.0.3
+
+- Bumped the VSIX build from `3.0.2` to `3.0.3`.
+- Updated app icons to reflect the LLeM branding instead of LLM.
+- Packaged `release/llem-3.0.3.vsix`.
+
 ### v3.0.2
 
 - Bumped the VSIX build from `3.0.1` to `3.0.2`.
