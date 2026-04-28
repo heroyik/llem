@@ -164,6 +164,10 @@ select {
   background: var(--panel-2);
   color: var(--text-faint);
 }
+.btn-icon svg {
+  width: 16px;
+  height: 16px;
+}
 .btn-icon:hover, .attach-btn:hover, .send-btn:hover, .stop-btn:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.22);
@@ -175,6 +179,12 @@ select {
   border-color: rgba(255, 158, 88, 0.35);
   background: var(--accent-glow);
   box-shadow: 0 0 15px var(--accent-glow);
+}
+#internetBtn.active {
+  color: var(--accent-2);
+  border-color: rgba(104, 225, 253, 0.35);
+  background: var(--accent-2-glow);
+  box-shadow: 0 0 15px var(--accent-2-glow);
 }
 .send-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent-3));

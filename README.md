@@ -186,6 +186,12 @@ npm run package:vsix:local
 
 ## Release Notes
 
+### v3.0.1
+
+- Bumped the VSIX build from `3.0.0` to `3.0.1`.
+- LLeM 3.0.0: UI Refresh for Live Web toggle with new SVG icons
+- Packaged `release/llem-3.0.1.vsix`.
+
 ### v2.2.96
 
 - Bumped the VSIX build from `2.2.95` to `2.2.96`.

@@ -44,7 +44,13 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     <div class="header-right">
       <select id="modelSel"></select>
       <button class="btn-icon" id="historyBtn" title="Chat history">🕒</button>
-      <button class="btn-icon" id="internetBtn" title="Live web: OFF">🌐</button>
+      <button class="btn-icon" id="internetBtn" title="Live web: OFF">
+        <svg class="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+      </button>
       <button class="btn-icon" id="brainBtn" title="Vault tools">⟡</button>
       <button class="btn-icon" id="settingsBtn" title="Tune LLeM">⚙</button>
       <button class="btn-icon" id="newChatBtn" title="New chat">+</button>

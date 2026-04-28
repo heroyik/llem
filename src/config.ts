@@ -21,7 +21,7 @@ export function getConfig(): LlemConfig {
         bridgeEnabled: cfg.get<boolean>('bridgeEnabled', false),
         bridgeToken: cfg.get<string>('bridgeToken', ''),
         ollamaBase: cfg.get<string>('engineUrl', 'http://127.0.0.1:11434'),
-        defaultModel: cfg.get<string>('defaultModel', 'gemma4:e2b'),
+        defaultModel: cfg.get<string>('defaultModel', 'gemma4:e4b'),
         maxTreeFiles: 200,
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
         vaultPath: cfg.get<string>('vaultPath', '')
