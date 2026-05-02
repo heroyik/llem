@@ -71,66 +71,62 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
 
         const choice = json.choices?.[0];
 
-        if (isLMStudio) {
-            const deltaContent = extractTextParts(choice?.delta?.content);
-            if (deltaContent) {
-                return deltaContent;
-            }
+        // 1. Priority: Delta Content (Standard for OpenAI-compatible streaming)
+        const deltaContent = extractTextParts(choice?.delta?.content);
+        if (deltaContent) {
+            return deltaContent;
+        }
 
-            const deltaToken = extractTextParts(choice?.delta);
-            if (deltaToken) {
-                return deltaToken;
-            }
-
-            const deltaReasoning = extractTextParts(choice?.delta?.reasoning_content || choice?.delta?.reasoning);
-            if (deltaReasoning) {
-                return deltaReasoning;
-            }
-
-            const messageContent = extractTextParts(choice?.message?.content);
+        // 2. Ollama /api/chat delta
+        if (json.message) {
+            const messageContent = extractTextParts(json.message.content);
             if (messageContent) {
                 return messageContent;
             }
 
-            const messageReasoning = extractTextParts(choice?.message?.reasoning_content || choice?.message?.reasoning);
-            if (messageReasoning) {
-                return messageReasoning;
-            }
+            // Reasoning/Thinking fields (Gemma 2 support)
+            const thinking = extractTextParts(json.message.thinking || json.message.thought);
+            if (thinking) { return thinking; }
 
-            const toolCallToken = extractToolCallToken(choice?.message?.tool_calls || choice?.tool_calls);
-            if (toolCallToken) {
-                return toolCallToken;
-            }
+            const reasoning = extractTextParts(json.message.reasoning_content || json.message.reasoning);
+            if (reasoning) { return reasoning; }
 
-            return typeof choice?.text === 'string' ? choice.text : '';
+            const toolCallToken = extractToolCallToken(json.message.tool_calls);
+            if (toolCallToken) { return toolCallToken; }
         }
 
-        const msg = json.message;
-        if (!msg) {
-            return extractTextParts(json.response)
-                || extractTextParts(json.content)
-                || extractTextParts(choice?.delta?.content)
-                || extractTextParts(choice?.delta)
-                || extractTextParts(choice?.message?.content)
-                || '';
+        // 3. Ollama /api/generate delta
+        const response = extractTextParts(json.response);
+        if (response) {
+            return response;
         }
 
-        const messageContent = extractTextParts(msg.content);
-        if (messageContent) {
-            return messageContent;
+        // 4. Fallbacks for other fields (delta objects, reasoning in deltas)
+        const deltaReasoning = extractTextParts(choice?.delta?.reasoning_content || choice?.delta?.reasoning);
+        if (deltaReasoning) {
+            return deltaReasoning;
         }
 
-        const thinkingContent = extractTextParts(msg.thinking || msg.thought);
-        if (thinkingContent) {
-            return thinkingContent;
+        const deltaObj = extractTextParts(choice?.delta);
+        if (deltaObj) {
+            return deltaObj;
         }
 
-        const reasoningContent = extractTextParts(msg.reasoning_content || msg.reasoning);
-        if (reasoningContent) {
-            return reasoningContent;
+        // 5. Tool calls in message (OpenAI style)
+        const toolCallToken = extractToolCallToken(choice?.message?.tool_calls || choice?.tool_calls);
+        if (toolCallToken) {
+            return toolCallToken;
         }
 
-        return extractToolCallToken(msg.tool_calls);
+        // 6. Last resort: message content (Caution: might be cumulative)
+        // If we use this, we should be careful it's not a repeat. 
+        // But in a delta-based stream, this should be the last thing to check.
+        const msgContent = extractTextParts(choice?.message?.content);
+        if (msgContent) {
+            return msgContent;
+        }
+
+        return typeof choice?.text === 'string' ? choice.text : '';
     } catch {
         return '';
     }

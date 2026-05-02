@@ -444,6 +444,17 @@ export class ChatPipeline {
         let firstTokenTime = 0;
         let tokenCount = 0;
 
+        // Repetition Watchdog
+        const repetitionBuffer: string[] = [];
+        const MAX_WATCHDOG_HISTORY = 40;
+        const REPETITION_THRESHOLD = 8; // Max allowed occurrences of a token in the window
+        let loopDetected = false;
+
+        const abortController = new AbortController();
+        const combinedSignal = signal 
+            ? this.createCombinedSignal(signal, abortController.signal)
+            : abortController.signal;
+
         let buffer = '';
         const flushBuffer = () => {
             if (buffer) {
@@ -454,43 +465,80 @@ export class ChatPipeline {
 
         const flushInterval = setInterval(flushBuffer, 50);
 
-        const result = await streamCompletion({
-            endpoint,
-            messages,
-            modelName,
-            timeout,
-            temperature: this.host.getTemperature(),
-            topP: this.host.getTopP(),
-            topK: this.host.getTopK(),
-            contextWindow: !endpoint.isLMStudio ? modelProfile?.requestTuning.numCtx : undefined,
-            predictTokens: !endpoint.isLMStudio
-                ? (phase === 'followup'
-                    ? modelProfile?.requestTuning.followupPredict
-                    : modelProfile?.requestTuning.initialPredict)
-                : undefined,
-            repeatPenalty: !endpoint.isLMStudio ? modelProfile?.requestTuning.repeatPenalty : undefined,
-            signal
-        }, token => {
-            if (firstTokenTime === 0) {
-                firstTokenTime = performance.now();
-                PerfLogger.update({ streamFirstTokenMs: firstTokenTime - streamStart });
+        try {
+            const result = await streamCompletion({
+                endpoint,
+                messages,
+                modelName,
+                timeout,
+                temperature: this.host.getTemperature(),
+                topP: this.host.getTopP(),
+                topK: this.host.getTopK(),
+                contextWindow: !endpoint.isLMStudio ? modelProfile?.requestTuning.numCtx : undefined,
+                predictTokens: !endpoint.isLMStudio
+                    ? (phase === 'followup'
+                        ? modelProfile?.requestTuning.followupPredict
+                        : modelProfile?.requestTuning.initialPredict)
+                    : undefined,
+                repeatPenalty: !endpoint.isLMStudio ? modelProfile?.requestTuning.repeatPenalty : undefined,
+                signal: combinedSignal
+            }, token => {
+                if (firstTokenTime === 0) {
+                    firstTokenTime = performance.now();
+                    PerfLogger.update({ streamFirstTokenMs: firstTokenTime - streamStart });
+                }
+                tokenCount++;
+                buffer += token;
+
+                // Watchdog Logic
+                if (!loopDetected && token.trim().length > 0) {
+                    repetitionBuffer.push(token);
+                    if (repetitionBuffer.length > MAX_WATCHDOG_HISTORY) {
+                        repetitionBuffer.shift();
+                    }
+
+                    const occurrences = repetitionBuffer.filter(t => t === token).length;
+                    if (occurrences >= REPETITION_THRESHOLD && token.length > 1) {
+                        loopDetected = true;
+                        logInfo(`[WATCHDOG] Loop detected for token: "${token}". Aborting stream.`);
+                        this.host.postWebviewMessage({ 
+                            type: 'streamChunk', 
+                            value: '\n\n> ⚠️ **[Watchdog]** Repeating output detected. Stopping stream to save resources.\n\n' 
+                        });
+                        abortController.abort();
+                    }
+                }
+            });
+
+            clearInterval(flushInterval);
+            flushBuffer();
+
+            const totalSeconds = (performance.now() - firstTokenTime) / 1000;
+            const totalMs = performance.now() - streamStart;
+            PerfLogger.update({
+                streamTotalMs: totalMs,
+                streamTotalTokens: tokenCount,
+                streamTokensPerSecond: firstTokenTime > 0 && totalSeconds > 0 ? tokenCount / totalSeconds : 0
+            });
+
+            return result;
+        } catch (err: any) {
+            clearInterval(flushInterval);
+            flushBuffer();
+            if (loopDetected || err?.name === 'AbortError' || axios.isCancel(err)) {
+                // Return what we have so far if it's an intentional stop
+                return buffer; 
             }
-            tokenCount++;
-            buffer += token;
-        });
+            throw err;
+        }
+    }
 
-        clearInterval(flushInterval);
-        flushBuffer();
-
-        const totalSeconds = (performance.now() - firstTokenTime) / 1000;
-        const totalMs = performance.now() - streamStart;
-        PerfLogger.update({
-            streamTotalMs: totalMs,
-            streamTotalTokens: tokenCount,
-            streamTokensPerSecond: firstTokenTime > 0 && totalSeconds > 0 ? tokenCount / totalSeconds : 0
-        });
-
-        return result;
+    private createCombinedSignal(s1: AbortSignal, s2: AbortSignal): AbortSignal {
+        const controller = new AbortController();
+        const onAbort = () => controller.abort();
+        s1.addEventListener('abort', onAbort);
+        s2.addEventListener('abort', onAbort);
+        return controller.signal;
     }
 
     private appendAgentReport(aiMessage: string, report: string[]): string {

@@ -81,24 +81,29 @@ function buildStreamBody(
     predictTokens?: number,
     repeatPenalty?: number
 ) {
+    // Determine a safe default for predictTokens if not provided
+    const defaultPredict = 4096;
+    const finalPredict = (predictTokens && predictTokens > 0) ? predictTokens : defaultPredict;
+
     return {
         model,
         messages,
         stream: true,
         ...(isLMStudio
             ? { 
-                max_tokens: predictTokens && predictTokens > 0 ? predictTokens : 32768,
+                max_tokens: finalPredict,
                 temperature, 
                 top_p: topP 
             }
             : {
                 options: {
-                    num_ctx: contextWindow ?? 16_384,
-                    num_predict: predictTokens ?? -1,
+                    num_ctx: contextWindow ?? 8192,
+                    num_predict: predictTokens ?? finalPredict, // Use finalPredict if null
                     repeat_penalty: repeatPenalty ?? 1.1,
                     temperature,
                     top_p: topP,
-                    top_k: topK
+                    top_k: topK,
+                    stop: ["<|endoftext|>", "### Instruction:", "### Response:"] // Add common stop sequences
                 }
             }),
     };

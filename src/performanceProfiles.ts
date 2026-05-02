@@ -1,3 +1,4 @@
+import { getSystemSpecs } from './hardwareDetection';
 import type {
     InstalledModelInfo,
     ModelContextBudget,
@@ -82,8 +83,44 @@ export function buildModelProfile(input: {
     parameterSize?: string;
     family?: string;
 }): ModelProfile {
+    const specs = getSystemSpecs();
     const estimatedParameterSizeB = parseParameterSizeBillions(input.parameterSize) ?? parseModelNameBillions(input.modelName);
     const resolvedPreset = resolvePerformancePreset(input.requestedPreset, input.modelName, input.parameterSize);
+
+    let tuning = resolvedPreset === 'large-local-26b'
+        ? { ...LARGE_LOCAL_26B_REQUEST_TUNING }
+        : { ...BALANCED_REQUEST_TUNING };
+
+    // Hardware-aware dynamic tuning
+    if (resolvedPreset === 'large-local-26b') {
+        // High repeat penalty for Gemma 2 (often the 26B choice)
+        tuning.repeatPenalty = 1.25;
+
+        if (specs.isLowEnd) {
+            tuning.numCtx = 4096; // Aggressive limit for low RAM
+        } else if (specs.isMidRange) {
+            tuning.numCtx = 8192; // Default for mid-range
+        } else if (specs.isHighEnd) {
+            tuning.numCtx = 16384; // Safe upper bound for 32GB+
+        }
+        
+        // Boost context further if it's Apple Silicon with high RAM
+        if (specs.isAppleSilicon && specs.totalRamGb >= 32) {
+            tuning.numCtx = 32768;
+        }
+    } else {
+        // Balanced tuning
+        if (specs.isLowEnd) {
+            tuning.numCtx = 8192;
+        }
+    }
+
+    const contextBudget: ModelContextBudget | undefined = resolvedPreset === 'large-local-26b'
+        ? {
+            ...LARGE_LOCAL_26B_CONTEXT_BUDGET,
+            totalPromptChars: Math.floor(tuning.numCtx * 0.85) // Dynamic budget based on numCtx
+        }
+        : undefined;
 
     return {
         modelName: input.modelName,
@@ -91,12 +128,8 @@ export function buildModelProfile(input: {
         resolvedPreset,
         estimatedParameterSizeB,
         family: input.family,
-        requestTuning: resolvedPreset === 'large-local-26b'
-            ? LARGE_LOCAL_26B_REQUEST_TUNING
-            : BALANCED_REQUEST_TUNING,
-        contextBudget: resolvedPreset === 'large-local-26b'
-            ? LARGE_LOCAL_26B_CONTEXT_BUDGET
-            : undefined,
+        requestTuning: tuning,
+        contextBudget,
         warningTimeoutMs: resolvedPreset === 'large-local-26b' ? 600_000 : undefined
     };
 }
