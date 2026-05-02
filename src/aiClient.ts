@@ -2,11 +2,26 @@ import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
-import { logInfo } from './logger';
+import { logInfo, logStreamEvent, logStructured } from './logger';
 
 const ENDPOINT_CACHE_TTL_MS = 15_000;
 
 let endpointCache: { baseUrl: string; endpoint: AIEndpoint; expiresAt: number } | undefined;
+
+function createStreamId(): string {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function summarizeMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+    return messages.map((message, index) => ({
+        index,
+        role: message.role,
+        contentType: Array.isArray(message.content) ? 'array' : typeof message.content,
+        charLength: typeof message.content === 'string'
+            ? message.content.length
+            : JSON.stringify(message.content || '').length
+    }));
+}
 
 export function stripTrailingSlash(value: string): string {
     return value.endsWith('/') ? value.slice(0, -1) : value;
@@ -84,6 +99,21 @@ function buildStreamBody(
 }
 
 export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
+    const streamId = createStreamId();
+    logStreamEvent(streamId, 'request_start', {
+        endpoint: options.endpoint.apiUrl,
+        isLMStudio: options.endpoint.isLMStudio,
+        modelName: options.modelName,
+        timeoutMs: options.timeout,
+        temperature: options.temperature,
+        topP: options.topP,
+        topK: options.topK,
+        contextWindow: options.contextWindow ?? null,
+        predictTokens: options.predictTokens ?? null,
+        messageCount: options.messages.length,
+        messages: summarizeMessages(options.messages)
+    });
+
     const response = await axios.post(options.endpoint.apiUrl, {
         ...buildStreamBody(
             options.modelName,
@@ -103,31 +133,62 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
 
     let output = '';
     let rawPreview = '';
+    let chunkIndex = 0;
     await new Promise<void>((resolve, reject) => {
         const stream = response.data;
         let buffer = '';
         stream.on('data', (chunk: Buffer) => {
             const chunkText = chunk.toString();
+            const bufferBefore = buffer.length;
             buffer += chunkText;
             if (rawPreview.length < 8000) {
                 rawPreview += chunkText.slice(0, 8000 - rawPreview.length);
             }
             const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio);
             buffer = parsed.remainder;
+            logStreamEvent(streamId, 'raw_chunk', {
+                chunkIndex,
+                chunkBytes: chunk.length,
+                chunkChars: chunkText.length,
+                bufferBefore,
+                bufferAfterAppend: bufferBefore + chunkText.length,
+                tokensParsed: parsed.tokens.length,
+                remainderChars: buffer.length,
+                chunkText
+            });
+            if (parsed.tokens.length > 0) {
+                logStreamEvent(streamId, 'parsed_tokens', {
+                    chunkIndex,
+                    tokens: parsed.tokens
+                });
+            }
             for (const token of parsed.tokens) {
                 output += token;
                 onToken(token);
             }
+            chunkIndex += 1;
         });
         stream.on('end', () => {
             const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio, true);
+            logStreamEvent(streamId, 'stream_end_flush', {
+                trailingBufferChars: buffer.length,
+                tokensParsed: parsed.tokens.length,
+                remainderChars: parsed.remainder.length,
+                trailingBuffer: buffer
+            });
             for (const token of parsed.tokens) {
                 output += token;
                 onToken(token);
             }
             resolve();
         });
-        stream.on('error', (err: any) => reject(err));
+        stream.on('error', (err: any) => {
+            logStreamEvent(streamId, 'stream_error', {
+                name: err?.name || 'Error',
+                message: err?.message || String(err)
+            });
+            reject(err);
+        });
     });
 
     if (!output.trim()) {
@@ -136,7 +197,24 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
             .replace(/\n/g, '\\n')
             .slice(0, 1000);
         logInfo(`[STREAM] Completed with empty parsed output from ${options.endpoint.apiUrl}. Raw preview: ${preview || '(empty)'}`);
+        logStreamEvent(streamId, 'empty_output', {
+            rawPreview,
+            outputLength: output.length
+        });
     }
+
+    logStreamEvent(streamId, 'request_complete', {
+        outputLength: output.length,
+        outputPreview: output.slice(0, 1000),
+        chunkCount: chunkIndex
+    });
+    logStructured('stream_completion_summary', {
+        streamId,
+        endpoint: options.endpoint.apiUrl,
+        modelName: options.modelName,
+        outputLength: output.length,
+        chunkCount: chunkIndex
+    });
 
     return output;
 }

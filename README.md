@@ -345,6 +345,13 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.1.6
+
+- Bumped the VSIX build from `3.1.5` to `3.1.6`.
+- Added file-based diagnostics for stream debugging with per-request raw chunk capture and parsed token traces
+- Logged final assistant text cleanup so empty replies can be traced from transport through final rendering
+- Packaged `release/llem-3.1.6.vsix`.
+
 ### v3.1.5
 
 - Bumped the VSIX build from `3.1.4` to `3.1.5`.

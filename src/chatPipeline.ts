@@ -6,6 +6,7 @@ import { resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
 import { getInstalledModelCatalog } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
+import { logStreamEvent } from './logger';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
 
 export interface ChatPipelineHost {
@@ -203,6 +204,12 @@ export class ChatPipeline {
             }
 
             const finalAssistantText = this.stripActionTags(fullAiMessage);
+            logStreamEvent(`${Date.now().toString(36)}-finalize`, 'finalize_message', {
+                fullAiMessageLength: fullAiMessage.length,
+                finalAssistantTextLength: finalAssistantText.length,
+                finalAssistantPreview: finalAssistantText.slice(0, 1000),
+                fullAiPreview: fullAiMessage.slice(0, 1000)
+            });
             this.host.getChatHistory().push({
                 role: 'assistant',
                 content: finalAssistantText || fullAiMessage
