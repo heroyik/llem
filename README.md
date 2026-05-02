@@ -209,3 +209,11 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 - **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
 
 **Local-first, offline-always. Let's cook.** 🛫💻
+
+## Release Notes
+
+### v3.1.0
+
+- Bumped the VSIX build from `3.1.0` to `3.1.0`.
+- v3.1.0: added Gemini-style reply actions, chat branching, persistent like/dislike preference memory, and stricter editable-file click behavior in chat.
+- Packaged `release/llem-3.1.0.vsix`.
