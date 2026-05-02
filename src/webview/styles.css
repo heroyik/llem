@@ -212,6 +212,9 @@ select {
   cursor: not-allowed;
   transform: none;
 }
+.send-btn.hidden {
+  display: none;
+}
 .stop-btn {
   display: none;
   background: rgba(255, 107, 122, 0.18);

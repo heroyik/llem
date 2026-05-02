@@ -712,7 +712,10 @@ try {
 
   function setSending(value: boolean): void {
     sending = value;
-    if (sendBtn) (sendBtn as HTMLButtonElement).disabled = value;
+    if (sendBtn) {
+      (sendBtn as HTMLButtonElement).disabled = value;
+      sendBtn.classList.toggle('hidden', value);
+    }
     if (input) (input as HTMLTextAreaElement).disabled = value;
     if (stopBtn) stopBtn.classList.toggle('visible', value);
     if (!value) {

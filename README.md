@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.12
+
+- Bumped the VSIX build from `3.3.11` to `3.3.12`.
+- Fix stop button UI and edit banner visibility
+- Packaged `release/llem-3.3.12.vsix`.
+
 ### v3.3.11
 
 - Bumped the VSIX build from `3.3.10` to `3.3.11`.

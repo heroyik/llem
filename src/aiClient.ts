@@ -109,6 +109,32 @@ function buildStreamBody(
     };
 }
 
+function isStuckInLoop(text: string): boolean {
+    const minLen = 30;
+    const len = text.length;
+    if (len < minLen * 3) return false;
+    
+    const lastChar = text[len - 1];
+    const maxL = Math.floor(len / 3);
+    
+    for (let L = minLen; L <= maxL; L++) {
+        if (text[len - 1 - L] === lastChar) {
+            const s1 = text.substring(len - L);
+            const s2 = text.substring(len - 2 * L, len - L);
+            if (s1 === s2) {
+                const s3 = text.substring(len - 3 * L, len - 2 * L);
+                if (s1 === s3) {
+                    const letters = s1.match(/[a-zA-Z0-9가-힣]/g);
+                    if (letters && letters.length >= 10) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
     const streamId = createStreamId();
     logStreamEvent(streamId, 'request_start', {
@@ -147,10 +173,12 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
     let output = '';
     let rawPreview = '';
     let chunkIndex = 0;
+    let repetitionDetected = false;
     await new Promise<void>((resolve, reject) => {
         const stream = response.data;
         let buffer = '';
         stream.on('data', (chunk: Buffer) => {
+            if (repetitionDetected) return;
             const chunkText = chunk.toString();
             const bufferBefore = buffer.length;
             buffer += chunkText;
@@ -176,8 +204,21 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
                 });
             }
             for (const token of parsed.tokens) {
+                if (repetitionDetected) continue;
                 output += token;
                 onToken(token);
+
+                if (output.length >= 90 && isStuckInLoop(output)) {
+                    repetitionDetected = true;
+                    const stopMsg = '\n\n[LLeM: 무한 반복이 감지되어 생성을 중단했습니다.]';
+                    output += stopMsg;
+                    onToken(stopMsg);
+                    logInfo(`[STREAM] Repetition detected for stream ${streamId}. Stopping early.`);
+                    logStreamEvent(streamId, 'repetition_detected', { outputLength: output.length });
+                    stream.destroy();
+                    resolve();
+                    break;
+                }
             }
             chunkIndex += 1;
         });
