@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
+import * as cp from 'node:child_process';
+import { promisify } from 'node:util';
 import { validateTerminalCommand } from './commandPolicy';
-import { getLlemTerminal } from './terminalManager';
+import { getLlemTerminal, writeToLlemTerminal } from './terminalManager';
+
+const execAsync = promisify(cp.exec);
 
 export interface TerminalActionHost {
     approveCommand(command: string): Promise<boolean>;
@@ -26,11 +30,34 @@ export async function executeTerminalAction(
             return { report: [`⚠️ Command skipped: ${command}`] };
         }
 
+        // Show the command in the LLeM Console for user awareness
         const terminal = getLlemTerminal();
-        terminal.show();
-        terminal.sendText(command);
-        return { report: [`🖥️ Ran: ${command}`] };
+        terminal.show(true);
+        writeToLlemTerminal(`Executing: ${command}`);
+
+        // Run the command and capture output
+        // We use a timeout to prevent hanging the extension if a command is interactive or very slow
+        const { stdout, stderr } = await execAsync(command, { cwd, timeout: 30000 });
+        
+        const combinedOutput = (stdout + (stderr ? `\n[STDERR]\n${stderr}` : '')).trim();
+        
+        // Also write a snippet to the terminal so the user sees something happened
+        if (combinedOutput) {
+            const preview = combinedOutput.length > 500 ? combinedOutput.slice(0, 500) + '...' : combinedOutput;
+            writeToLlemTerminal(`Result:\n${preview}`);
+        } else {
+            writeToLlemTerminal('Command completed with no output.');
+        }
+
+        return { 
+            report: [
+                `🖥️ **Command executed:** \`${command}\``,
+                `**Output:**\n\`\`\`\n${combinedOutput || '(no output)'}\n\`\`\``
+            ] 
+        };
     } catch (err: any) {
-        return { report: [`❌ Command failed: ${command} — ${err.message}`] };
+        const errorMessage = err.stderr || err.message;
+        writeToLlemTerminal(`Error: ${errorMessage}`);
+        return { report: [`❌ Command failed: ${command} — ${errorMessage}`] };
     }
 }

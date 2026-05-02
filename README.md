@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.7
+
+- Bumped the VSIX build from `3.3.6` to `3.3.7`.
+- Fix terminal rendering, layout stability, and improve hardware summary quality
+- Packaged `release/llem-3.3.7.vsix`.
+
 ### v3.3.6
 
 - Bumped the VSIX build from `3.3.5` to `3.3.6`.

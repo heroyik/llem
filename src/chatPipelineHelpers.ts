@@ -7,13 +7,13 @@ export function buildContinuationSystemMessage(internalSystemFeedback: string, e
 
     if (externalReport.length > 0) {
         parts.push(
-            `[SYSTEM: Action Report]\n${externalReport.join('\n')}`
+            `[Observation: Action Results]\n${externalReport.join('\n')}`
         );
     }
 
     if (parts.length > 0) {
         parts.push(
-            "IMPORTANT: I have the action results above. DO NOT repeat your previous reasoning, planning, or preamble. Go straight to the final answer or the next necessary action based ONLY on the new information."
+            "IMPORTANT: Use the observation above to answer the user's request. If the result contains data (like system specs, file lists, or command output), provide a clean, structured summary using bullet points and bold headers (CODEX-style). DO NOT repeat your previous reasoning or preamble."
         );
     }
 

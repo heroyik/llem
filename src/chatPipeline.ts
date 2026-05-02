@@ -174,7 +174,7 @@ export class ChatPipeline {
                 const externalReport = await this.host.executeActions(currentAiResponse);
                 if (externalReport.length > 0) {
                     turnExecuted = true;
-                    const reportMsg = `\n\n---\n**Action Report**\n${externalReport.join('\n')}`;
+                    const reportMsg = `\n\n---\n**Observation: Action Results**\n${externalReport.join('\n')}`;
                     combinedUiFeedback += reportMsg;
                 }
 

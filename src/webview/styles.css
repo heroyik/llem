@@ -42,6 +42,8 @@ body.vscode-light {
 }
 html, body {
   height: 100%;
+  margin: 0;
+  padding: 0;
   font-family: 'SF Pro Display', 'Avenir Next', 'Segoe UI', sans-serif;
   font-size: 13px;
   background:
@@ -52,7 +54,6 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 0;
 }
 .sr-only {
   position: absolute;
@@ -242,22 +243,21 @@ select {
   to { left: 100%; }
 }
 .main-view {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+  height: 100%;
+  width: 100%;
   position: relative;
-  z-index: 1;
 }
 .chat {
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
-  padding: 18px 14px 12px;
+  overflow-x: hidden;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 .chat::-webkit-scrollbar {
   width: 6px;
@@ -268,6 +268,13 @@ select {
 }
 .chat.drag-over {
   background: linear-gradient(180deg, rgba(104, 225, 253, 0.04), transparent 28%);
+}
+.input-wrap {
+  flex-shrink: 0;
+  padding: 12px;
+  background-color: var(--vscode-sideBar-background);
+  border-top: 1px solid var(--vscode-widget-border);
+  z-index: 100;
 }
 .welcome {
   margin: auto;
@@ -632,12 +639,7 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.input-wrap {
-  padding: 10px 14px 16px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 2;
-}
+
 .input-box {
   background: var(--panel);
   border: 1px solid var(--border);
