@@ -276,3 +276,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 - **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
 
 **Local-first, offline-always. Let's cook.** 🛫💻
+
+## Release Notes
+
+### v3.1.2
+
+- Bumped the VSIX build from `3.1.1` to `3.1.2`.
+- Fixed empty-reply turns by hardening stream parsing for Ollama and LM Studio
+- Flushed trailing stream buffers so the final token is not lost when a stream ends without a newline
+- Saved assistant replies consistently into chat history so follow-up turns keep the right conversation context
+- Updated the chat UI to distinguish truly empty replies from successful completed output
+- Packaged `release/llem-3.1.2.vsix`.
