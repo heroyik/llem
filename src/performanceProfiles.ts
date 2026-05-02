@@ -8,17 +8,17 @@ import type {
 } from './types';
 
 const BALANCED_REQUEST_TUNING: ModelRequestTuning = {
-    numCtx: 16_384,
+    numCtx: 32_768,
     initialPredict: -1,
     followupPredict: -1,
-    repeatPenalty: 1.1
+    repeatPenalty: 1.15
 };
 
 const LARGE_LOCAL_26B_REQUEST_TUNING: ModelRequestTuning = {
-    numCtx: 8_192,
+    numCtx: 32_768,
     initialPredict: -1,
     followupPredict: -1,
-    repeatPenalty: 1.1
+    repeatPenalty: 1.15
 };
 
 const LARGE_LOCAL_26B_CONTEXT_BUDGET: ModelContextBudget = {

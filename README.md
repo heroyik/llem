@@ -345,6 +345,18 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.2.9
+
+- Bumped the VSIX build from `3.2.8` to `3.2.9`.
+- Fixed model output streaming issues with buffering and enhanced token extraction for reasoning fields.
+- Packaged `release/llem-3.2.9.vsix`.
+
+### v3.2.7
+
+- Bumped the VSIX build from `3.2.6` to `3.2.7`.
+- Fixed AI response truncation, improved action tag stripping with smart quote support, and tuned model performance profiles for 26B models.
+- Packaged `release/llem-3.2.7.vsix`.
+
 ### v3.2.5
 
 - Bumped the VSIX build from `3.2.4` to `3.2.5`.

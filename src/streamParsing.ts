@@ -120,6 +120,11 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
             return messageContent;
         }
 
+        const thinkingContent = extractTextParts(msg.thinking || msg.thought);
+        if (thinkingContent) {
+            return thinkingContent;
+        }
+
         const reasoningContent = extractTextParts(msg.reasoning_content || msg.reasoning);
         if (reasoningContent) {
             return reasoningContent;

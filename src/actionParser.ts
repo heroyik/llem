@@ -11,7 +11,7 @@ export interface TextAction {
     text: string;
 }
 
-const PATH_ATTR = String.raw`(?:path|file|name)=['"]?([^'">]+)['"]?`;
+const PATH_ATTR = String.raw`(?:path|file|name)=['"“]?([^'">“”]+)['"”]?`;
 
 export function stripWrappingFence(value: string): string {
     let content = value.trim();
@@ -47,7 +47,7 @@ export function parseReadFileActions(message: string): SimplePathAction[] {
 }
 
 export function parseListActions(message: string): SimplePathAction[] {
-    const regex = /(?:<|call:)\s*(?:list_files|list_dir|ls)\s+(?:path|dir|name)=['"]?([^'">]*)['"]?\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi;
+    const regex = /(?:<|call:)\s*(?:list_files|list_dir|ls)\s+(?:path|dir|name)=['"“]?([^'">“”]*)['"”]?\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi;
     return parseSimplePathActions(message, regex).map(action => ({
         path: action.path || '.'
     }));

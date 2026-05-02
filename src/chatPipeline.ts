@@ -444,6 +444,16 @@ export class ChatPipeline {
         let firstTokenTime = 0;
         let tokenCount = 0;
 
+        let buffer = '';
+        const flushBuffer = () => {
+            if (buffer) {
+                this.host.postWebviewMessage({ type: 'streamChunk', value: buffer });
+                buffer = '';
+            }
+        };
+
+        const flushInterval = setInterval(flushBuffer, 50);
+
         const result = await streamCompletion({
             endpoint,
             messages,
@@ -466,8 +476,11 @@ export class ChatPipeline {
                 PerfLogger.update({ streamFirstTokenMs: firstTokenTime - streamStart });
             }
             tokenCount++;
-            this.host.postWebviewMessage({ type: 'streamChunk', value: token });
+            buffer += token;
         });
+
+        clearInterval(flushInterval);
+        flushBuffer();
 
         const totalSeconds = (performance.now() - firstTokenTime) / 1000;
         const totalMs = performance.now() - streamStart;
@@ -508,17 +521,19 @@ export class ChatPipeline {
 
     private stripActionTags(text: string): string {
         if (!text) { return ''; }
-        // Remove all tool call tags: <call:name attr="...">...</call:name>
-        // and also <run_command>...</run_command> etc.
+        // We use a more aggressive approach to strip all potential tool tags
+        // including those with 'call:' prefix and various self-closing forms.
         return text
+            .replace(/<(?:create_file|file|call:create_file|call:file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file|call:create_file|call:file)>/gi, '')
+            .replace(/<(?:edit_file|edit|call:edit_file|call:edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit|call:edit_file|call:edit)>/gi, '')
+            .replace(/<(?:delete_file|delete|call:delete_file|call:delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete|call:delete_file|call:delete)>)?/gi, '')
+            .replace(/<(?:read_file|read|call:read_file|call:read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read|call:read_file|call:read)>)?/gi, '')
+            .replace(/<(?:list_files|list_dir|ls|call:list_files|call:list_dir|call:ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls|call:list_files|call:list_dir|call:ls)>)?/gi, '')
+            .replace(/<(?:run_command|command|bash|terminal|call:run_command|call:command|call:bash|call:terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal|call:run_command|call:command|call:bash|call:terminal)>/gi, '')
+            .replace(/<(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>/gi, '')
+            .replace(/<(?:read_brain|read_vault|call:read_brain|call:read_vault)>[\s\S]*?<\/(?:read_brain|read_vault|call:read_brain|call:read_vault)>/gi, '')
             .replace(/<call:[^>]+>[\s\S]*?<\/call:[^>]+>/gi, '')
-            .replace(/<run_command[^>]*>[\s\S]*?<\/run_command>/gi, '')
-            .replace(/<run_python[^>]*>[\s\S]*?<\/run_python>/gi, '')
-            .replace(/<read_file[^>]*>[\s\S]*?<\/read_file>/gi, '')
-            .replace(/<write_file[^>]*>[\s\S]*?<\/write_file>/gi, '')
-            .replace(/<search_web[^>]*>[\s\S]*?<\/search_web>/gi, '')
-            .replace(/<fetch_url[^>]*>[\s\S]*?<\/fetch_url>/gi, '')
-            .replace(/<apply_diff[^>]*>[\s\S]*?<\/apply_diff>/gi, '')
+            .replace(/<call:[^>]*\/>/gi, '')
             .trim();
     }
 

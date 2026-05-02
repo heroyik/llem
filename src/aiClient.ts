@@ -87,7 +87,7 @@ function buildStreamBody(
         stream: true,
         ...(isLMStudio
             ? { 
-                ...(predictTokens && predictTokens > 0 ? { max_tokens: predictTokens } : {}),
+                max_tokens: predictTokens && predictTokens > 0 ? predictTokens : 32768,
                 temperature, 
                 top_p: topP 
             }
