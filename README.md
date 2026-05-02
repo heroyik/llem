@@ -27,8 +27,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 ### 1. Download the Extension
 1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
 2. Look at the **Releases** section on the right sidebar.
-3. Click on the latest release tag (e.g., `v3.1.1`).
-4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.1.vsix`) to download it to your machine.
+3. Click on the latest release tag (e.g., `v3.1.3`).
+4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.3.vsix`) to download it to your machine.
 
 ### 2. Install in VS Code or Cursor
 1. Open **VS Code** or **Cursor**.
@@ -49,6 +49,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 - **🔍 Workspace Awareness**: Real-time monitoring of your project files. Drop files/folders into chat for instant, high-fidelity context injection.
 - **🧠 The Brain (Markdown Vault)**: Sync your notes with an Obsidian-compatible vault. Supports visual network maps and local Git synchronization.
 - **⚡ Performance First**: Multi-layered caching, request throttling, and token-usage monitoring to keep your dev environment snappy.
+- **🧭 Model-Aware Prompt Budgeting**: Automatically trims prompt weight for big local models so 24B+ and 26B-class runs stay responsive instead of drowning in context.
+- **📊 Built-In Diagnostics**: Inspect prompt size, first-token delay, section-by-section context weight, and streaming throughput directly from the LLeM diagnostics panel.
 
 ---
 
@@ -65,6 +67,14 @@ Typical URL: `http://127.0.0.1:11434`
 ```bash
 # Pull a model and serve
 ollama pull gemma4:e4b
+ollama serve
+```
+
+For larger local runs, a 24B+ Gemma-family model is a better fit for the new performance profile flow:
+
+```bash
+# Example 26B-class local setup
+ollama pull gemma6:26b
 ollama serve
 ```
 
@@ -111,6 +121,45 @@ Current-machine guidance:
 - on Apple Silicon systems around the `34 GB` class, `large-local-26b` is the recommended preset for 26B local models,
 - on other machines, start with the same preset and only widen timeout or context if your hardware can comfortably handle it.
 
+### Performance Profiles
+
+LLeM now exposes a model-sensitive prompt and generation budget setting through `llem.performancePreset`.
+
+- `auto`: Recommended default. LLeM checks the selected model name and, when available, Ollama metadata such as `parameter_size`. If the model looks like a `24B+` local run, it automatically switches into the 26B profile.
+- `balanced`: Keeps the wider default context and generation budget. This is the better fit for smaller local models when raw responsiveness is already good.
+- `large-local-26b`: Uses a tighter prompt budget and smaller Ollama generation window so big local models spend less time chewing through workspace context before the first token lands.
+
+When `large-local-26b` is active, LLeM intentionally becomes more selective about context:
+
+- active editor context gets first priority,
+- attached text files are budgeted per file and across the whole turn,
+- workspace tree and vault index are clipped more aggressively,
+- and older low-relevance chat history is pruned before the current request is allowed to grow out of control.
+
+This is designed to improve real-world latency, not benchmark token counts in isolation. The point is to keep the answer useful while reducing the hidden prompt tax that large local models pay.
+
+### Diagnostics And What To Watch
+
+Use **LLeM: Show Diagnostics** when tuning a larger model. The diagnostics channel now surfaces the key numbers you need:
+
+- selected model and resolved performance profile,
+- estimated prompt size before send,
+- final request size after pruning,
+- history, attachment, active-editor, workspace, and vault character breakdowns,
+- pruned message count and attachment trim amount,
+- first-token latency,
+- total stream duration,
+- and token throughput.
+
+If a 26B-class model still feels sluggish, the fastest knobs to check are:
+
+1. `llem.performancePreset`
+2. `llem.requestTimeout`
+3. total attachment size in the current turn
+4. whether the active file or vault index is unusually large
+
+In practice, this makes it much easier to see whether the bottleneck is model load time, prompt size, or generation speed.
+
 ---
 
 ## 🛠️ Development
@@ -131,6 +180,7 @@ Current-machine guidance:
 ## ⚠️ Known Issues
 
 - **Context Limits**: Large file attachments might hit the context window limit of your local model.
+- **Large-Model Warmup**: The first request to a 24B+ local model can still feel slow even after prompt trimming, especially right after loading the model into memory.
 - **Server Check**: Make sure your local engine (Ollama/LM Studio) is actually running before you start chatting.
 
 ---
@@ -294,6 +344,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.1.3
+
+- Bumped the VSIX build from `3.1.2` to `3.1.3`.
+- Added model-aware performance presets for 26B-class local Ollama runs
+- Added prompt budgeting and richer diagnostics for large local Gemma-family models
+- Expanded the README with detailed performance profile guidance, 26B tuning notes, and diagnostics tips
+- Packaged `release/llem-3.1.3.vsix`.
 
 ### v3.1.2
 
