@@ -54,8 +54,17 @@ export function parseListActions(message: string): SimplePathAction[] {
 }
 
 export function parseCommandActions(message: string): TextAction[] {
-    return parseTextActions(message, /(?:<|call:)\s*(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)
+    const bodyActions = parseTextActions(message, /(?:<|call:)\s*(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)
         .map(action => ({ text: stripWrappingFence(action.text) }));
+
+    const attrRegex = /(?:<|call:)\s*(?:run_command|command|bash|terminal)\s+(?:command|text|args)=['"“]?([^'">“”]+)['"”]?\s*\/?>(?:<\/(?:run_command|command|bash|terminal)>)?/gi;
+    const attrActions: TextAction[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = attrRegex.exec(message)) !== null) {
+        attrActions.push({ text: match[1].trim() });
+    }
+
+    return [...bodyActions, ...attrActions];
 }
 
 export function parseUrlActions(message: string): TextAction[] {

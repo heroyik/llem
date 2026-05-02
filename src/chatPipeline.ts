@@ -6,7 +6,8 @@ import { resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
 import { getInstalledModelCatalog } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
-import { logStreamEvent } from './logger';
+import { logInfo, logStreamEvent } from './logger';
+import { RepetitionWatchdog } from './repetitionWatchdog';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
 
 export interface ChatPipelineHost {
@@ -203,7 +204,8 @@ export class ChatPipeline {
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
                     
                     // Loop detection: if Turn N starts exactly like Turn N-1, it's stuck.
-                    if (currentAiResponse.trim().slice(0, 200) === previousAiResponsePrefix && currentAiResponse.length > 50) {
+                    const isSimilar = currentAiResponse.trim().slice(0, 300) === previousAiResponsePrefix;
+                    if (isSimilar && currentAiResponse.length > 30) {
                         logInfo('[PIPELINE] Turn-to-turn loop detected. Breaking execution chain.');
                         this.host.postWebviewMessage({ 
                             type: 'streamChunk', 
@@ -458,9 +460,7 @@ export class ChatPipeline {
         let tokenCount = 0;
 
         // Repetition Watchdog
-        const repetitionBuffer: string[] = [];
-        const MAX_WATCHDOG_HISTORY = 40;
-        const REPETITION_THRESHOLD = 8; // Max allowed occurrences of a token in the window
+        const watchdog = new RepetitionWatchdog();
         let loopDetected = false;
 
         const abortController = new AbortController();
@@ -505,18 +505,13 @@ export class ChatPipeline {
 
                 // Watchdog Logic
                 if (!loopDetected && token.trim().length > 0) {
-                    repetitionBuffer.push(token);
-                    if (repetitionBuffer.length > MAX_WATCHDOG_HISTORY) {
-                        repetitionBuffer.shift();
-                    }
-
-                    const occurrences = repetitionBuffer.filter(t => t === token).length;
-                    if (occurrences >= REPETITION_THRESHOLD && token.length > 1) {
+                    if (watchdog.addToken(token)) {
                         loopDetected = true;
-                        logInfo(`[WATCHDOG] Loop detected for token: "${token}". Aborting stream.`);
+                        const reason = watchdog.getAbortedReason();
+                        logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream.`);
                         this.host.postWebviewMessage({ 
                             type: 'streamChunk', 
-                            value: '\n\n> ⚠️ **[Watchdog]** Repeating output detected. Stopping stream to save resources.\n\n' 
+                            value: `\n\n> ⚠️ **[Watchdog]** Repeating output detected (${reason}). Stopping stream to save resources.\n\n` 
                         });
                         abortController.abort();
                     }
@@ -582,9 +577,8 @@ export class ChatPipeline {
 
     private stripActionTags(text: string): string {
         if (!text) { return ''; }
-        // We use a more aggressive approach to strip all potential tool tags
-        // including those with 'call:' prefix and various self-closing forms.
-        return text
+        
+        let cleaned = text
             .replace(/<(?:create_file|file|call:create_file|call:file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file|call:create_file|call:file)>/gi, '')
             .replace(/<(?:edit_file|edit|call:edit_file|call:edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit|call:edit_file|call:edit)>/gi, '')
             .replace(/<(?:delete_file|delete|call:delete_file|call:delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete|call:delete_file|call:delete)>)?/gi, '')
@@ -594,8 +588,12 @@ export class ChatPipeline {
             .replace(/<(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>/gi, '')
             .replace(/<(?:read_brain|read_vault|call:read_brain|call:read_vault)>[\s\S]*?<\/(?:read_brain|read_vault|call:read_brain|call:read_vault)>/gi, '')
             .replace(/<call:[^>]+>[\s\S]*?<\/call:[^>]+>/gi, '')
-            .replace(/<call:[^>]*\/>/gi, '')
-            .trim();
+            .replace(/<call:[^>]*\/>/gi, '');
+
+        // Fallback: strip unclosed tags if they appear near the end (common if stream was aborted)
+        cleaned = cleaned.replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|read_brain|read_vault|call:[a-z_]+)\s*[^>]*>?[\s\S]*$/gi, '');
+
+        return cleaned.trim();
     }
 
     private postStreamErrorDetail(error: any, formatDetail: (detail: string) => string): void {

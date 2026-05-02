@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.6
+
+- Bumped the VSIX build from `3.3.5` to `3.3.6`.
+- Implemented sequence-aware RepetitionWatchdog and improved action parsing to prevent infinite loops.
+- Packaged `release/llem-3.3.6.vsix`.
+
 ### v3.2.9
 
 - Bumped the VSIX build from `3.2.8` to `3.2.9`.
