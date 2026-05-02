@@ -1,24 +1,41 @@
-function extractTextParts(value: unknown): string {
+function extractTextParts(value: unknown, depth = 0): string {
     if (typeof value === 'string') {
         return value;
     }
 
-    if (!Array.isArray(value)) {
+    if (!value || depth > 3) {
         return '';
     }
 
-    return value
-        .map(part => {
-            if (typeof part === 'string') {
-                return part;
-            }
-            if (part && typeof part === 'object') {
-                const text = (part as any).text;
-                return typeof text === 'string' ? text : '';
-            }
-            return '';
-        })
-        .join('');
+    if (Array.isArray(value)) {
+        return value.map(part => extractTextParts(part, depth + 1)).join('');
+    }
+
+    if (typeof value !== 'object') {
+        return '';
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const directFields = [
+        candidate.text,
+        candidate.delta,
+        candidate.value,
+        candidate.output_text,
+        candidate.reasoning_text,
+        candidate.reasoning_content,
+        candidate.reasoning,
+        candidate.thinking,
+        candidate.content
+    ];
+
+    for (const field of directFields) {
+        const extracted = extractTextParts(field, depth + 1);
+        if (extracted) {
+            return extracted;
+        }
+    }
+
+    return '';
 }
 
 function extractToolCallToken(toolCalls: unknown): string {
@@ -52,11 +69,17 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
             return `[API error] ${json.error.message || json.error}`;
         }
 
+        const choice = json.choices?.[0];
+
         if (isLMStudio) {
-            const choice = json.choices?.[0];
             const deltaContent = extractTextParts(choice?.delta?.content);
             if (deltaContent) {
                 return deltaContent;
+            }
+
+            const deltaToken = extractTextParts(choice?.delta);
+            if (deltaToken) {
+                return deltaToken;
             }
 
             const deltaReasoning = extractTextParts(choice?.delta?.reasoning_content || choice?.delta?.reasoning);
@@ -84,7 +107,12 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
 
         const msg = json.message;
         if (!msg) {
-            return extractTextParts(json.response) || extractTextParts(json.content) || '';
+            return extractTextParts(json.response)
+                || extractTextParts(json.content)
+                || extractTextParts(choice?.delta?.content)
+                || extractTextParts(choice?.delta)
+                || extractTextParts(choice?.message?.content)
+                || '';
         }
 
         const messageContent = extractTextParts(msg.content);

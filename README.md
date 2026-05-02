@@ -345,6 +345,13 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.1.5
+
+- Bumped the VSIX build from `3.1.4` to `3.1.5`.
+- Improved stream parsing for object-shaped output chunks
+- Fixed empty reply state when the model returned text in newer OpenAI-compatible stream formats
+- Packaged `release/llem-3.1.5.vsix`.
+
 ### v3.1.4
 
 - Bumped the VSIX build from `3.1.3` to `3.1.4`.
