@@ -345,6 +345,18 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.8
+
+- Bumped the VSIX build from `3.3.7` to `3.3.8`.
+- Fix edit banner visibility on initial chat load
+- Packaged `release/llem-3.3.8.vsix`.
+
+### v3.3.7
+
+- Bumped the VSIX build from `3.3.7` to `3.3.7`.
+- Fix edit banner visibility on initial chat load
+- Packaged `release/llem-3.3.7.vsix`.
+
 ### v3.3.7
 
 - Bumped the VSIX build from `3.3.6` to `3.3.7`.

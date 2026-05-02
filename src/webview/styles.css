@@ -681,6 +681,9 @@ textarea::placeholder {
 .attach-preview.visible {
   display: flex;
 }
+.edit-banner[hidden] {
+  display: none !important;
+}
 .edit-banner {
   display: flex;
   align-items: center;
