@@ -21,6 +21,7 @@ export interface WebviewMessageRouterHost {
     deleteHistory(id: string): Promise<void>;
     requestDeleteHistory(id: string, title: string): Promise<void>;
     getWorkspaceFiles(): Promise<void>;
+    setDefaultModel(modelName: string): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
 }
 
@@ -31,6 +32,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'getWorkspaceFiles':
             await host.getWorkspaceFiles();
+            break;
+        case 'setDefaultModel':
+            await host.setDefaultModel(message.model);
             break;
         case 'prompt':
             await host.handlePrompt(message.value, message.model, message.internet);

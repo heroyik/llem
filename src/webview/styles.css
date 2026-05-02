@@ -685,27 +685,27 @@ textarea::placeholder {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 158, 88, 0.24);
-  background: rgba(255, 158, 88, 0.08);
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
 }
 .edit-banner-label {
   font-size: 11px;
   color: var(--text-dim);
 }
 .edit-banner-cancel {
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-faint);
-  padding: 3px 8px;
+  padding: 2px 6px;
   font-size: 10px;
   cursor: pointer;
 }
 .edit-banner-cancel:hover {
   color: var(--text);
-  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
 }
 .attach-chip {
   display: flex;
@@ -911,27 +911,36 @@ textarea::placeholder {
   margin-left: 30px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-height: 20px;
 }
 .msg-user .msg-actions {
   margin-left: 0;
-  gap: 4px;
+  align-self: flex-end;
+  gap: 8px;
   flex-wrap: nowrap;
+  padding-right: 2px;
 }
 .msg-action-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: none;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-faint);
-  padding: 4px 9px;
+  color: var(--text-dim);
+  padding: 0;
   font-size: 11px;
   cursor: pointer;
-  transition: color .14s ease, border-color .14s ease, background .14s ease;
+  transition: color .14s ease, opacity .14s ease, transform .14s ease;
+  opacity: 0.9;
+}
+.msg-action-btn .icon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 .msg-action-btn.icon-only {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   background: transparent;
@@ -940,33 +949,36 @@ textarea::placeholder {
   place-items: center;
 }
 .msg-action-btn.icon-only svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 .msg-action-btn:hover {
   color: var(--text);
-  border-color: var(--border-strong);
+  opacity: 1;
+  transform: translateY(-1px);
 }
 .msg-action-btn.icon-only:hover {
-  background: rgba(255, 255, 255, 0.05);
   color: var(--text);
+}
+.msg-action-btn.icon-only.active {
+  color: var(--text);
+  opacity: 1;
 }
 .msg-action-btn.active {
   color: var(--text);
-  border-color: rgba(255, 158, 88, 0.35);
-  background: rgba(255, 158, 88, 0.12);
+  opacity: 1;
 }
-.msg-action-feedback {
-  min-width: 42px;
-  font-size: 10px;
+.msg-action-time {
+  margin-left: 4px;
+  font-size: 11px;
   color: var(--text-faint);
-}
-.msg-user .msg-action-feedback {
-  min-width: 0;
-  width: 0;
-  overflow: visible;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  text-align: right;
+}
+.msg-user .msg-action-time {
+  margin-left: 0;
+  margin-right: 4px;
+  color: var(--text-dim);
 }
 body.init .main-view {
   justify-content: center;

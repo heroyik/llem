@@ -14,6 +14,8 @@ export interface ChatPipelineHost {
         internetEnabled?: boolean;
         backgroundLabel?: string;
         modelProfile?: ModelProfile;
+        activeModelName?: string;
+        activeEngineName?: string;
         attachmentNames?: string[];
         attachmentChars?: number;
         prunedAttachmentChars?: number;
@@ -115,6 +117,8 @@ export class ChatPipeline {
                 internetEnabled: options.internetEnabled,
                 backgroundLabel: DEFAULT_BACKGROUND_LABEL,
                 modelProfile,
+                activeModelName: selectedModel,
+                activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
                 attachmentNames: attachments.textAttachmentNames,
                 attachmentChars: attachments.includedChars,
                 prunedAttachmentChars: attachments.prunedChars
@@ -189,6 +193,8 @@ export class ChatPipeline {
                         internetEnabled: options.internetEnabled,
                         backgroundLabel: DEFAULT_BACKGROUND_LABEL,
                         modelProfile,
+                        activeModelName: selectedModel,
+                        activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
                         attachmentNames: attachments.textAttachmentNames,
                         attachmentChars: attachments.includedChars,
                         prunedAttachmentChars: attachments.prunedChars

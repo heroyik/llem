@@ -354,64 +354,93 @@ try {
   }
 
   function iconMarkup(kind: string): string {
-    if (kind === 'copy') return '<svg class="icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
-    if (kind === 'edit') return '<svg class="icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
-    if (kind === 'up') return '<svg class="icon" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>';
-    if (kind === 'down') return '<svg class="icon" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.37-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>';
+    if (kind === 'copy') return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+    if (kind === 'branch') return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 3a3 3 0 1 0 2.83 4H10a4 4 0 0 1 4 4v1.17A3 3 0 1 0 16 12V11a6 6 0 0 0-6-6H8.83A3 3 0 0 0 6 3zm0 14a3 3 0 1 0 2.83 4H10a6 6 0 0 0 6-6v-1.17A3 3 0 1 0 14 14v1a4 4 0 0 1-4 4H8.83A3 3 0 0 0 6 17zm10-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+    if (kind === 'edit') return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    if (kind === 'up') return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>';
+    if (kind === 'down') return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.37-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>';
     return '';
   }
 
-  function renderMessageActions(message: Message, messageIndex: number): HTMLElement {
+  function renderMessageActions(message: Message, messageIndex: number, timestamp?: string): HTMLElement {
     const actionBar = document.createElement('div');
     actionBar.className = 'msg-actions';
     actionBar.dataset.index = String(messageIndex);
 
     const isUser = message.role === 'user';
+    const timeLabel = document.createElement('span');
+    timeLabel.className = 'msg-action-time';
+    timeLabel.textContent = timestamp || getTime();
+
+    if (isUser) {
+      actionBar.appendChild(timeLabel);
+    }
 
     const copyBtn = document.createElement('button');
-    copyBtn.className = 'msg-action-btn';
-    copyBtn.title = 'Copy markdown';
+    copyBtn.className = 'msg-action-btn icon-only';
+    copyBtn.title = isUser ? 'Copy message' : 'Copy markdown';
+    copyBtn.setAttribute('aria-label', isUser ? 'Copy message' : 'Copy markdown');
     copyBtn.innerHTML = iconMarkup('copy');
     copyBtn.addEventListener('click', function() {
-      vscode.postMessage({ type: 'copy', value: message.text });
-      copyBtn.classList.add('active');
-      setTimeout(function() { copyBtn.classList.remove('active'); }, 1000);
+      navigator.clipboard.writeText(message.text || '').then(function() {
+        copyBtn.classList.add('active');
+        setTimeout(function() { copyBtn.classList.remove('active'); }, 1000);
+      });
     });
     actionBar.appendChild(copyBtn);
 
     if (isUser) {
       const editBtn = document.createElement('button');
-      editBtn.className = 'msg-action-btn';
+      editBtn.className = 'msg-action-btn icon-only';
       editBtn.title = 'Edit message';
+      editBtn.setAttribute('aria-label', 'Edit message');
       editBtn.innerHTML = iconMarkup('edit');
       editBtn.addEventListener('click', function() {
         enterEditMode(messageIndex, message);
       });
       actionBar.appendChild(editBtn);
-    } else {
+      return actionBar;
+    }
+
+    if (!isUser) {
       const upBtn = document.createElement('button');
-      upBtn.className = 'msg-action-btn feedback-btn' + (message.feedback === 'like' ? ' active' : '');
+      upBtn.className = 'msg-action-btn icon-only feedback-btn' + (message.feedback === 'like' ? ' active' : '');
       upBtn.title = 'Helpful';
+      upBtn.setAttribute('aria-label', 'Helpful');
       upBtn.innerHTML = iconMarkup('up');
       upBtn.addEventListener('click', function() {
         const newVal = message.feedback === 'like' ? null : 'like';
-        vscode.postMessage({ type: 'feedback', index: messageIndex, value: newVal });
+        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: newVal });
         setFeedbackState(actionBar, newVal);
         syncFeedbackAcrossCopies(messageIndex, newVal);
       });
       actionBar.appendChild(upBtn);
 
       const downBtn = document.createElement('button');
-      downBtn.className = 'msg-action-btn feedback-btn' + (message.feedback === 'dislike' ? ' active' : '');
+      downBtn.className = 'msg-action-btn icon-only feedback-btn' + (message.feedback === 'dislike' ? ' active' : '');
       downBtn.title = 'Not helpful';
+      downBtn.setAttribute('aria-label', 'Not helpful');
       downBtn.innerHTML = iconMarkup('down');
       downBtn.addEventListener('click', function() {
         const newVal = message.feedback === 'dislike' ? null : 'dislike';
-        vscode.postMessage({ type: 'feedback', index: messageIndex, value: newVal });
+        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: newVal });
         setFeedbackState(actionBar, newVal);
         syncFeedbackAcrossCopies(messageIndex, newVal);
       });
       actionBar.appendChild(downBtn);
+
+      const branchBtn = document.createElement('button');
+      branchBtn.className = 'msg-action-btn icon-only';
+      branchBtn.title = 'Branch chat';
+      branchBtn.setAttribute('aria-label', 'Branch chat');
+      branchBtn.innerHTML = iconMarkup('branch');
+      branchBtn.addEventListener('click', function() {
+        vscode.postMessage({ type: 'branchChat', messageIndex: messageIndex });
+        branchBtn.classList.add('active');
+        setTimeout(function() { branchBtn.classList.remove('active'); }, 1000);
+      });
+      actionBar.appendChild(branchBtn);
+      actionBar.appendChild(timeLabel);
     }
 
     return actionBar;
@@ -454,7 +483,7 @@ try {
     });
     renderPreview();
     if (editBanner) editBanner.hidden = false;
-    if (editBannerLabel) editBannerLabel.textContent = 'Editing an earlier message';
+    if (editBannerLabel) editBannerLabel.textContent = 'Editing this message in a new branch';
     input.focus();
   }
 
@@ -610,7 +639,7 @@ try {
     el.appendChild(body);
     if (typeof messageIndex === 'number' && messageIndex >= 0) {
       displayMessages[messageIndex] = message;
-      const actions = renderMessageActions(message, messageIndex);
+      const actions = renderMessageActions(message, messageIndex, getTime());
       el.appendChild(actions);
     }
     if (chat) {
@@ -714,7 +743,7 @@ try {
     if (!target || target.querySelector('.regen-btn')) return;
     const button = document.createElement('button');
     button.className = 'regen-btn';
-    button.innerHTML = '↻ Run it back';
+    button.innerHTML = '↻ Regenerate reply';
     button.addEventListener('click', function() {
       button.remove();
       vscode.postMessage({ type: 'regenerate' });
@@ -784,7 +813,7 @@ try {
       const isIndexValid = typeof messageIndex === 'number' && messageIndex >= 0;
       if (isIndexValid) {
         displayMessages[messageIndex!] = message || { role: 'ai', text: streamRaw, feedback: null };
-        const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex!);
+        const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex!, getTime());
         if (actions && !streamEl.querySelector('.msg-actions')) {
           streamEl.appendChild(actions);
         }
@@ -1220,15 +1249,13 @@ try {
     document.body.classList.remove('init');
     const welcome = document.querySelector('.welcome');
     if (welcome) welcome.remove();
-    const localMessageIndex = displayMessages.length;
-    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
-    if (input) {
-      input.value = '';
-      input.style.height = 'auto';
-    }
-    setSending(true);
-    showLoader();
     if (editingMessageIndex >= 0) {
+      if (input) {
+        input.value = '';
+        input.style.height = 'auto';
+      }
+      setSending(true);
+      showLoader();
       vscode.postMessage({
         type: 'editMessage',
         messageIndex: editingMessageIndex,
@@ -1242,6 +1269,14 @@ try {
       exitEditMode(false);
       return;
     }
+    const localMessageIndex = displayMessages.length;
+    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
+    setSending(true);
+    showLoader();
     if (attachedFiles.length > 0) {
       vscode.postMessage({
         type: 'promptWithFile',
@@ -1362,6 +1397,11 @@ try {
   safeListen(sendBtn, 'click', function() {
     log('[UI] Send button clicked (pendingFiles=' + pendingFiles.length + ', sending=' + sending + ')');
     send();
+  });
+  safeListen(modelSel, 'change', function() {
+    const nextModel = modelSel?.value || '';
+    log('[MODELS] User selected model: ' + nextModel);
+    vscode.postMessage({ type: 'setDefaultModel', model: nextModel });
   });
   safeListen(input, 'keydown', function(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1553,6 +1593,15 @@ try {
             option.textContent = model;
             modelSel.appendChild(option);
           });
+          if (msg.selectedModel) {
+            if (!Array.from(modelSel.options).some(function(option) { return option.value === msg.selectedModel; })) {
+              const option = document.createElement('option');
+              option.value = msg.selectedModel;
+              option.textContent = msg.selectedModel;
+              modelSel.appendChild(option);
+            }
+            modelSel.value = msg.selectedModel;
+          }
         }
         log('[MODELS] Loaded ' + msg.value.length + ' model(s): ' + msg.value.join(', '));
         break;

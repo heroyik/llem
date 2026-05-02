@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getVaultDir } from './config';
+import { getLlemSettings, getVaultDir, getConfig } from './config';
 import { executeActions } from './actionExecutor';
 import { SYSTEM_PROMPT } from './prompts';
 import { getChatWebviewHtml } from './webviewHtml';
@@ -409,6 +409,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             deleteHistory: (id) => this.deleteHistory(id),
             requestDeleteHistory: (id, title) => this.requestDeleteHistory(id, title),
             getWorkspaceFiles: () => this._sendWorkspaceFiles(),
+            setDefaultModel: (modelName) => this._setDefaultModel(modelName),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -576,7 +577,27 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._view) { return; }
         const models = await getInstalledModels();
         logInfo('[MODELS] Sending ' + models.length + ' model(s) to webview: ' + models.join(', '));
-        this._view.webview.postMessage({ type: 'modelsList', value: models });
+        this._view.webview.postMessage({
+            type: 'modelsList',
+            value: models,
+            selectedModel: getConfig().defaultModel
+        });
+    }
+
+    private async _setDefaultModel(modelName: string): Promise<void> {
+        const nextModel = String(modelName || '').trim();
+        if (!nextModel) {
+            return;
+        }
+
+        const currentModel = getConfig().defaultModel;
+        if (currentModel === nextModel) {
+            return;
+        }
+
+        await getLlemSettings().update('defaultModel', nextModel, vscode.ConfigurationTarget.Global);
+        this._lastModel = nextModel;
+        logInfo('[MODELS] Default model updated from ' + currentModel + ' to ' + nextModel);
     }
 
     private async _handleBrainMenu() {
@@ -605,6 +626,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         internetEnabled?: boolean;
         backgroundLabel?: string;
         modelProfile?: ModelProfile;
+        activeModelName?: string;
+        activeEngineName?: string;
         attachmentNames?: string[];
         attachmentChars?: number;
         prunedAttachmentChars?: number;
@@ -617,6 +640,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             internetEnabled: options.internetEnabled,
             backgroundLabel: options.backgroundLabel ?? 'BACKGROUND CONTEXT',
             modelProfile: options.modelProfile,
+            activeModelName: options.activeModelName,
+            activeEngineName: options.activeEngineName,
             attachmentNames: options.attachmentNames,
             attachmentChars: options.attachmentChars,
             prunedAttachmentChars: options.prunedAttachmentChars

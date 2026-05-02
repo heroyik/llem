@@ -345,6 +345,21 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.1.8
+
+- Bumped the VSIX build from `3.1.7` to `3.1.8`.
+- Added Codex-style message actions for user and assistant replies
+- restored copy and edit flows for existing user messages
+- added edit-in-new-branch composer state
+- Packaged `release/llem-3.1.8.vsix`.
+
+### v3.1.7
+
+- Bumped the VSIX build from `3.1.6` to `3.1.7`.
+- Made the model dropdown persist the real active default model and pass runtime engine/model metadata into each request
+- Removed the earlier-message editing banner and edit entrypoint from the chat UI so message composer stays in normal send mode
+- Packaged `release/llem-3.1.7.vsix`.
+
 ### v3.1.6
 
 - Bumped the VSIX build from `3.1.5` to `3.1.6`.

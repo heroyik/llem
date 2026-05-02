@@ -52,6 +52,8 @@ export interface RequestMessageBuildOptions {
     internetEnabled?: boolean;
     backgroundLabel?: string;
     modelProfile?: ModelProfile;
+    activeModelName?: string;
+    activeEngineName?: string;
     attachmentNames?: string[];
     attachmentChars?: number;
     prunedAttachmentChars?: number;
@@ -185,6 +187,9 @@ export class ContextBuilder {
         const internetDirective = getInternetDirective(options.internetEnabled);
         const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
         const contextBudget = options.modelProfile?.contextBudget;
+        const activeRuntimeDirective = options.activeModelName
+            ? `\n\n[ACTIVE RUNTIME]\nThis request is being answered by the real local engine "${options.activeEngineName || 'Local Engine'}" using the loaded model "${options.activeModelName}". If the user asks which model is being used right now, answer with this active runtime model exactly. Do NOT infer the answer from source files, config defaults, or examples in the workspace unless the user explicitly asks about code or settings values.`
+            : '';
 
         let activeEditorContent = contextBudget
             ? truncateText(activeEditor.content, contextBudget.activeEditorChars)
@@ -197,7 +202,7 @@ export class ContextBuilder {
             : vaultContext;
 
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
             let systemContent = buildSystemContent();
             if (contextBudget) {
                 const minimumHistoryBudget = 4_000;
