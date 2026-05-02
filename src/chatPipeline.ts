@@ -178,8 +178,9 @@ export class ChatPipeline {
                 }
 
                 if (turnExecuted) {
+                    const previousAiResponsePrefix = currentAiResponse.trim().slice(0, 200);
+
                     // Update full AI message with what we've processed so far
-                    // We strip action tags from the display version later, but we need the feedback here
                     fullAiMessage += cleanedAiResponse + combinedUiFeedback;
 
                     this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse });
@@ -200,6 +201,18 @@ export class ChatPipeline {
                         prunedAttachmentChars: attachments.prunedChars
                     });
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
+                    
+                    // Loop detection: if Turn N starts exactly like Turn N-1, it's stuck.
+                    if (currentAiResponse.trim().slice(0, 200) === previousAiResponsePrefix && currentAiResponse.length > 50) {
+                        logInfo('[PIPELINE] Turn-to-turn loop detected. Breaking execution chain.');
+                        this.host.postWebviewMessage({ 
+                            type: 'streamChunk', 
+                            value: '\n\n> ⚠️ **[System]** The model is repeating itself. Stopping the loop to provide the final answer.' 
+                        });
+                        fullAiMessage += currentAiResponse;
+                        break;
+                    }
+
                     turn++;
                     continue;
                 }

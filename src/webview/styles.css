@@ -1036,12 +1036,30 @@ body.init .input-wrap {
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform .15s ease, box-shadow .15s ease;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
   box-shadow: 0 4px 12px rgba(255, 158, 88, 0.2);
 }
 .btn-new-chat:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(255, 158, 88, 0.3);
+}
+.btn-clear-all {
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, color .15s ease, background .15s ease;
+}
+.btn-clear-all:hover {
+  transform: translateY(-1px);
+  background: var(--panel-3);
+  border-color: var(--danger);
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .btn-close {
   background: none;
@@ -1180,28 +1198,37 @@ body.init .input-wrap {
 }
 
 .btn-secondary {
-  background: var(--panel-3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px 12px;
-  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  padding: 8px 16px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
 }
 .btn-secondary:hover {
-  background: var(--panel-2);
+  background: var(--panel-3);
+  color: var(--text);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .btn-danger {
-  background: var(--danger);
+  background: linear-gradient(135deg, var(--danger), #ff8c94);
   border: none;
   color: white;
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  box-shadow: 0 6px 16px rgba(255, 107, 122, 0.25);
 }
 .btn-danger:hover {
+  transform: translateY(-1px);
   filter: brightness(1.1);
+  box-shadow: 0 8px 20px rgba(255, 107, 122, 0.35);
 }

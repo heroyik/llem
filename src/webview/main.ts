@@ -64,7 +64,9 @@ try {
   const deleteThreadTitle = document.getElementById('deleteThreadTitle');
   const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
   const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+  const clearAllHistoryBtn = document.getElementById('clearAllHistoryBtn');
   let currentDeletingId: string | null = null;
+  let isBulkDelete = false;
   const brainBtn = document.getElementById('brainBtn');
   const internetBtn = document.getElementById('internetBtn');
   const historyBtn = document.getElementById('historyBtn');
@@ -386,6 +388,8 @@ try {
         copyBtn.classList.add('active');
         setTimeout(function() { copyBtn.classList.remove('active'); }, 1000);
       });
+      // Automatically paste into input and show edit banner
+      enterEditMode(messageIndex, message);
     });
     actionBar.appendChild(copyBtn);
 
@@ -466,7 +470,7 @@ try {
   }
 
   function enterEditMode(messageIndex: number, message: Message): void {
-    if (!input || !message || message.role !== 'user') return;
+    if (!input || !message) return;
     editingMessageIndex = messageIndex;
     input.value = message.text || '';
     input.style.height = 'auto';
@@ -650,14 +654,41 @@ try {
   }
 
   function showDeleteModal(id: string, title: string): void {
+    resetDeleteModalUI();
+    isBulkDelete = false;
     currentDeletingId = id;
+    const deleteThreadTitle = document.getElementById('deleteThreadTitle');
     if (deleteThreadTitle) deleteThreadTitle.textContent = title;
     if (deleteModal) deleteModal.classList.add('visible');
   }
 
   function hideDeleteModal(): void {
     currentDeletingId = null;
+    isBulkDelete = false;
     if (deleteModal) deleteModal.classList.remove('visible');
+  }
+
+  function showClearAllModal(): void {
+    isBulkDelete = true;
+    currentDeletingId = null;
+    const modalTitle = deleteModal?.querySelector('.modal-title');
+    const modalBody = deleteModal?.querySelector('.modal-body');
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+
+    if (modalTitle) modalTitle.textContent = 'Clear All History?';
+    if (modalBody) modalBody.innerHTML = 'Are you sure you want to delete <strong>all</strong> chat threads? This cannot be undone.';
+    if (confirmBtn) confirmBtn.textContent = 'Clear All';
+    if (deleteModal) deleteModal.classList.add('visible');
+  }
+
+  function resetDeleteModalUI(): void {
+    const modalTitle = deleteModal?.querySelector('.modal-title');
+    const modalBody = deleteModal?.querySelector('.modal-body');
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+
+    if (modalTitle) modalTitle.textContent = 'Delete Thread?';
+    if (modalBody) modalBody.innerHTML = 'Are you sure you want to delete "<span id="deleteThreadTitle"></span>"? This cannot be undone.';
+    if (confirmBtn) confirmBtn.textContent = 'Delete Thread';
   }
 
   function showLoader(): void {
@@ -1421,7 +1452,11 @@ try {
     if (input) input.focus();
   });
   safeListen(confirmDeleteBtn, 'click', function() {
-    if (currentDeletingId) {
+    if (isBulkDelete) {
+      log('[UI] Confirm clear all history clicked');
+      vscode.postMessage({ type: 'deleteAllHistory' });
+      hideDeleteModal();
+    } else if (currentDeletingId) {
       log('[UI] Confirm delete clicked for: ' + currentDeletingId);
       vscode.postMessage({ type: 'deleteHistory', id: currentDeletingId });
       hideDeleteModal();
@@ -1472,6 +1507,10 @@ try {
   safeListen(closeHistoryBtn, 'click', function() {
     log('[UI] Close history button clicked');
     if (historyView) historyView.classList.remove('visible');
+  });
+  safeListen(clearAllHistoryBtn, 'click', function() {
+    log('[UI] Clear all history button clicked');
+    vscode.postMessage({ type: 'requestClearAllHistory' });
   });
   safeListen(injectLocalBtn, 'click', function() {
     if (pendingFiles.length === 0) {
@@ -1633,6 +1672,7 @@ try {
         break;
       case 'restoreMessages':
         if (chat) chat.innerHTML = '';
+        exitEditMode(true);
         displayMessages = msg.value || [];
         if (msg.value && msg.value.length > 0) {
           log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
@@ -1667,6 +1707,10 @@ try {
       case 'requestDeleteHistory':
         log('[UI] requestDeleteHistory received for: ' + msg.id);
         showDeleteModal(msg.id, msg.title);
+        break;
+      case 'requestClearAllHistory':
+        log('[UI] requestClearAllHistory received');
+        showClearAllModal();
         break;
       case 'historyLoaded':
         log('[HISTORY] Session loaded: ' + msg.id);

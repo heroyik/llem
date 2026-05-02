@@ -7,7 +7,13 @@ export function buildContinuationSystemMessage(internalSystemFeedback: string, e
 
     if (externalReport.length > 0) {
         parts.push(
-            `[SYSTEM: External action results]\n${externalReport.join('\n')}\n\nContinue from the updated workspace state and answer the user's original request.`
+            `[SYSTEM: Action Report]\n${externalReport.join('\n')}`
+        );
+    }
+
+    if (parts.length > 0) {
+        parts.push(
+            "IMPORTANT: I have the action results above. DO NOT repeat your previous reasoning, planning, or preamble. Go straight to the final answer or the next necessary action based ONLY on the new information."
         );
     }
 

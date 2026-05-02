@@ -66,6 +66,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         <div class="history-title">Chat History</div>
         <div class="history-actions">
           <button class="btn-new-chat" id="newChatHistoryBtn" title="New chat">New Chat</button>
+          <button class="btn-clear-all" id="clearAllHistoryBtn" title="Clear all history">Clear All</button>
           <button class="btn-close" id="closeHistoryBtn" title="Close history">✕</button>
         </div>
       </div>

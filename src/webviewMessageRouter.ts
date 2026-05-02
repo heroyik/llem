@@ -19,7 +19,9 @@ export interface WebviewMessageRouterHost {
     getHistory(): Promise<void>;
     loadHistory(id: string): Promise<void>;
     deleteHistory(id: string): Promise<void>;
+    deleteAllHistory(): Promise<void>;
     requestDeleteHistory(id: string, title: string): Promise<void>;
+    requestClearAllHistory(): Promise<void>;
     getWorkspaceFiles(): Promise<void>;
     setDefaultModel(modelName: string): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
@@ -93,8 +95,14 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
         case 'deleteHistory':
             await host.deleteHistory(message.id);
             break;
+        case 'deleteAllHistory':
+            await host.deleteAllHistory();
+            break;
         case 'requestDeleteHistory':
             await host.requestDeleteHistory(message.id, message.title);
+            break;
+        case 'requestClearAllHistory':
+            await host.requestClearAllHistory();
             break;
         case 'log':
             if (message.level === 'error') {

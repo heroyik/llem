@@ -176,6 +176,22 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
         this._brainEnabled = this._ctx.globalState.get<boolean>('brainEnabled', true);
         this._registerContextInvalidation();
+        this._loadLastSession();
+    }
+
+    private async _loadLastSession(): Promise<void> {
+        try {
+            const history = await this._historyManager.listSessions();
+            if (history.length > 0) {
+                const sessionData = await this._historyManager.getSession(history[0].id);
+                if (sessionData) {
+                    this._chatSession.load(sessionData);
+                    logInfo('[HISTORY] Auto-loaded most recent session: ' + history[0].id);
+                }
+            }
+        } catch (err) {
+            logError('[HISTORY] Failed to auto-load last session: ' + (err instanceof Error ? err.message : String(err)));
+        }
     }
 
     private _registerContextInvalidation(): void {
@@ -256,13 +272,25 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             logInfo('[HISTORY] Session ' + id + ' deleted from disk');
             if (this._chatSession.id === id) {
                 logInfo('[HISTORY] Deleting current active session — resetting chat');
-                this.resetChat();
-            } else {
-                logInfo('[HISTORY] Refreshing history list after deletion');
-                await this.getHistory();
+                await this.resetChat();
             }
+            logInfo('[HISTORY] Refreshing history list after deletion');
+            await this.getHistory();
         } catch (err) {
             logError('[HISTORY] Failed to delete session ' + id + ': ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    public async deleteAllHistory() {
+        logInfo('[HISTORY] deleteAllHistory() requested');
+        try {
+            await this._historyManager.clearAll();
+            logInfo('[HISTORY] All sessions deleted from disk');
+            await this.resetChat();
+            logInfo('[HISTORY] Refreshing history list after bulk deletion');
+            await this.getHistory();
+        } catch (err) {
+            logError('[HISTORY] Failed to clear all history: ' + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -407,7 +435,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
             deleteHistory: (id) => this.deleteHistory(id),
+            deleteAllHistory: () => this.deleteAllHistory(),
             requestDeleteHistory: (id, title) => this.requestDeleteHistory(id, title),
+            requestClearAllHistory: () => this.requestClearAllHistory(),
             getWorkspaceFiles: () => this._sendWorkspaceFiles(),
             setDefaultModel: (modelName) => this._setDefaultModel(modelName),
             log: (message, level) => {
@@ -791,6 +821,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     public async requestDeleteHistory(id: string, title: string) {
         logInfo('[HISTORY] requestDeleteHistory(' + id + ', ' + title + ')');
         this._view?.webview.postMessage({ type: 'requestDeleteHistory', id, title });
+    }
+
+    public async requestClearAllHistory() {
+        logInfo('[HISTORY] requestClearAllHistory()');
+        this._view?.webview.postMessage({ type: 'requestClearAllHistory' });
     }
 
     private async _sendWorkspaceFiles(): Promise<void> {
