@@ -1,10 +1,12 @@
 import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
+import { detectImportantSentenceLoop, detectRecentBlockLoop } from './repetitionWatchdog';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 import { logInfo, logStreamEvent, logStructured } from './logger';
 
 const ENDPOINT_CACHE_TTL_MS = 15_000;
+const REASONING_ONLY_ERROR = 'The selected model streamed reasoning without a final answer. Disable thinking for this model or choose one that returns answer content.';
 
 let endpointCache: { baseUrl: string; endpoint: AIEndpoint; expiresAt: number } | undefined;
 
@@ -96,6 +98,7 @@ function buildStreamBody(
                 top_p: topP 
             }
             : {
+                think: false,
                 options: {
                     num_ctx: contextWindow ?? 8192,
                     num_predict: predictTokens ?? finalPredict, // Use finalPredict if null
@@ -110,29 +113,11 @@ function buildStreamBody(
 }
 
 function isStuckInLoop(text: string): boolean {
-    const minLen = 30;
-    const len = text.length;
-    if (len < minLen * 3) return false;
-    
-    const lastChar = text[len - 1];
-    const maxL = Math.floor(len / 3);
-    
-    for (let L = minLen; L <= maxL; L++) {
-        if (text[len - 1 - L] === lastChar) {
-            const s1 = text.substring(len - L);
-            const s2 = text.substring(len - 2 * L, len - L);
-            if (s1 === s2) {
-                const s3 = text.substring(len - 3 * L, len - 2 * L);
-                if (s1 === s3) {
-                    const letters = s1.match(/[a-zA-Z0-9가-힣]/g);
-                    if (letters && letters.length >= 10) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    return false;
+    return detectRecentBlockLoop(text).detected || detectImportantSentenceLoop(text).detected;
+}
+
+function containsReasoningTrace(rawText: string): boolean {
+    return /"thinking"\s*:|"reasoning(?:_content|_text)?"\s*:|"thought"\s*:/.test(rawText);
 }
 
 export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
@@ -255,6 +240,12 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
             rawPreview,
             outputLength: output.length
         });
+
+        if (containsReasoningTrace(rawPreview)) {
+            const reasoningOnlyError = new Error(REASONING_ONLY_ERROR);
+            reasoningOnlyError.name = 'ReasoningOnlyStreamError';
+            throw reasoningOnlyError;
+        }
     }
 
     logStreamEvent(streamId, 'request_complete', {

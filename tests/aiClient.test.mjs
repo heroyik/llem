@@ -26,10 +26,10 @@ test('extractStreamToken reads LM Studio delta arrays and message fallback', () 
   assert.equal(deltaToken, 'Hello!');
   assert.equal(objectDeltaToken, 'Object token');
   assert.equal(messageToken, 'Done');
-  assert.equal(reasoningToken, 'Thinking...');
+  assert.equal(reasoningToken, '');
 });
 
-test('extractStreamToken reads non-LM Studio array content and tool-call fallbacks', () => {
+test('extractStreamToken reads non-LM Studio visible content and tool-call fallbacks', () => {
   const arrayContent = extractStreamToken(
     '{"message":{"content":[{"type":"text","text":"Hi"},{"text":" there"}]}}',
     false
@@ -42,6 +42,10 @@ test('extractStreamToken reads non-LM Studio array content and tool-call fallbac
     '{"choices":[{"delta":{"content":{"type":"output_text_delta","delta":"Fallback token"}}}]}',
     false
   );
+  const hiddenThinking = extractStreamToken(
+    '{"message":{"content":"","thinking":"Internal plan should stay hidden."}}',
+    false
+  );
   const toolCall = extractStreamToken(
     '{"choices":[{"message":{"tool_calls":[{"function":{"name":"read_file","arguments":"{\\"path\\":\\"src/index.ts\\"}"}}]}}]}',
     true
@@ -50,6 +54,7 @@ test('extractStreamToken reads non-LM Studio array content and tool-call fallbac
   assert.equal(arrayContent, 'Hi there');
   assert.equal(topLevelContent, 'Top level');
   assert.equal(choiceDeltaFallback, 'Fallback token');
+  assert.equal(hiddenThinking, '');
   assert.match(toolCall, /<read_file/);
 });
 

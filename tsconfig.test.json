@@ -10,11 +10,13 @@
     "src/bridgeAuth.ts",
     "src/bridgePayload.ts",
     "src/bridgeRateLimit.ts",
+    "src/aiClient.ts",
     "src/chatPipelineHelpers.ts",
     "src/commandPolicy.ts",
     "src/fileActions.ts",
     "src/performanceProfiles.ts",
     "src/promptBudgeting.ts",
+    "src/repetitionWatchdog.ts",
     "src/security.ts",
     "src/streamParsing.ts",
     "src/webActions.ts"

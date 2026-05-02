@@ -682,6 +682,9 @@ function formatPromptWithFileError(error: any, ollamaBase: string): string {
     const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
     const targetName = isLM ? 'LM Studio' : 'Ollama';
 
+    if (error?.name === 'ReasoningOnlyStreamError') {
+        return `⚠️ ${error.message}\n\n**Try this:** switch to a non-thinking model, or make sure ${targetName} is asked to return only final answer content.`;
+    }
     if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
         return `⚠️ Could not reach ${targetName}.\n\n**Try this:**\n1. Open ${targetName} and make sure the local server is running.\n2. Check the engine URL in Settings. Default is http://127.0.0.1:${isLM ? '1234' : '11434'}.`;
     }
@@ -704,6 +707,9 @@ function formatPromptError(error: any, ollamaBase: string): string {
     const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
     const targetName = isLM ? 'LM Studio' : 'Ollama';
 
+    if (error?.name === 'ReasoningOnlyStreamError') {
+        return `⚠️ ${error.message}\n\nSwitch to a non-thinking model, or make sure ${targetName} returns final answer content instead of reasoning trace only.`;
+    }
     if (error.code === 'ECONNREFUSED') {
         return `⚠️ Could not reach ${targetName}.\nMake sure the local server is up.`;
     }

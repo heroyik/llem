@@ -21,10 +21,6 @@ function extractTextParts(value: unknown, depth = 0): string {
         candidate.delta,
         candidate.value,
         candidate.output_text,
-        candidate.reasoning_text,
-        candidate.reasoning_content,
-        candidate.reasoning,
-        candidate.thinking,
         candidate.content
     ];
 
@@ -84,13 +80,6 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
                 return messageContent;
             }
 
-            // Reasoning/Thinking fields (Gemma 2 support)
-            const thinking = extractTextParts(json.message.thinking || json.message.thought);
-            if (thinking) { return thinking; }
-
-            const reasoning = extractTextParts(json.message.reasoning_content || json.message.reasoning);
-            if (reasoning) { return reasoning; }
-
             const toolCallToken = extractToolCallToken(json.message.tool_calls);
             if (toolCallToken) { return toolCallToken; }
         }
@@ -101,10 +90,10 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
             return response;
         }
 
-        // 4. Fallbacks for other fields (delta objects, reasoning in deltas)
-        const deltaReasoning = extractTextParts(choice?.delta?.reasoning_content || choice?.delta?.reasoning);
-        if (deltaReasoning) {
-            return deltaReasoning;
+        // 4. Fallbacks for other visible content fields
+        const topLevelContent = extractTextParts(json.content);
+        if (topLevelContent) {
+            return topLevelContent;
         }
 
         const deltaObj = extractTextParts(choice?.delta);
