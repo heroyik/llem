@@ -13,6 +13,8 @@
     "src/chatPipelineHelpers.ts",
     "src/commandPolicy.ts",
     "src/fileActions.ts",
+    "src/performanceProfiles.ts",
+    "src/promptBudgeting.ts",
     "src/security.ts",
     "src/streamParsing.ts",
     "src/webActions.ts"

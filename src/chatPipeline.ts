@@ -1,12 +1,22 @@
 import axios from 'axios';
 import { getConfig } from './config';
+import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
 import { resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
-import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage } from './types';
+import { getInstalledModelCatalog } from './modelDiscovery';
+import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
+import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
 
 export interface ChatPipelineHost {
-    buildRequestMessages(internetEnabled?: boolean, backgroundLabel?: string): ChatMessage[];
+    buildRequestMessages(options?: {
+        internetEnabled?: boolean;
+        backgroundLabel?: string;
+        modelProfile?: ModelProfile;
+        attachmentNames?: string[];
+        attachmentChars?: number;
+        prunedAttachmentChars?: number;
+    }): ChatMessage[];
     executeActions(aiMessage: string): Promise<string[]>;
     getChatHistory(): ChatMessage[];
     getDisplayMessages(): DisplayMessage[];
@@ -18,6 +28,7 @@ export interface ChatPipelineHost {
     saveHistory(): Promise<void>;
     setAbortController(controller?: AbortController): void;
     setLastPrompt(prompt: string, modelName: string, files?: AttachedFile[], internetEnabled?: boolean): void;
+    warnLargeModelTimeout(profile: ModelProfile, timeoutMs: number): void;
 }
 
 interface PromptRunOptions {
@@ -32,6 +43,9 @@ interface PreparedAttachments {
     imageFiles: AttachedFile[];
     displayFiles: Pick<AttachedFile, 'name' | 'type' | 'data'>[];
     notices: string[];
+    textAttachmentNames: string[];
+    includedChars: number;
+    prunedChars: number;
 }
 
 const DEFAULT_BACKGROUND_LABEL = 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED';
@@ -64,8 +78,23 @@ export class ChatPipeline {
             const config = getConfig();
             const endpoint = await resolveAIEndpoint(config);
             const selectedModel = this.selectedModel(options.modelName, config.defaultModel);
-            const attachments = this.prepareAttachments(files);
+            const modelCatalog = await getInstalledModelCatalog(config.ollamaBase).catch(() => []);
+            const installedModel = findInstalledModelInfo(selectedModel, modelCatalog);
+            const modelProfile = buildModelProfile({
+                modelName: selectedModel,
+                requestedPreset: config.performancePreset,
+                parameterSize: installedModel?.parameterSize,
+                family: installedModel?.family
+            });
+            const attachments = this.prepareAttachments(files, modelProfile);
             const reusableFiles = this.compactFilesForReuse(files);
+            this.host.warnLargeModelTimeout(modelProfile, config.timeout);
+            PerfLogger.update({
+                modelName: selectedModel,
+                performancePreset: modelProfile.resolvedPreset,
+                attachmentChars: attachments.includedChars,
+                prunedAttachmentChars: attachments.prunedChars
+            });
 
             this.host.getChatHistory().push({ role: 'user', content: options.prompt + attachments.fileContext });
             const displayMessage: DisplayMessage = { text: options.prompt, role: 'user' };
@@ -81,13 +110,17 @@ export class ChatPipeline {
             }
             this.host.getDisplayMessages().push({ ...displayMessage, feedback: null });
 
-            const reqMessages = this.host.buildRequestMessages(
-                options.internetEnabled,
-                DEFAULT_BACKGROUND_LABEL
-            );
+            const reqMessages = this.host.buildRequestMessages({
+                internetEnabled: options.internetEnabled,
+                backgroundLabel: DEFAULT_BACKGROUND_LABEL,
+                modelProfile,
+                attachmentNames: attachments.textAttachmentNames,
+                attachmentChars: attachments.includedChars,
+                prunedAttachmentChars: attachments.prunedChars
+            });
 
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
-            PerfLogger.update({ promptSizeEstimateChars: promptChars });
+            PerfLogger.update({ promptSizeEstimateChars: promptChars, finalRequestChars: promptChars });
 
             this.attachImagesToRequest(endpoint, reqMessages, attachments.imageFiles);
 
@@ -107,7 +140,9 @@ export class ChatPipeline {
                 reqMessages,
                 selectedModel,
                 config.timeout,
-                abortController.signal
+                abortController.signal,
+                modelProfile,
+                'initial'
             );
 
             let turn = 0;
@@ -149,8 +184,15 @@ export class ChatPipeline {
                     }
 
                     // Re-prompt
-                    const nextReqMessages = this.host.buildRequestMessages(options.internetEnabled, DEFAULT_BACKGROUND_LABEL);
-                    currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal);
+                    const nextReqMessages = this.host.buildRequestMessages({
+                        internetEnabled: options.internetEnabled,
+                        backgroundLabel: DEFAULT_BACKGROUND_LABEL,
+                        modelProfile,
+                        attachmentNames: attachments.textAttachmentNames,
+                        attachmentChars: attachments.includedChars,
+                        prunedAttachmentChars: attachments.prunedChars
+                    });
+                    currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
                     turn++;
                     continue;
                 }
@@ -203,13 +245,18 @@ export class ChatPipeline {
         }
     }
 
-    private prepareAttachments(files: AttachedFile[]): PreparedAttachments {
+    private prepareAttachments(files: AttachedFile[], modelProfile: ModelProfile): PreparedAttachments {
         const prepared: PreparedAttachments = {
             fileContext: '',
             imageFiles: [],
             displayFiles: [],
-            notices: []
+            notices: [],
+            textAttachmentNames: [],
+            includedChars: 0,
+            prunedChars: 0
         };
+        const attachmentBudget = getAttachmentBudgetLimits(modelProfile.contextBudget);
+        let remainingAttachmentChars = attachmentBudget.totalChars;
 
         for (const file of files) {
             const type = file.type || 'application/octet-stream';
@@ -229,14 +276,27 @@ export class ChatPipeline {
 
             const decoded = decodeBase64TextPrefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES);
             const preview = decoded.slice(0, MAX_TEXT_ATTACHMENT_CHARS);
+            const budgetedPreview = allocateAttachmentPreview(preview, remainingAttachmentChars, attachmentBudget.perFileChars);
             const wasTruncated = Boolean(file.truncated)
                 || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
-                || decoded.length > MAX_TEXT_ATTACHMENT_CHARS;
+                || decoded.length > MAX_TEXT_ATTACHMENT_CHARS
+                || budgetedPreview.prunedChars > 0;
             const note = wasTruncated
                 ? ` (partial preview only: up to ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} of ${formatBytes(size)})`
                 : '';
 
-            prepared.fileContext += `\n\n[ATTACHED FILE: ${file.name}${note}]\n\`\`\`\n${preview}\n\`\`\``;
+            if (budgetedPreview.included.length === 0) {
+                prepared.displayFiles.push({ name: file.name, type, data: '' });
+                prepared.notices.push(`\n\n> 📎 **[Attachment budget reached]** ${file.name}: skipped to keep the 26B prompt lean.\n\n`);
+                prepared.prunedChars += preview.length;
+                continue;
+            }
+
+            remainingAttachmentChars = budgetedPreview.remainingChars;
+            prepared.textAttachmentNames.push(file.name);
+            prepared.includedChars += budgetedPreview.included.length;
+            prepared.prunedChars += budgetedPreview.prunedChars;
+            prepared.fileContext += `\n\n[ATTACHED FILE: ${file.name}${note}]\n\`\`\`\n${budgetedPreview.included}\n\`\`\``;
             prepared.displayFiles.push({ name: file.name, type, data: '' });
 
             if (wasTruncated) {
@@ -363,7 +423,9 @@ export class ChatPipeline {
         messages: ChatMessage[],
         modelName: string,
         timeout: number,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        modelProfile?: ModelProfile,
+        phase: 'initial' | 'followup' = 'initial'
     ): Promise<string> {
         const streamStart = performance.now();
         let firstTokenTime = 0;
@@ -377,6 +439,12 @@ export class ChatPipeline {
             temperature: this.host.getTemperature(),
             topP: this.host.getTopP(),
             topK: this.host.getTopK(),
+            contextWindow: !endpoint.isLMStudio ? modelProfile?.requestTuning.numCtx : undefined,
+            predictTokens: !endpoint.isLMStudio
+                ? (phase === 'followup'
+                    ? modelProfile?.requestTuning.followupPredict
+                    : modelProfile?.requestTuning.initialPredict)
+                : undefined,
             signal
         }, token => {
             if (firstTokenTime === 0) {
@@ -388,9 +456,11 @@ export class ChatPipeline {
         });
 
         const totalSeconds = (performance.now() - firstTokenTime) / 1000;
+        const totalMs = performance.now() - streamStart;
         PerfLogger.update({
+            streamTotalMs: totalMs,
             streamTotalTokens: tokenCount,
-            streamTokensPerSecond: totalSeconds > 0 ? tokenCount / totalSeconds : 0
+            streamTokensPerSecond: firstTokenTime > 0 && totalSeconds > 0 ? tokenCount / totalSeconds : 0
         });
 
         return result;

@@ -3,6 +3,11 @@ import * as vscode from 'vscode';
 import { normalizeAIEndpoint, stripTrailingSlash } from './aiClient';
 import { getConfig, getLlemSettings, getVaultDir } from './config';
 import { ensureDir } from './fsUtils';
+import type { InstalledModelInfo } from './types';
+
+const MODEL_CATALOG_CACHE_TTL_MS = 15_000;
+
+let modelCatalogCache: { baseUrl: string; models: InstalledModelInfo[]; expiresAt: number } | undefined;
 
 export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<void> {
     try {
@@ -61,34 +66,53 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
 export async function getInstalledModels(): Promise<string[]> {
     const { ollamaBase, defaultModel } = getConfig();
     try {
-        const endpoint = normalizeAIEndpoint(ollamaBase);
-        let models: string[] = [];
-
-        if (endpoint.isLMStudio) {
-            const modelsUrl = endpoint.apiUrl.replace('/chat/completions', '/models');
-            const res = await axios.get(modelsUrl, { timeout: 3000 });
-            models = res.data.data.map((model: any) => model.id);
-        } else {
-            const res = await axios.get(`${stripTrailingSlash(ollamaBase)}/api/tags`, { timeout: 3000 });
-            models = res.data.models.map((model: any) => model.name);
-        }
+        let models = (await getInstalledModelCatalog(ollamaBase)).map(model => model.name);
 
         if (models.length === 0) {
             return [defaultModel];
         }
-        
-        if (models.length === 0) {
-            return [defaultModel];
-        }
-        
+
         // Ensure defaultModel is first in the list if it's actually installed.
         // If it's not installed, we don't force it to the top to avoid confusing the user.
         if (models.includes(defaultModel)) {
             models = [defaultModel, ...models.filter(m => m !== defaultModel)];
         }
-        
+
         return models;
     } catch {
         return [defaultModel];
     }
+}
+
+export async function getInstalledModelCatalog(baseUrl = getConfig().ollamaBase): Promise<InstalledModelInfo[]> {
+    const now = Date.now();
+    if (modelCatalogCache && modelCatalogCache.baseUrl === baseUrl && modelCatalogCache.expiresAt > now) {
+        return modelCatalogCache.models;
+    }
+
+    const endpoint = normalizeAIEndpoint(baseUrl);
+    let models: InstalledModelInfo[] = [];
+
+    if (endpoint.isLMStudio) {
+        const modelsUrl = endpoint.apiUrl.replace('/chat/completions', '/models');
+        const res = await axios.get(modelsUrl, { timeout: 3000 });
+        models = (res.data.data || []).map((model: any) => ({
+            name: model.id
+        }));
+    } else {
+        const res = await axios.get(`${stripTrailingSlash(baseUrl)}/api/tags`, { timeout: 3000 });
+        models = (res.data.models || []).map((model: any) => ({
+            name: model.name,
+            parameterSize: model.details?.parameter_size,
+            family: model.details?.family
+        }));
+    }
+
+    modelCatalogCache = {
+        baseUrl,
+        models,
+        expiresAt: now + MODEL_CATALOG_CACHE_TTL_MS
+    };
+
+    return models;
 }

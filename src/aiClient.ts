@@ -60,7 +60,9 @@ function buildStreamBody(
     isLMStudio: boolean,
     temperature: number,
     topP: number,
-    topK: number
+    topK: number,
+    contextWindow?: number,
+    predictTokens?: number
 ) {
     return {
         model,
@@ -68,7 +70,15 @@ function buildStreamBody(
         stream: true,
         ...(isLMStudio
             ? { max_tokens: 4096, temperature, top_p: topP }
-            : { options: { num_ctx: 16384, num_predict: 4096, temperature, top_p: topP, top_k: topK } }),
+            : {
+                options: {
+                    num_ctx: contextWindow ?? 16_384,
+                    num_predict: predictTokens ?? 4_096,
+                    temperature,
+                    top_p: topP,
+                    top_k: topK
+                }
+            }),
     };
 }
 
@@ -80,7 +90,9 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
             options.endpoint.isLMStudio,
             options.temperature,
             options.topP,
-            options.topK
+            options.topK,
+            options.contextWindow,
+            options.predictTokens
         ),
     }, {
         timeout: options.timeout,

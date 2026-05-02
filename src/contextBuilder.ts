@@ -11,7 +11,8 @@ import {
     getConfig,
 } from './config';
 import { PerfLogger } from './perfLogger';
-import type { BrainFilesCache, ChatMessage, TextContextCache } from './types';
+import { collectRelevantTerms, pruneHistoryMessages, truncateText } from './promptBudgeting';
+import type { BrainFilesCache, ChatMessage, ModelProfile, TextContextCache } from './types';
 
 function getInternetDirective(enabled?: boolean): string {
     if (!enabled) {
@@ -21,19 +22,26 @@ function getInternetDirective(enabled?: boolean): string {
     return `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`;
 }
 
-function getActiveEditorContext(): string {
+function getActiveEditorContext(): { name?: string; content: string } {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.uri.scheme !== 'file') {
-        return '';
+        return { content: '' };
     }
 
     const text = editor.document.getText();
     const name = path.basename(editor.document.fileName);
-    if (text.trim().length === 0 || text.length >= MAX_CONTEXT_SIZE) {
-        return '';
+    if (text.trim().length === 0) {
+        return { name, content: '' };
     }
 
-    return `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
+    const clipped = text.length > MAX_CONTEXT_SIZE
+        ? truncateText(text, MAX_CONTEXT_SIZE)
+        : text;
+
+    return {
+        name,
+        content: `\n\n[Currently open file: ${name}]\n\`\`\`\n${clipped}\n\`\`\``
+    };
 }
 
 export interface RequestMessageBuildOptions {
@@ -43,6 +51,10 @@ export interface RequestMessageBuildOptions {
     brainEnabled: boolean;
     internetEnabled?: boolean;
     backgroundLabel?: string;
+    modelProfile?: ModelProfile;
+    attachmentNames?: string[];
+    attachmentChars?: number;
+    prunedAttachmentChars?: number;
 }
 
 export class ContextBuilder {
@@ -167,12 +179,67 @@ export class ContextBuilder {
     public buildRequestMessages(options: RequestMessageBuildOptions): ChatMessage[] {
         const start = performance.now();
         const reqMessages = [...options.chatHistory];
+        const activeEditor = getActiveEditorContext();
+        const workspaceContext = this.getWorkspaceContext();
+        const vaultContext = options.brainEnabled ? this.getSecondBrainContext() : '';
+        const internetDirective = getInternetDirective(options.internetEnabled);
+        const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
+        const contextBudget = options.modelProfile?.contextBudget;
+
+        let activeEditorContent = contextBudget
+            ? truncateText(activeEditor.content, contextBudget.activeEditorChars)
+            : activeEditor.content;
+        let workspaceContent = contextBudget
+            ? truncateText(workspaceContext, contextBudget.workspaceChars)
+            : workspaceContext;
+        let vaultContent = contextBudget
+            ? truncateText(vaultContext, contextBudget.vaultChars)
+            : vaultContext;
+
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-            const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
+            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            let systemContent = buildSystemContent();
+            if (contextBudget) {
+                const minimumHistoryBudget = 4_000;
+                const maxSystemChars = Math.max(0, contextBudget.totalPromptChars - minimumHistoryBudget);
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    vaultContent = truncateText(vaultContent, Math.max(0, vaultContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    workspaceContent = truncateText(workspaceContent, Math.max(0, workspaceContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    activeEditorContent = truncateText(activeEditorContent, Math.max(0, activeEditorContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+            }
+            const historyBudget = contextBudget
+                ? Math.max(0, contextBudget.totalPromptChars - systemContent.length)
+                : Number.POSITIVE_INFINITY;
+            const prunedHistory = pruneHistoryMessages(
+                reqMessages.slice(1),
+                historyBudget,
+                collectRelevantTerms(activeEditor.name, options.attachmentNames || [])
+            );
+            reqMessages.splice(1, reqMessages.length - 1, ...prunedHistory.messages);
             reqMessages[0] = {
                 role: 'system',
-                content: `${options.systemPrompt}${options.responsePreferenceDirective || ''}\n\n[${backgroundLabel}]\n${getActiveEditorContext()}\n${this.getWorkspaceContext()}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${options.brainEnabled ? this.getSecondBrainContext() : ''}${getInternetDirective(options.internetEnabled)}`
+                content: systemContent
             };
+            PerfLogger.update({
+                historyChars: prunedHistory.keptChars,
+                activeEditorChars: activeEditorContent.length,
+                workspaceChars: workspaceContent.length,
+                vaultChars: vaultContent.length,
+                attachmentChars: options.attachmentChars || 0,
+                prunedMessages: prunedHistory.prunedMessages,
+                prunedAttachmentChars: options.prunedAttachmentChars || 0
+            });
         }
         PerfLogger.update({ contextBuildMs: performance.now() - start });
         return reqMessages;

@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { LlemConfig } from './types';
+import type { LlemConfig, PerformancePreset } from './types';
 
 export const EXCLUDED_DIRS = new Set([
     'node_modules', '.git', '.vscode', 'out', 'dist', 'build',
@@ -22,6 +22,7 @@ export function getConfig(): LlemConfig {
         bridgeToken: cfg.get<string>('bridgeToken', ''),
         ollamaBase: cfg.get<string>('engineUrl', 'http://127.0.0.1:11434'),
         defaultModel: cfg.get<string>('defaultModel', 'gemma4:e4b'),
+        performancePreset: cfg.get<PerformancePreset>('performancePreset', 'auto'),
         maxTreeFiles: 200,
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
         vaultPath: cfg.get<string>('vaultPath', '')

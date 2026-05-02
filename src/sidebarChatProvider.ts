@@ -15,7 +15,7 @@ import { handleSettingsMenu } from './settingsCommands';
 import type { SettingsCommandsHost } from './settingsCommands';
 import { routeWebviewMessage } from './webviewMessageRouter';
 import type { WebviewMessageRouterHost } from './webviewMessageRouter';
-import type { AttachedFile, ChatMessage } from './types';
+import type { AttachedFile, ChatMessage, ModelProfile } from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { getLlemTerminal } from './terminalManager';
 import { logInfo, logError } from './logger';
@@ -143,6 +143,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private readonly _chatPipeline: ChatPipeline;
     private readonly _responsePreferenceManager: ResponsePreferenceManager;
     private _setupStarted = false;
+    private readonly _largeModelWarningsShown = new Set<string>();
 
     constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
         this._ctx = ctx;
@@ -154,7 +155,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._chatSession = new ChatSession(ctx, () => this._systemPrompt);
         this._responsePreferenceManager = new ResponsePreferenceManager(ctx);
         this._chatPipeline = new ChatPipeline({
-            buildRequestMessages: (internetEnabled, backgroundLabel) => this._buildRequestMessages(internetEnabled, backgroundLabel),
+            buildRequestMessages: (options) => this._buildRequestMessages(options),
             executeActions: (aiMessage) => this._executeActions(aiMessage),
             getChatHistory: () => this._chatSession.chatHistory,
             getDisplayMessages: () => this._chatSession.displayMessages,
@@ -170,7 +171,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 this._lastModel = modelName;
                 this._lastFiles = files?.map(file => ({ ...file }));
                 this._lastInternetEnabled = internetEnabled;
-            }
+            },
+            warnLargeModelTimeout: (profile, timeoutMs) => this._warnLargeModelTimeout(profile, timeoutMs)
         });
         this._brainEnabled = this._ctx.globalState.get<boolean>('brainEnabled', true);
         this._registerContextInvalidation();
@@ -599,15 +601,40 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private _buildRequestMessages(internetEnabled?: boolean, backgroundLabel = 'BACKGROUND CONTEXT'): ChatMessage[] {
+    private _buildRequestMessages(options: {
+        internetEnabled?: boolean;
+        backgroundLabel?: string;
+        modelProfile?: ModelProfile;
+        attachmentNames?: string[];
+        attachmentChars?: number;
+        prunedAttachmentChars?: number;
+    } = {}): ChatMessage[] {
         return this._contextBuilder.buildRequestMessages({
             chatHistory: this._chatSession.chatHistory,
             systemPrompt: this._systemPrompt,
             responsePreferenceDirective: this._responsePreferenceManager.getDirective(),
             brainEnabled: this._brainEnabled,
-            internetEnabled,
-            backgroundLabel
+            internetEnabled: options.internetEnabled,
+            backgroundLabel: options.backgroundLabel ?? 'BACKGROUND CONTEXT',
+            modelProfile: options.modelProfile,
+            attachmentNames: options.attachmentNames,
+            attachmentChars: options.attachmentChars,
+            prunedAttachmentChars: options.prunedAttachmentChars
         });
+    }
+
+    private _warnLargeModelTimeout(profile: ModelProfile, timeoutMs: number): void {
+        if (profile.resolvedPreset !== 'large-local-26b' || !profile.warningTimeoutMs || timeoutMs >= profile.warningTimeoutMs) {
+            return;
+        }
+
+        const warningKey = `${profile.modelName}:${profile.resolvedPreset}:${timeoutMs}`;
+        if (this._largeModelWarningsShown.has(warningKey)) {
+            return;
+        }
+
+        this._largeModelWarningsShown.add(warningKey);
+        void vscode.window.showWarningMessage(`LLeM is using ${profile.modelName} with the ${profile.resolvedPreset} profile. For 26B local models, a request timeout of 600 seconds or higher is recommended.`);
     }
 
     private async _handlePromptWithFile(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {

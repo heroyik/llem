@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { normalizeAIEndpoint } from './aiClient';
 import { getConfig, getLlemSettings } from './config';
+import { isLargeLocal26BModel } from './performanceProfiles';
 import { SYSTEM_PROMPT } from './prompts';
 
 export interface SettingsCommandsHost {
@@ -17,9 +18,11 @@ export interface SettingsCommandsHost {
 }
 
 export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<void> {
+    const config = getConfig();
     const mainPick = await vscode.window.showQuickPick([
-        { label: 'Swap model engine', description: 'Current: ' + (normalizeAIEndpoint(getConfig().ollamaBase).isLMStudio ? 'LM Studio' : 'Ollama'), action: 'engine' },
+        { label: 'Swap model engine', description: 'Current: ' + (normalizeAIEndpoint(config.ollamaBase).isLMStudio ? 'LM Studio' : 'Ollama'), action: 'engine' },
         { label: 'Tune generation', description: `Temp: ${host.getTemperature()}, Top-P: ${host.getTopP()}, Top-K: ${host.getTopK()}`, action: 'params' },
+        { label: 'Performance profile', description: `Current: ${config.performancePreset}`, action: 'profile' },
         { label: 'Edit system prompt', description: 'Shape LLeM’s default vibe and instructions.', action: 'prompt' }
     ], { placeHolder: 'LLeM settings' });
 
@@ -29,6 +32,8 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         await handleEnginePick(host);
     } else if (mainPick.action === 'params') {
         await handleParameterPick(host);
+    } else if (mainPick.action === 'profile') {
+        await handlePerformanceProfilePick();
     } else if (mainPick.action === 'prompt') {
         await handleSystemPromptPick(host);
     }
@@ -78,6 +83,38 @@ async function handleParameterPick(host: SettingsCommandsHost): Promise<void> {
             setValue: (value) => host.setTopK(value),
             success: (value) => `Top K set to ${value}.`
         });
+    }
+}
+
+async function handlePerformanceProfilePick(): Promise<void> {
+    const pick = await vscode.window.showQuickPick([
+        {
+            label: 'auto',
+            description: 'Recommended. Detect large local 26B-class models automatically.'
+        },
+        {
+            label: 'balanced',
+            description: 'Keep the current wider context and generation budget.'
+        },
+        {
+            label: 'large-local-26b',
+            description: 'Use tighter prompt and Ollama budgets for local 26B-class models.'
+        }
+    ], { placeHolder: 'Pick a performance profile' });
+
+    if (!pick) {
+        return;
+    }
+
+    await getLlemSettings().update('performancePreset', pick.label, vscode.ConfigurationTarget.Global);
+    const config = getConfig();
+
+    if (pick.label === 'large-local-26b' && config.timeout < 600_000) {
+        vscode.window.showWarningMessage('26B local models are happiest with a request timeout of 600 seconds or higher.');
+    } else if (pick.label === 'auto' && isLargeLocal26BModel(config.defaultModel) && config.timeout < 600_000) {
+        vscode.window.showWarningMessage('Auto mode will treat your current default model as a 26B-class model. Consider raising request timeout to 600 seconds.');
+    } else {
+        vscode.window.showInformationMessage(`Performance profile set to ${pick.label}.`);
     }
 }
 

@@ -138,6 +138,16 @@
           "default": "gemma4:e4b",
           "description": "Default model slug. Pick your fave and keep the flow moving."
         },
+        "llem.performancePreset": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "balanced",
+            "large-local-26b"
+          ],
+          "default": "auto",
+          "description": "Performance profile for prompt sizing and local Ollama budgets. Use large-local-26b when you want tighter limits for big local models."
+        },
         "llem.requestTimeout": {
           "type": "number",
           "default": 300,

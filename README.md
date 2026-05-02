@@ -86,6 +86,7 @@ Open your VS Code `settings.json` to customize the experience.
 | :--- | :--- | :--- |
 | `llem.engineUrl` | Local/remote model endpoint URL. | `http://127.0.0.1:11434` |
 | `llem.defaultModel` | The default model slug used for requests. | `gemma4:e4b` |
+| `llem.performancePreset` | Prompt and generation budget profile. Use `auto`, `balanced`, or `large-local-26b`. | `auto` |
 | `llem.requestTimeout` | Request timeout in seconds. | `300` |
 | `llem.vaultPath` | Path to your markdown vault. | `~/.llem-vault` |
 | `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
@@ -94,6 +95,21 @@ Open your VS Code `settings.json` to customize the experience.
 
 > [!TIP]
 > If you're using a slower model or long prompts, try bumping up the `llem.requestTimeout`.
+
+### 26B Local Model Tuning
+
+For bigger local models such as `gemma6:26b` or other 24B+ Gemma-family builds:
+
+- prefer **Ollama** for the current optimized path,
+- switch `llem.performancePreset` to `large-local-26b` if you want tighter prompt budgets immediately,
+- keep `llem.performancePreset` on `auto` if you want LLeM to detect 26B-class models by name or metadata,
+- raise `llem.requestTimeout` to around `600` seconds on slower or memory-constrained machines,
+- pair a 26B default with a smaller fallback model if you want fast iteration for simple edits.
+
+Current-machine guidance:
+
+- on Apple Silicon systems around the `34 GB` class, `large-local-26b` is the recommended preset for 26B local models,
+- on other machines, start with the same preset and only widen timeout or context if your hardware can comfortably handle it.
 
 ---
 

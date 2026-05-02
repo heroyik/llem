@@ -1,13 +1,48 @@
 export type ChatRole = 'system' | 'user' | 'assistant';
+export type PerformancePreset = 'auto' | 'balanced' | 'large-local-26b';
+export type ResolvedPerformancePreset = 'balanced' | 'large-local-26b';
 
 export interface LlemConfig {
     bridgeEnabled: boolean;
     bridgeToken: string;
     ollamaBase: string;
     defaultModel: string;
+    performancePreset: PerformancePreset;
     maxTreeFiles: number;
     timeout: number;
     vaultPath: string;
+}
+
+export interface ModelContextBudget {
+    totalPromptChars: number;
+    activeEditorChars: number;
+    workspaceChars: number;
+    vaultChars: number;
+    attachmentFileChars: number;
+    attachmentTotalChars: number;
+}
+
+export interface ModelRequestTuning {
+    numCtx: number;
+    initialPredict: number;
+    followupPredict: number;
+}
+
+export interface InstalledModelInfo {
+    name: string;
+    parameterSize?: string;
+    family?: string;
+}
+
+export interface ModelProfile {
+    modelName: string;
+    requestedPreset: PerformancePreset;
+    resolvedPreset: ResolvedPerformancePreset;
+    estimatedParameterSizeB?: number;
+    family?: string;
+    requestTuning: ModelRequestTuning;
+    contextBudget?: ModelContextBudget;
+    warningTimeoutMs?: number;
 }
 
 export interface ChatMessage {
@@ -44,6 +79,8 @@ export interface StreamOptions {
     temperature: number;
     topP: number;
     topK: number;
+    contextWindow?: number;
+    predictTokens?: number;
     signal?: AbortSignal;
 }
 
