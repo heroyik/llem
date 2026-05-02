@@ -596,6 +596,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         await getLlemSettings().update('defaultModel', nextModel, vscode.ConfigurationTarget.Global);
+        
         this._lastModel = nextModel;
         logInfo('[MODELS] Default model updated from ' + currentModel + ' to ' + nextModel);
     }

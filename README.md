@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.1.9
+
+- Bumped the VSIX build from `3.1.8` to `3.1.9`.
+- Revert to standard settings.json persistence and fix model selection overwrite issue
+- Packaged `release/llem-3.1.9.vsix`.
+
 ### v3.1.8
 
 - Bumped the VSIX build from `3.1.7` to `3.1.8`.

@@ -44,8 +44,14 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
                                || discoveredModels[0];
 
             if (targetDefault) {
-                // We only update if we found a valid candidate.
-                await getLlemSettings().update('defaultModel', targetDefault, vscode.ConfigurationTarget.Global);
+                // We only update if the user hasn't explicitly set a default model yet.
+                // This prevents overwriting their choice during version updates or re-runs.
+                const inspection = getLlemSettings().inspect<string>('defaultModel');
+                const isSetByUser = !!(inspection?.globalValue || inspection?.workspaceValue || inspection?.workspaceFolderValue);
+                
+                if (!isSetByUser) {
+                    await getLlemSettings().update('defaultModel', targetDefault, vscode.ConfigurationTarget.Global);
+                }
             }
         }
 
