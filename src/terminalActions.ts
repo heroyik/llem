@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateTerminalCommand } from './commandPolicy';
-import { getLlemTerminal, writeToLlemTerminal } from './terminalManager';
+import { getLlemChannel, writeToLlemTerminal } from './terminalManager';
 
 const execAsync = promisify(cp.exec);
 
@@ -31,8 +31,8 @@ export async function executeTerminalAction(
         }
 
         // Show the command in the LLeM Console for user awareness
-        const terminal = getLlemTerminal();
-        terminal.show(true);
+        const channel = getLlemChannel();
+        channel.show(true);
         writeToLlemTerminal(`Executing: ${command}`);
 
         // Run the command and capture output

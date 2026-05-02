@@ -1,23 +1,20 @@
 import * as vscode from 'vscode';
 
-let llemTerminal: vscode.Terminal | undefined;
+let llemChannel: vscode.OutputChannel | undefined;
 
-export function getLlemTerminal(): vscode.Terminal {
-    if (!llemTerminal || llemTerminal.exitStatus !== undefined) {
-        llemTerminal = vscode.window.createTerminal({
-            name: 'LLeM Console'
-        });
+export function getLlemChannel(): vscode.OutputChannel {
+    if (!llemChannel) {
+        llemChannel = vscode.window.createOutputChannel('LLeM Console');
     }
-    return llemTerminal;
+    return llemChannel;
 }
 
 export function writeToLlemTerminal(message: string): void {
-    const terminal = getLlemTerminal();
-    // Send as a comment to avoid shell command errors
+    const channel = getLlemChannel();
     const lines = message.split(/\r?\n/);
     for (const line of lines) {
         if (line.trim()) {
-            terminal.sendText(`# [LLeM] ${line}`);
+            channel.appendLine(`[LLeM] ${line}`);
         }
     }
 }

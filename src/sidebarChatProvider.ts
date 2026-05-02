@@ -17,7 +17,7 @@ import { routeWebviewMessage } from './webviewMessageRouter';
 import type { WebviewMessageRouterHost } from './webviewMessageRouter';
 import type { AttachedFile, ChatMessage, ModelProfile } from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
-import { getLlemTerminal } from './terminalManager';
+import { getLlemChannel } from './terminalManager';
 import { logInfo, logError } from './logger';
 import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFiles';
 import { ResponsePreferenceManager } from './responsePreferenceManager';
@@ -497,7 +497,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _showTerminal(): void {
-        getLlemTerminal().show();
+        getLlemChannel().show();
     }
 
     private async _fetchUris(uris: string[], requestId?: string): Promise<void> {
