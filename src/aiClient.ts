@@ -86,11 +86,15 @@ function buildStreamBody(
         messages,
         stream: true,
         ...(isLMStudio
-            ? { max_tokens: 4096, temperature, top_p: topP }
+            ? { 
+                ...(predictTokens && predictTokens > 0 ? { max_tokens: predictTokens } : {}),
+                temperature, 
+                top_p: topP 
+            }
             : {
                 options: {
                     num_ctx: contextWindow ?? 16_384,
-                    num_predict: predictTokens ?? 4_096,
+                    num_predict: predictTokens ?? -1,
                     repeat_penalty: repeatPenalty ?? 1.1,
                     temperature,
                     top_p: topP,

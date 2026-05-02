@@ -345,6 +345,18 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.2.5
+
+- Bumped the VSIX build from `3.2.4` to `3.2.5`.
+- Enabled unlimited response length by setting predict token limits to -1. Added handling for unlimited output in both Ollama and LM Studio engines.
+- Packaged `release/llem-3.2.5.vsix`.
+
+### v3.2.3
+
+- Bumped the VSIX build from `3.2.2` to `3.2.3`.
+- Increased token prediction limits to 4096+ to prevent response truncation. Fixed LM Studio max_tokens mapping.
+- Packaged `release/llem-3.2.3.vsix`.
+
 ### v3.2.1
 
 - Bumped the VSIX build from `3.2.0` to `3.2.1`.
