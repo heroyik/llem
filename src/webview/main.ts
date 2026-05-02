@@ -146,6 +146,33 @@ try {
     return '<div class="code-wrap"><span class="code-lang">' + esc(lang) + '</span><pre><code>' + highlight(code) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>';
   }
 
+  function applyLiteralMarkdownFallback(html) {
+    const protectedBlocks = [];
+    const protect = function(match) {
+      const token = '@@LLEM_HTML_' + protectedBlocks.length + '@@';
+      protectedBlocks.push(match);
+      return token;
+    };
+
+    let value = html.replace(/<pre\b[\s\S]*?<\/pre>/gi, protect)
+      .replace(/<code\b[\s\S]*?<\/code>/gi, protect);
+
+    value = value.split(/(<[^>]+>)/g).map(function(part) {
+      if (!part || part.charAt(0) === '<') {
+        return part;
+      }
+
+      return part
+        .replace(/\*\*([^*\n](?:[\s\S]*?[^*\n])?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^\*])\*([^*\n](?:[\s\S]*?[^*\n])?)\*(?!\*)/g, '$1<em>$2</em>');
+    }).join('');
+
+    protectedBlocks.forEach(function(block, index) {
+      value = value.split('@@LLEM_HTML_' + index + '@@').join(block);
+    });
+    return value;
+  }
+
   let mdRenderer = null;
   function getMarkdownRenderer() {
     if (!window.markdownit) {
@@ -258,7 +285,7 @@ try {
       const wrapped = new RegExp('<p>\\s*' + escapeRegExp(block.token) + '\\s*<\\/p>', 'g');
       html = html.replace(wrapped, block.html).split(block.token).join(block.html);
     });
-    return html;
+    return applyLiteralMarkdownFallback(html);
   }
 
   function copyCode(btn) {

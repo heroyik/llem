@@ -121,7 +121,7 @@ Open your VS Code `settings.json` to customize the experience.
 
 ## 📝 Release Notes
 
-### v3.1.1 — Gemini-Style Reply Actions, Editable Message Branching, and Preference Memory
+### v3.1.1 — Editable Message Branching, Preference Memory, and Markdown Rendering Fixes
 
 **v3.1.1** builds on the `v3.1.0` chat UX refresh and adds the missing piece: editing earlier user messages in a Gemini Web-style flow.
 
@@ -167,12 +167,21 @@ Clickable file references in chat are now more accurate:
 - basename-only references like `extension.ts` can resolve to a real workspace file when the match is unambiguous,
 - and chat attachments preserve enough metadata to reopen the right source more reliably.
 
+#### Markdown rendering is more reliable inside chat
+
+The webview renderer now handles leftover inline Markdown markers more gracefully in normal prose.
+
+- inline bold and emphasis markers render more reliably in mixed-language text,
+- bullet items such as `- **“로컬 환경에 뿌리내린(Local-first) 지능형 에이전트”**` now display with the intended emphasis,
+- and the fallback logic avoids touching fenced code blocks while cleaning up visible chat output.
+
 #### Technical highlights
 
 - added editable earlier-message branching from the webview action bar,
 - preserved reusable attachment payloads in display history for edit/retry flows,
 - added branch generation from the point before a selected user message,
 - improved workspace filename resolution for clickable chat file references,
+- added a safe inline-Markdown fallback for webview chat rendering,
 - kept reply-style preference memory persistent across branch variants.
 
 #### Why `v3.1.1` matters
