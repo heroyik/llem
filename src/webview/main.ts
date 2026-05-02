@@ -1455,10 +1455,14 @@ try {
     if (isBulkDelete) {
       log('[UI] Confirm clear all history clicked');
       vscode.postMessage({ type: 'deleteAllHistory' });
+      historyItems = [];
+      renderHistory(historyItems);
       hideDeleteModal();
     } else if (currentDeletingId) {
       log('[UI] Confirm delete clicked for: ' + currentDeletingId);
       vscode.postMessage({ type: 'deleteHistory', id: currentDeletingId });
+      historyItems = historyItems.filter(function(item) { return item.id !== currentDeletingId; });
+      renderHistory(historyItems);
       hideDeleteModal();
     }
   });

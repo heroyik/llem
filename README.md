@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.9
+
+- Bumped the VSIX build from `3.3.8` to `3.3.9`.
+- Fix immediate deletion of history items in UI
+- Packaged `release/llem-3.3.9.vsix`.
+
 ### v3.3.8
 
 - Bumped the VSIX build from `3.3.7` to `3.3.8`.
