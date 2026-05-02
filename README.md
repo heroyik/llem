@@ -27,8 +27,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 ### 1. Download the Extension
 1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
 2. Look at the **Releases** section on the right sidebar.
-3. Click on the latest release tag (e.g., `v3.1.0`).
-4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.0.vsix`) to download it to your machine.
+3. Click on the latest release tag (e.g., `v3.1.1`).
+4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.1.vsix`) to download it to your machine.
 
 ### 2. Install in VS Code or Cursor
 1. Open **VS Code** or **Cursor**.
@@ -121,6 +121,64 @@ Open your VS Code `settings.json` to customize the experience.
 
 ## 📝 Release Notes
 
+### v3.1.1 — Gemini-Style Reply Actions, Editable Message Branching, and Preference Memory
+
+**v3.1.1** builds on the `v3.1.0` chat UX refresh and adds the missing piece: editing earlier user messages in a Gemini Web-style flow.
+
+#### Edit earlier messages like Gemini Web
+
+You can now go back to a previous **user** message, click **Edit**, revise the prompt, and continue from there.
+
+- the old thread stays intact,
+- LLeM creates a new branch from the point before that message,
+- the edited prompt is resubmitted into that branch,
+- and any reusable attached files from the original message can travel with the edit flow.
+
+This keeps the conversation history safe while making prompt iteration much faster and less destructive.
+
+#### Reply actions are now a full iteration loop
+
+With `Copy`, `Branch`, `Edit`, `👍`, and `👎`, each finished exchange can now be reused in multiple ways:
+
+- **Copy** a strong answer,
+- **Branch** an assistant response into a new direction,
+- **Edit** a user message to retry from an earlier point,
+- **Like** a response style you want repeated,
+- **Dislike** a response style you want avoided later.
+
+That makes LLeM feel much closer to modern consumer chat tools while staying inside VS Code and staying local-first.
+
+#### Persistent response memory still carries across everything
+
+Preference memory continues to apply across:
+
+- normal follow-up turns,
+- new chats,
+- chat branches,
+- and edited-message branches.
+
+So if you teach LLeM what kind of answers you like, that preference signal survives even when you fork or revise the conversation path.
+
+#### File click behavior is stricter and smarter
+
+Clickable file references in chat are now more accurate:
+
+- only editable file types can be opened from chat,
+- basename-only references like `extension.ts` can resolve to a real workspace file when the match is unambiguous,
+- and chat attachments preserve enough metadata to reopen the right source more reliably.
+
+#### Technical highlights
+
+- added editable earlier-message branching from the webview action bar,
+- preserved reusable attachment payloads in display history for edit/retry flows,
+- added branch generation from the point before a selected user message,
+- improved workspace filename resolution for clickable chat file references,
+- kept reply-style preference memory persistent across branch variants.
+
+#### Why `v3.1.1` matters
+
+The big shift here is that LLeM is no longer just good at answering or branching. It is now better at **revising**. That means less copy-paste, less losing context, and much smoother iteration when you're tightening prompts or trying alternate implementation directions.
+
 ### v3.1.0 — Gemini-Style Reply Actions, Branching, and Preference Memory
 
 **v3.1.0** is the first release that makes each completed reply feel more like a modern chat product, while still keeping the whole workflow local-first.
@@ -209,11 +267,3 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 - **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
 
 **Local-first, offline-always. Let's cook.** 🛫💻
-
-## Release Notes
-
-### v3.1.0
-
-- Bumped the VSIX build from `3.1.0` to `3.1.0`.
-- v3.1.0: added Gemini-style reply actions, chat branching, persistent like/dislike preference memory, and stricter editable-file click behavior in chat.
-- Packaged `release/llem-3.1.0.vsix`.
