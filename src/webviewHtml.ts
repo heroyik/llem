@@ -90,6 +90,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     <div class="input-wrap">
       <div class="input-box" id="inputBox">
         <div class="attach-preview" id="attachPreview"></div>
+        <div class="edit-banner" id="editBanner" hidden>
+          <span class="edit-banner-label" id="editBannerLabel">Editing an earlier message</span>
+          <button class="edit-banner-cancel" id="cancelEditBtn" type="button">Cancel</button>
+        </div>
         <textarea id="input" rows="1" placeholder="What are we building today?"></textarea>
         <div class="input-footer">
           <span class="input-hint">Enter sends · Shift+Enter adds a line · Drop files to attach</span>

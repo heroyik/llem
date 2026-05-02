@@ -124,6 +124,32 @@ export class ChatSession {
         };
     }
 
+    public createBranchBeforeMessage(messageIndex: number, label?: string): ChatHistoryItem | undefined {
+        if (!Number.isInteger(messageIndex) || messageIndex < 0) {
+            return undefined;
+        }
+
+        const branchMessages = normalizeDisplayMessages(this.displayMessages.slice(0, messageIndex));
+        const sourceMessage = this.displayMessages[messageIndex];
+        const branchHistory: ChatMessage[] = [{ role: 'system', content: this.getSystemPrompt() }];
+
+        for (const message of branchMessages) {
+            const role = message.role === 'user' ? 'user' : 'assistant';
+            const content = role === 'user'
+                ? buildUserContentFromDisplayMessage(message)
+                : message.text;
+            branchHistory.push({ role, content });
+        }
+
+        return {
+            id: crypto.randomUUID(),
+            title: buildEditableBranchTitle(this.title, label || sourceMessage?.text || ''),
+            lastModified: Date.now(),
+            chatHistory: branchHistory,
+            displayMessages: branchMessages
+        };
+    }
+
     public getHistoryText(): string {
         return this.displayMessages.map(m => `[${m.role.toUpperCase()}]\n${m.text}`).join('\n\n');
     }
@@ -188,4 +214,10 @@ function buildBranchTitle(currentTitle: string, assistantText: string): string {
     const sourceTitle = (currentTitle || 'New Thread').trim();
     const preview = String(assistantText || '').replace(/\s+/g, ' ').trim().slice(0, 48);
     return preview ? `${sourceTitle} · Branch · ${preview}` : `${sourceTitle} · Branch`;
+}
+
+function buildEditableBranchTitle(currentTitle: string, messageText: string): string {
+    const sourceTitle = (currentTitle || 'New Thread').trim();
+    const preview = String(messageText || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+    return preview ? `${sourceTitle} · Edit · ${preview}` : `${sourceTitle} · Edit`;
 }

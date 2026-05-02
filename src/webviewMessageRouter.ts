@@ -14,6 +14,7 @@ export interface WebviewMessageRouterHost {
     fetchUris(uris: string[], requestId?: string): Promise<void>;
     openAttachment(file: { name?: string; sourceUri?: string }): Promise<void>;
     branchChat(messageIndex: number): Promise<void>;
+    editMessage(messageIndex: number, prompt: string, modelName: string, files: any[], internetEnabled?: boolean): Promise<void>;
     setMessageFeedback(messageIndex: number, feedback: 'like' | 'dislike' | null): Promise<void>;
     getHistory(): Promise<void>;
     loadHistory(id: string): Promise<void>;
@@ -72,6 +73,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'branchChat':
             await host.branchChat(message.messageIndex);
+            break;
+        case 'editMessage':
+            await host.editMessage(message.messageIndex, message.value, message.model, message.files || [], message.internet);
             break;
         case 'setMessageFeedback':
             await host.setMessageFeedback(message.messageIndex, message.feedback ?? null);

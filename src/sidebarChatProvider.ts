@@ -19,7 +19,7 @@ import type { AttachedFile, ChatMessage } from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { getLlemTerminal } from './terminalManager';
 import { logInfo, logError } from './logger';
-import { isEditableFilePath } from './editableFiles';
+import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFiles';
 import { ResponsePreferenceManager } from './responsePreferenceManager';
 import type { MessageFeedback } from './responsePreferenceManager';
 
@@ -400,6 +400,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
             openAttachment: (file) => this._openAttachment(file),
             branchChat: (messageIndex) => this._branchChat(messageIndex),
+            editMessage: (messageIndex, prompt, modelName, files, internetEnabled) => this._editMessage(messageIndex, prompt, modelName, files, internetEnabled),
             setMessageFeedback: (messageIndex, feedback) => this._setMessageFeedback(messageIndex, feedback),
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
@@ -521,7 +522,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            const { absPath } = await resolveLlemPath(workspaceRoot, file.name);
+            let requestedPath = file.name;
+            if (!requestedPath.includes('/') && !requestedPath.includes('\\')) {
+                const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+                const relativePaths = files.map(entry => vscode.workspace.asRelativePath(entry, false));
+                const matchedPath = resolveEditableWorkspacePath(requestedPath, relativePaths);
+                if (matchedPath) {
+                    requestedPath = matchedPath;
+                }
+            }
+
+            const { absPath } = await resolveLlemPath(workspaceRoot, requestedPath);
             await openDocument(vscode.Uri.file(absPath));
         } catch (err) {
             vscode.window.showErrorMessage(`Could not open attachment: ${err}`);
@@ -663,6 +674,35 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         const sourceKey = `${this._chatSession.id}:${messageIndex}`;
         await this._responsePreferenceManager.setFeedback(sourceKey, message.text, feedback);
         await this.saveHistory();
+    }
+
+    private async _editMessage(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<void> {
+        if (!Number.isInteger(messageIndex) || messageIndex < 0) {
+            return;
+        }
+
+        const branch = this._chatSession.createBranchBeforeMessage(messageIndex, prompt);
+        if (!branch) {
+            return;
+        }
+
+        try {
+            await this.saveHistory();
+            this._chatSession.load(branch);
+            await this.saveHistory();
+            this._view?.webview.postMessage({ type: 'clearChat' });
+            this._restoreDisplayMessages();
+
+            if (files.length > 0) {
+                await this._handlePromptWithFile(prompt, modelName || this._lastModel || '', files, internetEnabled);
+            } else {
+                await this._handlePrompt(prompt, modelName || this._lastModel || '', internetEnabled);
+            }
+
+            void vscode.window.showInformationMessage('Created a new edited branch from that message.');
+        } catch (err) {
+            logError('[EDIT] Failed to edit earlier message: ' + (err instanceof Error ? err.message : String(err)));
+        }
     }
 
     private _getHtml(webview: vscode.Webview): string {

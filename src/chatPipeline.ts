@@ -64,11 +64,19 @@ export class ChatPipeline {
             const endpoint = await resolveAIEndpoint(config);
             const selectedModel = this.selectedModel(options.modelName, config.defaultModel);
             const attachments = this.prepareAttachments(files);
+            const reusableFiles = this.compactFilesForReuse(files);
 
             this.host.getChatHistory().push({ role: 'user', content: options.prompt + attachments.fileContext });
             const displayMessage: DisplayMessage = { text: options.prompt, role: 'user' };
             if (hasFiles) {
-                displayMessage.files = attachments.displayFiles;
+                displayMessage.files = (reusableFiles || files).map(file => ({
+                    name: file.name,
+                    type: file.type,
+                    data: file.data,
+                    sourceUri: file.sourceUri,
+                    truncated: file.truncated,
+                    originalSize: file.originalSize
+                }));
             }
             this.host.getDisplayMessages().push({ ...displayMessage, feedback: null });
 

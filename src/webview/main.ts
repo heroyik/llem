@@ -1,4 +1,4 @@
-import { isEditableFilePath, normalizeWorkspaceFilePath } from '../editableFiles';
+import { isEditableFilePath, resolveEditableWorkspacePath } from '../editableFiles';
 
 // @ts-nocheck
 window.onerror = function(msg, url, line) {
@@ -44,12 +44,17 @@ try {
   const inputBox = document.getElementById('inputBox');
   const fileInput = document.getElementById('fileInput');
   const attachPreview = document.getElementById('attachPreview');
+  const editBanner = document.getElementById('editBanner');
+  const editBannerLabel = document.getElementById('editBannerLabel');
+  const cancelEditBtn = document.getElementById('cancelEditBtn');
   const dropOverlay = document.getElementById('dropOverlay');
   const thinkingBar = document.getElementById('thinkingBar');
 
   let loader = null;
   let sending = false;
   let pendingFiles = [];
+  let editingMessageIndex = -1;
+  let displayMessages = [];
   let internetEnabled = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
@@ -182,18 +187,14 @@ try {
     function isEditableWorkspaceFile(name) {
       const text = String(name || '').trim();
       if (!text || text.includes(' ') || text.includes('\n')) return false;
-      if (!isEditableFilePath(text)) return false;
 
       // 1. Check absolute path (rough check for Windows/POSIX)
       if (text.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(text)) {
-        return true;
+        return isEditableFilePath(text);
       }
 
-      // 2. Check relative path in workspace
-      const normalized = normalizeWorkspaceFilePath(text);
-      if (workspaceFiles.has(normalized)) return true;
-
-      return false;
+      // 2. Check relative or basename match in workspace
+      return Boolean(resolveEditableWorkspacePath(text, workspaceFiles));
     }
 
     const defaultCodeInline = md.renderer.rules.code_inline || function(tokens, idx, options, env, self) {
@@ -296,13 +297,24 @@ try {
   }
 
   function renderMessageActions(message, messageIndex) {
-    if (!message || message.role !== 'ai' || typeof messageIndex !== 'number' || messageIndex < 0) {
+    if (!message || typeof messageIndex !== 'number' || messageIndex < 0) {
       return null;
     }
 
     const wrap = document.createElement('div');
     wrap.className = 'msg-actions';
     wrap.setAttribute('data-message-index', String(messageIndex));
+    if (message.role === 'user') {
+      wrap.innerHTML =
+        actionButton('Edit', 'edit-message', false) +
+        '<span class="msg-action-feedback"></span>';
+      return wrap;
+    }
+
+    if (message.role !== 'ai') {
+      return null;
+    }
+
     wrap.innerHTML =
       actionButton('Copy', 'copy-message', false) +
       actionButton('Branch', 'branch-message', false) +
@@ -327,6 +339,37 @@ try {
     });
   }
 
+  function enterEditMode(messageIndex, message) {
+    if (!message || message.role !== 'user') return;
+    editingMessageIndex = messageIndex;
+    input.value = message.text || '';
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    pendingFiles = Array.from(message.files || []).map(function(file) {
+      return {
+        name: file.name,
+        type: file.type,
+        data: file.data,
+        sourceUri: file.sourceUri,
+        truncated: file.truncated,
+        originalSize: file.originalSize
+      };
+    });
+    renderPreview();
+    if (editBanner) editBanner.hidden = false;
+    if (editBannerLabel) editBannerLabel.textContent = 'Editing an earlier message';
+    input.focus();
+  }
+
+  function exitEditMode(clearInput) {
+    editingMessageIndex = -1;
+    if (editBanner) editBanner.hidden = true;
+    if (clearInput) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
+  }
+
   function openEditableFile(fileName, sourceUri) {
     const safeName = String(fileName || '').trim();
     if (!safeName || !isEditableFilePath(safeName)) {
@@ -349,9 +392,15 @@ try {
     if (messageActionBar) {
       const messageEl = target.closest('.msg');
       const messageIndex = Number(messageActionBar.getAttribute('data-message-index'));
+      const message = displayMessages[messageIndex];
 
       if (target.closest('[data-action="copy-message"]')) {
         copyAssistantMessage(messageEl);
+        return;
+      }
+
+      if (target.closest('[data-action="edit-message"]')) {
+        enterEditMode(messageIndex, message);
         return;
       }
 
@@ -488,6 +537,9 @@ try {
     const actions = renderMessageActions(message, messageIndex);
     if (actions) {
       el.appendChild(actions);
+    }
+    if (typeof messageIndex === 'number' && messageIndex >= 0) {
+      displayMessages[messageIndex] = message;
     }
     chat.appendChild(el);
     chat.scrollTop = chat.scrollHeight;
@@ -645,6 +697,9 @@ try {
     }
     updateStreamMeta();
     if (state === 'done') {
+      if (typeof messageIndex === 'number' && messageIndex >= 0) {
+        displayMessages[messageIndex] = message || { role: 'ai', text: streamRaw, feedback: null };
+      }
       const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex);
       if (actions && !streamEl.querySelector('.msg-actions')) {
         streamEl.appendChild(actions);
@@ -1078,11 +1133,26 @@ try {
     document.body.classList.remove('init');
     const welcome = document.querySelector('.welcome');
     if (welcome) welcome.remove();
-    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, -1);
+    const localMessageIndex = displayMessages.length;
+    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
     input.value = '';
     input.style.height = 'auto';
     setSending(true);
     showLoader();
+    if (editingMessageIndex >= 0) {
+      vscode.postMessage({
+        type: 'editMessage',
+        messageIndex: editingMessageIndex,
+        value: text || 'Update this message.',
+        model: modelSel.value,
+        files: attachedFiles,
+        internet: internetEnabled
+      });
+      pendingFiles = [];
+      renderPreview();
+      exitEditMode(false);
+      return;
+    }
     if (attachedFiles.length > 0) {
       vscode.postMessage({
         type: 'promptWithFile',
@@ -1289,6 +1359,12 @@ try {
     void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
     fileInput.value = '';
   });
+  safeListen(cancelEditBtn, 'click', function() {
+    exitEditMode(true);
+    pendingFiles = [];
+    renderPreview();
+    input.focus();
+  });
   safeListen(historySearch, 'input', function() {
     renderHistory(historyItems);
   });
@@ -1390,7 +1466,9 @@ try {
         setSending(false);
         document.body.classList.add('init');
         chat.innerHTML = welcomeMarkup();
+        displayMessages = [];
         pendingFiles = [];
+        exitEditMode(true);
         renderPreview();
         if (input) {
           input.value = '';
@@ -1406,6 +1484,7 @@ try {
         break;
       case 'restoreMessages':
         chat.innerHTML = '';
+        displayMessages = msg.value || [];
         if (msg.value && msg.value.length > 0) {
           log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
           document.body.classList.remove('init');

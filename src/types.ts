@@ -27,7 +27,7 @@ export interface AttachedFile {
 export interface DisplayMessage {
     role: string;
     text: string;
-    files?: Pick<AttachedFile, 'name' | 'type' | 'data' | 'sourceUri'>[];
+    files?: Pick<AttachedFile, 'name' | 'type' | 'data' | 'sourceUri' | 'truncated' | 'originalSize'>[];
     feedback?: 'like' | 'dislike' | null;
 }
 

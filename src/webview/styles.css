@@ -647,6 +647,34 @@ textarea::placeholder {
 .attach-preview.visible {
   display: flex;
 }
+.edit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 158, 88, 0.24);
+  background: rgba(255, 158, 88, 0.08);
+}
+.edit-banner-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.edit-banner-cancel {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 3px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.edit-banner-cancel:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 .attach-chip {
   display: flex;
   align-items: center;
