@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
+import { logInfo } from './logger';
 
 const ENDPOINT_CACHE_TTL_MS = 15_000;
 
@@ -101,11 +102,16 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
     });
 
     let output = '';
+    let rawPreview = '';
     await new Promise<void>((resolve, reject) => {
         const stream = response.data;
         let buffer = '';
         stream.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString();
+            const chunkText = chunk.toString();
+            buffer += chunkText;
+            if (rawPreview.length < 8000) {
+                rawPreview += chunkText.slice(0, 8000 - rawPreview.length);
+            }
             const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio);
             buffer = parsed.remainder;
             for (const token of parsed.tokens) {
@@ -123,6 +129,14 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         });
         stream.on('error', (err: any) => reject(err));
     });
+
+    if (!output.trim()) {
+        const preview = rawPreview
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n')
+            .slice(0, 1000);
+        logInfo(`[STREAM] Completed with empty parsed output from ${options.endpoint.apiUrl}. Raw preview: ${preview || '(empty)'}`);
+    }
 
     return output;
 }

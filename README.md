@@ -345,6 +345,13 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.1.4
+
+- Bumped the VSIX build from `3.1.3` to `3.1.4`.
+- Fixed recurring empty replies by broadening stream parsing for additional LM Studio and Ollama response shapes
+- Added raw stream preview logging when parsed output ends up empty so future payload mismatches are diagnosable instantly
+- Packaged `release/llem-3.1.4.vsix`.
+
 ### v3.1.3
 
 - Bumped the VSIX build from `3.1.2` to `3.1.3`.

@@ -14,9 +14,33 @@ test('extractStreamToken reads LM Studio delta arrays and message fallback', () 
     'data: {"choices":[{"message":{"content":"Done"}}]}',
     true
   );
+  const reasoningToken = extractStreamToken(
+    'data: {"choices":[{"delta":{"reasoning_content":"Thinking..."}}]}',
+    true
+  );
 
   assert.equal(deltaToken, 'Hello!');
   assert.equal(messageToken, 'Done');
+  assert.equal(reasoningToken, 'Thinking...');
+});
+
+test('extractStreamToken reads non-LM Studio array content and tool-call fallbacks', () => {
+  const arrayContent = extractStreamToken(
+    '{"message":{"content":[{"type":"text","text":"Hi"},{"text":" there"}]}}',
+    false
+  );
+  const topLevelContent = extractStreamToken(
+    '{"content":[{"type":"text","text":"Top"},{"type":"text","text":" level"}]}',
+    false
+  );
+  const toolCall = extractStreamToken(
+    '{"choices":[{"message":{"tool_calls":[{"function":{"name":"read_file","arguments":"{\\"path\\":\\"src/index.ts\\"}"}}]}}]}',
+    true
+  );
+
+  assert.equal(arrayContent, 'Hi there');
+  assert.equal(topLevelContent, 'Top level');
+  assert.match(toolCall, /<read_file/);
 });
 
 test('parseStreamBuffer preserves partial chunks and flushes trailing content on end', () => {

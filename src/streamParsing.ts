@@ -21,6 +21,25 @@ function extractTextParts(value: unknown): string {
         .join('');
 }
 
+function extractToolCallToken(toolCalls: unknown): string {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+        return '';
+    }
+
+    const firstCall = toolCalls[0] as any;
+    const name = firstCall?.function?.name || firstCall?.name || '';
+    const args = firstCall?.function?.arguments ?? firstCall?.arguments;
+    const argsStr = typeof args === 'string'
+        ? args
+        : (args && typeof args === 'object' ? JSON.stringify(args) : '');
+
+    if (!name) {
+        return '';
+    }
+
+    return `<${name} ${argsStr.includes('path=') ? '' : 'arguments='}"${argsStr.replace(/"/g, '&quot;')}" />`;
+}
+
 export function extractStreamToken(line: string, isLMStudio: boolean): string {
     if (!line.trim() || line.trim() === 'data: [DONE]') {
         return '';
@@ -40,9 +59,24 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
                 return deltaContent;
             }
 
+            const deltaReasoning = extractTextParts(choice?.delta?.reasoning_content || choice?.delta?.reasoning);
+            if (deltaReasoning) {
+                return deltaReasoning;
+            }
+
             const messageContent = extractTextParts(choice?.message?.content);
             if (messageContent) {
                 return messageContent;
+            }
+
+            const messageReasoning = extractTextParts(choice?.message?.reasoning_content || choice?.message?.reasoning);
+            if (messageReasoning) {
+                return messageReasoning;
+            }
+
+            const toolCallToken = extractToolCallToken(choice?.message?.tool_calls || choice?.tool_calls);
+            if (toolCallToken) {
+                return toolCallToken;
             }
 
             return typeof choice?.text === 'string' ? choice.text : '';
@@ -50,22 +84,20 @@ export function extractStreamToken(line: string, isLMStudio: boolean): string {
 
         const msg = json.message;
         if (!msg) {
-            return json.response || '';
+            return extractTextParts(json.response) || extractTextParts(json.content) || '';
         }
 
-        if (msg.content) {
-            return msg.content;
+        const messageContent = extractTextParts(msg.content);
+        if (messageContent) {
+            return messageContent;
         }
 
-        if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-            const firstCall = msg.tool_calls[0];
-            const name = firstCall.function?.name || '';
-            const args = firstCall.function?.arguments;
-            const argsStr = typeof args === 'string' ? args : JSON.stringify(args || '');
-            return `<${name} ${argsStr.includes('path=') ? '' : 'arguments='}"${argsStr.replace(/"/g, '&quot;')}" />`;
+        const reasoningContent = extractTextParts(msg.reasoning_content || msg.reasoning);
+        if (reasoningContent) {
+            return reasoningContent;
         }
 
-        return '';
+        return extractToolCallToken(msg.tool_calls);
     } catch {
         return '';
     }
