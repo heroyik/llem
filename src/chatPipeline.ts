@@ -458,6 +458,7 @@ export class ChatPipeline {
                     ? modelProfile?.requestTuning.followupPredict
                     : modelProfile?.requestTuning.initialPredict)
                 : undefined,
+            repeatPenalty: !endpoint.isLMStudio ? modelProfile?.requestTuning.repeatPenalty : undefined,
             signal
         }, token => {
             if (firstTokenTime === 0) {

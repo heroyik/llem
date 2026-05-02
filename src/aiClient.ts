@@ -78,7 +78,8 @@ function buildStreamBody(
     topP: number,
     topK: number,
     contextWindow?: number,
-    predictTokens?: number
+    predictTokens?: number,
+    repeatPenalty?: number
 ) {
     return {
         model,
@@ -90,6 +91,7 @@ function buildStreamBody(
                 options: {
                     num_ctx: contextWindow ?? 16_384,
                     num_predict: predictTokens ?? 4_096,
+                    repeat_penalty: repeatPenalty ?? 1.1,
                     temperature,
                     top_p: topP,
                     top_k: topK
@@ -110,6 +112,7 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         topK: options.topK,
         contextWindow: options.contextWindow ?? null,
         predictTokens: options.predictTokens ?? null,
+        repeatPenalty: options.repeatPenalty ?? null,
         messageCount: options.messages.length,
         messages: summarizeMessages(options.messages)
     });
@@ -123,7 +126,8 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
             options.topP,
             options.topK,
             options.contextWindow,
-            options.predictTokens
+            options.predictTokens,
+            options.repeatPenalty
         ),
     }, {
         timeout: options.timeout,

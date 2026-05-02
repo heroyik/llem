@@ -26,6 +26,7 @@ export interface ModelRequestTuning {
     numCtx: number;
     initialPredict: number;
     followupPredict: number;
+    repeatPenalty: number;
 }
 
 export interface InstalledModelInfo {
@@ -81,6 +82,7 @@ export interface StreamOptions {
     topK: number;
     contextWindow?: number;
     predictTokens?: number;
+    repeatPenalty?: number;
     signal?: AbortSignal;
 }
 

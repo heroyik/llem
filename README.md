@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.2.1
+
+- Bumped the VSIX build from `3.2.0` to `3.2.1`.
+- Implemented repetition penalty for large models to prevent hallucination loops, fixed model selection persistence in settings.json, and added overwrite protection for user settings.
+- Packaged `release/llem-3.2.1.vsix`.
+
 ### v3.1.9
 
 - Bumped the VSIX build from `3.1.8` to `3.1.9`.

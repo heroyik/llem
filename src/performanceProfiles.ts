@@ -10,13 +10,15 @@ import type {
 const BALANCED_REQUEST_TUNING: ModelRequestTuning = {
     numCtx: 16_384,
     initialPredict: 4_096,
-    followupPredict: 4_096
+    followupPredict: 4_096,
+    repeatPenalty: 1.1
 };
 
 const LARGE_LOCAL_26B_REQUEST_TUNING: ModelRequestTuning = {
     numCtx: 8_192,
     initialPredict: 2_048,
-    followupPredict: 1_024
+    followupPredict: 1_024,
+    repeatPenalty: 1.1
 };
 
 const LARGE_LOCAL_26B_CONTEXT_BUDGET: ModelContextBudget = {
