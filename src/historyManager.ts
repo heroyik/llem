@@ -66,7 +66,7 @@ export class HistoryManager {
             await fs.promises.writeFile(sessionPath, JSON.stringify(item, null, 2));
             logInfo(`[HISTORY] saveSession: Successfully saved session ${item.id}`);
         } catch (error) {
-            logError(`[HISTORY] saveSession: Failed to save session ${item.id}`, error);
+            logError(`[HISTORY] saveSession: Failed to save session ${item.id}: ${error}`);
             // Re-throw to let the UI know, or handle gracefully depending on importance
             throw error;
         }
@@ -120,7 +120,7 @@ export class HistoryManager {
             }
             logInfo(`[HISTORY] deleteSession: Successfully deleted session ${id}`);
         } catch (error) {
-            logError(`[HISTORY] deleteSession: Failed to delete session ${id}`, error);
+            logError(`[HISTORY] deleteSession: Failed to delete session ${id}: ${error}`);
             throw error;
         }
     }

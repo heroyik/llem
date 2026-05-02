@@ -1,13 +1,46 @@
 import { isEditableFilePath, resolveEditableWorkspacePath } from '../editableFiles';
 
-// @ts-nocheck
-window.onerror = function(msg, url, line) {
+declare function acquireVsCodeApi(): {
+  postMessage: (message: any) => void;
+  getState: () => any;
+  setState: (state: any) => void;
+};
+
+interface FileAttachment {
+  name: string;
+  type: string;
+  data?: string;
+  sourceUri?: string;
+  truncated?: boolean;
+  originalSize?: number;
+}
+
+interface Message {
+  role: 'user' | 'ai' | 'error';
+  text: string;
+  files?: FileAttachment[];
+  feedback?: 'like' | 'dislike' | null;
+}
+
+interface HistoryItem {
+  id: string;
+  title: string;
+  lastModified?: number;
+}
+
+interface WebviewWindow extends Window {
+  markdownit?: any;
+}
+
+const typedWindow = window as WebviewWindow;
+
+window.onerror = function(msg: string | Event, url?: string, line?: number) {
   const overlay = document.createElement('div');
   overlay.className = 'fatal-overlay fatal-overlay-top';
-  overlay.textContent = 'ERROR: ' + msg + ' at line ' + line;
+  overlay.textContent = 'ERROR: ' + String(msg) + (line ? ' at line ' + line : '');
   document.body.appendChild(overlay);
 };
-window.addEventListener('unhandledrejection', function(event) {
+window.addEventListener('unhandledrejection', function(event: PromiseRejectionEvent) {
   const overlay = document.createElement('div');
   overlay.className = 'fatal-overlay fatal-overlay-bottom';
   overlay.textContent = 'PROMISE REJECTION: ' + event.reason;
@@ -16,45 +49,46 @@ window.addEventListener('unhandledrejection', function(event) {
 
 try {
   const vscode = acquireVsCodeApi();
-  function log(message, level = 'info') {
+  function log(message: any, level: string = 'info') {
     vscode.postMessage({ type: 'log', value: message, level: level });
   }
   const mainView = document.getElementById('mainView');
   const chat = document.getElementById('chat');
-  const input = document.getElementById('input');
+  const input = document.getElementById('input') as HTMLTextAreaElement | null;
   const sendBtn = document.getElementById('sendBtn');
   const stopBtn = document.getElementById('stopBtn');
-  const modelSel = document.getElementById('modelSel');
+  const modelSel = document.getElementById('modelSel') as HTMLSelectElement | null;
   const newChatBtn = document.getElementById('newChatBtn');
   const newChatHistoryBtn = document.getElementById('newChatHistoryBtn');
   const deleteModal = document.getElementById('deleteModal');
   const deleteThreadTitle = document.getElementById('deleteThreadTitle');
   const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
   const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
-  let currentDeletingId = null;
+  let currentDeletingId: string | null = null;
   const brainBtn = document.getElementById('brainBtn');
   const internetBtn = document.getElementById('internetBtn');
   const historyBtn = document.getElementById('historyBtn');
   const historyView = document.getElementById('historyView');
   const closeHistoryBtn = document.getElementById('closeHistoryBtn');
-  const historySearch = document.getElementById('historySearch');
+  const historySearch = document.getElementById('historySearch') as HTMLInputElement | null;
   const historyList = document.getElementById('historyList');
   const attachBtn = document.getElementById('attachBtn');
   const injectLocalBtn = document.getElementById('injectLocalBtn');
   const inputBox = document.getElementById('inputBox');
-  const fileInput = document.getElementById('fileInput');
+  const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
   const attachPreview = document.getElementById('attachPreview');
   const editBanner = document.getElementById('editBanner');
   const editBannerLabel = document.getElementById('editBannerLabel');
   const cancelEditBtn = document.getElementById('cancelEditBtn');
   const dropOverlay = document.getElementById('dropOverlay');
   const thinkingBar = document.getElementById('thinkingBar');
+  const settingsBtn = document.getElementById('settingsBtn');
 
-  let loader = null;
+  let loader: HTMLElement | null = null;
   let sending = false;
-  let pendingFiles = [];
+  let pendingFiles: FileAttachment[] = [];
   let editingMessageIndex = -1;
-  let displayMessages = [];
+  let displayMessages: Message[] = [];
   let internetEnabled = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
@@ -63,19 +97,19 @@ try {
   }
   let dragCounter = 0;
   let dropSequence = 0;
-  let streamEl = null;
+  let streamEl: HTMLElement | null = null;
   let streamRaw = '';
-  let streamStatusEl = null;
-  let streamStatusTitleEl = null;
-  let streamMetaEl = null;
-  let streamPreviewEl = null;
-  let streamRenderTimer = null;
-  let streamMetaTimer = null;
+  let streamStatusEl: HTMLElement | null = null;
+  let streamStatusTitleEl: HTMLElement | null = null;
+  let streamMetaEl: HTMLElement | null = null;
+  let streamPreviewEl: HTMLElement | null = null;
+  let streamRenderTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamMetaTimer: ReturnType<typeof setInterval> | null = null;
   let streamLastRender = 0;
   let streamStartedAt = 0;
   let streamChunkCount = 0;
-  let historyItems = [];
-  let workspaceFiles = new Set();
+  let historyItems: HistoryItem[] = [];
+  let workspaceFiles = new Set<string>();
   const STREAM_RENDER_INTERVAL = 80;
   const STREAM_META_INTERVAL = 250;
   const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
@@ -92,28 +126,28 @@ try {
         return '<div class="welcome"><div class="welcome-logo">LL</div><div class="welcome-title">LLeM<span class="welcome-version">v' + esc(extensionVersion) + '</span></div><div class="welcome-sub">Local models. Repo context. Real edits. Real terminal moves. No cloud weirdness.</div></div>';
       }
 
-  function getTime() {
-    return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function esc(value) {
+  function esc(value: string): string {
     const div = document.createElement('div');
     div.innerText = value;
     return div.innerHTML;
   }
 
-  function escapeRegExp(value) {
+  function escapeRegExp(value: string): string {
     return value.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&');
   }
 
-  function langLabel(info) {
+  function langLabel(info: string): string {
     const raw = (info || '').trim().split(/\s+/)[0] || 'code';
     return raw.replace(/[{}()[\]"'<>]/g, '') || 'code';
   }
 
-  function highlight(code) {
+  function getTime(): string {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function highlight(code: string): string {
     let html = esc(code);
-    const tokens = [];
+    const tokens: string[] = [];
 
     // 1. Protect comments
     html = html.replace(/(\/\/[^\n]*|#.*)/g, (m) => {
@@ -141,14 +175,14 @@ try {
     return html;
   }
 
-  function codeBlock(code, info) {
+  function codeBlock(code: string, info: string): string {
     const lang = langLabel(info);
     return '<div class="code-wrap"><span class="code-lang">' + esc(lang) + '</span><pre><code>' + highlight(code) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>';
   }
 
-  function applyLiteralMarkdownFallback(html) {
-    const protectedBlocks = [];
-    const protect = function(match) {
+  function applyLiteralMarkdownFallback(html: string): string {
+    const protectedBlocks: string[] = [];
+    const protect = function(match: string): string {
       const token = '@@LLEM_HTML_' + protectedBlocks.length + '@@';
       protectedBlocks.push(match);
       return token;
@@ -173,22 +207,22 @@ try {
     return value;
   }
 
-  let mdRenderer = null;
+  let mdRenderer: any = null;
   function getMarkdownRenderer() {
-    if (!window.markdownit) {
+    if (!typedWindow.markdownit) {
       return null;
     }
     if (mdRenderer) {
       return mdRenderer;
     }
 
-    const md = window.markdownit({
+    const md = typedWindow.markdownit({
       html: false,
       linkify: true,
       typographer: true,
       breaks: true
     });
-    md.validateLink = function(url) {
+    md.validateLink = function(url: string) {
       const value = String(url || '').trim().toLowerCase();
       return value.startsWith('https://') ||
              value.startsWith('http://') ||
@@ -196,13 +230,13 @@ try {
              value.startsWith('#');
     };
 
-    md.renderer.rules.fence = (tokens, idx) => codeBlock(tokens[idx].content, tokens[idx].info);
-    md.renderer.rules.code_block = (tokens, idx) => codeBlock(tokens[idx].content, '');
+    md.renderer.rules.fence = (tokens: any[], idx: number) => codeBlock(tokens[idx].content, tokens[idx].info);
+    md.renderer.rules.code_block = (tokens: any[], idx: number) => codeBlock(tokens[idx].content, '');
 
-    const defaultLinkOpen = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
+    const defaultLinkOpen = md.renderer.rules.link_open || function(tokens: any[], idx: number, options: any, env: any, self: any) {
       return self.renderToken(tokens, idx, options);
     };
-    md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
+    md.renderer.rules.link_open = function(tokens: any[], idx: number, options: any, env: any, self: any) {
       const token = tokens[idx];
       const target = token.attrIndex('target');
       if (target < 0) token.attrPush(['target', '_blank']); else token.attrs[target][1] = '_blank';
@@ -211,7 +245,7 @@ try {
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
 
-    function isEditableWorkspaceFile(name) {
+    function isEditableWorkspaceFile(name: string) {
       const text = String(name || '').trim();
       if (!text || text.includes(' ') || text.includes('\n')) return false;
 
@@ -224,10 +258,10 @@ try {
       return Boolean(resolveEditableWorkspacePath(text, workspaceFiles));
     }
 
-    const defaultCodeInline = md.renderer.rules.code_inline || function(tokens, idx, options, env, self) {
+    const defaultCodeInline = md.renderer.rules.code_inline || function(tokens: any[], idx: number, options: any, env: any, self: any) {
       return self.renderToken(tokens, idx, options);
     };
-    md.renderer.rules.code_inline = function(tokens, idx, options, env, self) {
+    md.renderer.rules.code_inline = function(tokens: any[], idx: number, options: any, env: any, self: any) {
       const token = tokens[idx];
       if (isEditableWorkspaceFile(token.content)) {
         token.attrJoin('class', 'is-file');
@@ -239,33 +273,33 @@ try {
     return mdRenderer;
   }
 
-  function fmt(text) {
+  function fmt(text: string): string {
     let value = text || '';
     if (value.lastIndexOf('<create_file') > value.lastIndexOf('</create_file>')) value += '</create_file>';
     if (value.lastIndexOf('<edit_file') > value.lastIndexOf('</edit_file>')) value += '</edit_file>';
     if (value.lastIndexOf('<run_command') > value.lastIndexOf('</run_command>')) value += '</run_command>';
     if ((value.match(/\`\`\`/g) || []).length % 2 !== 0) value += '\n' + String.fromCharCode(96, 96, 96);
 
-    const blocks = [];
-    function pushBlock(html) {
+    const blocks: { token: string; html: string }[] = [];
+    function pushBlock(html: string) {
       const token = '@@LLEM_BLOCK_' + blocks.length + '@@';
       blocks.push({ token, html });
       return token;
     }
 
-    value = value.replace(/(?:<|call:)\s*create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_, filePath, content) {
+    value = value.replace(/(?:<|call:)\s*create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_: string, filePath: string, content: string) {
       const attrs = isEditableFilePath(filePath)
         ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
         : '';
       return pushBlock('<div class="file-badge"' + attrs + '>📁 Created file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
-    value = value.replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/gi, function(_, filePath, content) {
+    value = value.replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/gi, function(_: string, filePath: string, content: string) {
       const attrs = isEditableFilePath(filePath)
         ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
         : '';
       return pushBlock('<div class="edit-badge"' + attrs + '>✏️ Edited file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
-    value = value.replace(/(?:<|call:)\s*run_command>([\s\S]*?)<\/run_command>/gi, function(_, command) {
+    value = value.replace(/(?:<|call:)\s*run_command>([\s\S]*?)<\/run_command>/gi, function(_: string, command: string) {
       return pushBlock('<div class="cmd-badge"><span>▶ ' + esc(command.trim()) + '</span><button class="btn-open" data-action="open-terminal">Open</button></div>');
     });
 
@@ -288,8 +322,8 @@ try {
     return applyLiteralMarkdownFallback(html);
   }
 
-  function copyCode(btn) {
-    const code = btn.parentElement.querySelector('code');
+  function copyCode(btn: HTMLElement) {
+    const code = btn.parentElement?.querySelector('code');
     if (!code) return;
     navigator.clipboard.writeText(code.innerText).then(function() {
       btn.textContent = 'Copied';
@@ -304,10 +338,10 @@ try {
     vscode.postMessage({ type: 'showTerminal' });
   }
 
-  function copyMessageText(messageEl) {
+  function copyMessageText(messageEl: HTMLElement | null) {
     if (!(messageEl instanceof Element)) return;
     const body = messageEl.querySelector('.msg-body');
-    if (!body) return;
+    if (!(body instanceof HTMLElement)) return;
     navigator.clipboard.writeText(body.innerText.trim()).then(function() {
       const feedback = messageEl.querySelector('.msg-action-feedback');
       if (!feedback) return;
@@ -319,73 +353,91 @@ try {
     });
   }
 
-  function iconMarkup(kind) {
-    if (kind === 'copy') {
-      return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="3" width="8" height="10" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.5"></rect><path d="M3.5 10.5V5a2 2 0 0 1 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
-    }
-    if (kind === 'edit') {
-      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 2.6a1.5 1.5 0 0 1 2.1 2.1l-7 7L3 12.9l1.2-2.9 6.7-7.4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="m9.8 3.7 2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
-    }
-    if (kind === 'branch') {
-      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12.5 8A1.5 1.5 0 1 1 11 6.5 1.5 1.5 0 0 1 12.5 8ZM4 4.8v2.1c0 .6.4 1 1 1h4.5M4 11.2V9.1c0-.6.4-1 1-1h4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
-    }
+  function iconMarkup(kind: string): string {
+    if (kind === 'copy') return '<svg class="icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+    if (kind === 'edit') return '<svg class="icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    if (kind === 'up') return '<svg class="icon" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>';
+    if (kind === 'down') return '<svg class="icon" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.37-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>';
     return '';
   }
 
-  function actionButton(label, action, active, iconKind) {
-    const classes = 'msg-action-btn' + (iconKind ? ' icon-only' : '') + (active ? ' active' : '');
-    const content = iconKind
-      ? iconMarkup(iconKind) + '<span class="sr-only">' + label + '</span>'
-      : label;
-    return '<button class="' + classes + '" data-action="' + action + '" type="button" aria-label="' + label + '" title="' + label + '">' + content + '</button>';
-  }
+  function renderMessageActions(message: Message, messageIndex: number): HTMLElement {
+    const actionBar = document.createElement('div');
+    actionBar.className = 'msg-actions';
+    actionBar.dataset.index = String(messageIndex);
 
-  function renderMessageActions(message, messageIndex) {
-    if (!message || typeof messageIndex !== 'number' || messageIndex < 0) {
-      return null;
+    const isUser = message.role === 'user';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-action-btn';
+    copyBtn.title = 'Copy markdown';
+    copyBtn.innerHTML = iconMarkup('copy');
+    copyBtn.addEventListener('click', function() {
+      vscode.postMessage({ type: 'copy', value: message.text });
+      copyBtn.classList.add('active');
+      setTimeout(function() { copyBtn.classList.remove('active'); }, 1000);
+    });
+    actionBar.appendChild(copyBtn);
+
+    if (isUser) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'msg-action-btn';
+      editBtn.title = 'Edit message';
+      editBtn.innerHTML = iconMarkup('edit');
+      editBtn.addEventListener('click', function() {
+        enterEditMode(messageIndex, message);
+      });
+      actionBar.appendChild(editBtn);
+    } else {
+      const upBtn = document.createElement('button');
+      upBtn.className = 'msg-action-btn feedback-btn' + (message.feedback === 'like' ? ' active' : '');
+      upBtn.title = 'Helpful';
+      upBtn.innerHTML = iconMarkup('up');
+      upBtn.addEventListener('click', function() {
+        const newVal = message.feedback === 'like' ? null : 'like';
+        vscode.postMessage({ type: 'feedback', index: messageIndex, value: newVal });
+        setFeedbackState(actionBar, newVal);
+        syncFeedbackAcrossCopies(messageIndex, newVal);
+      });
+      actionBar.appendChild(upBtn);
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'msg-action-btn feedback-btn' + (message.feedback === 'dislike' ? ' active' : '');
+      downBtn.title = 'Not helpful';
+      downBtn.innerHTML = iconMarkup('down');
+      downBtn.addEventListener('click', function() {
+        const newVal = message.feedback === 'dislike' ? null : 'dislike';
+        vscode.postMessage({ type: 'feedback', index: messageIndex, value: newVal });
+        setFeedbackState(actionBar, newVal);
+        syncFeedbackAcrossCopies(messageIndex, newVal);
+      });
+      actionBar.appendChild(downBtn);
     }
 
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-actions';
-    wrap.setAttribute('data-message-index', String(messageIndex));
-    if (message.role === 'user') {
-      wrap.innerHTML =
-        actionButton('Copy', 'copy-message', false, 'copy') +
-        actionButton('Edit', 'edit-message', false, 'edit') +
-        '<span class="msg-action-feedback"></span>';
-      return wrap;
-    }
-
-    if (message.role !== 'ai') {
-      return null;
-    }
-
-    wrap.innerHTML =
-      actionButton('Copy', 'copy-message', false) +
-      actionButton('Branch', 'branch-message', false) +
-      actionButton('👍', 'like-message', message.feedback === 'like') +
-      actionButton('👎', 'dislike-message', message.feedback === 'dislike') +
-      '<span class="msg-action-feedback"></span>';
-    return wrap;
+    return actionBar;
   }
 
-  function setFeedbackState(actionBar, feedback) {
-    if (!(actionBar instanceof Element)) return;
-    const likeBtn = actionBar.querySelector('[data-action="like-message"]');
-    const dislikeBtn = actionBar.querySelector('[data-action="dislike-message"]');
-    if (likeBtn) likeBtn.classList.toggle('active', feedback === 'like');
-    if (dislikeBtn) dislikeBtn.classList.toggle('active', feedback === 'dislike');
-  }
-
-  function syncFeedbackAcrossCopies(messageIndex, feedback) {
-    const selector = '.msg-actions[data-message-index="' + String(messageIndex) + '"]';
-    document.querySelectorAll(selector).forEach(function(actionBar) {
-      setFeedbackState(actionBar, feedback);
+  function setFeedbackState(actionBar: HTMLElement, feedback: 'like' | 'dislike' | null): void {
+    const btns = actionBar.querySelectorAll('.feedback-btn');
+    btns.forEach(function(btn) {
+      if (!(btn instanceof HTMLElement)) return;
+      const isUp = btn.title === 'Helpful';
+      btn.classList.toggle('active', (isUp && feedback === 'like') || (!isUp && feedback === 'dislike'));
     });
   }
 
-  function enterEditMode(messageIndex, message) {
-    if (!message || message.role !== 'user') return;
+  function syncFeedbackAcrossCopies(messageIndex: number, feedback: 'like' | 'dislike' | null): void {
+    const bars = document.querySelectorAll('.msg-actions[data-index="' + messageIndex + '"]');
+    bars.forEach(function(bar) {
+      setFeedbackState(bar as HTMLElement, feedback);
+    });
+    if (displayMessages[messageIndex]) {
+      displayMessages[messageIndex].feedback = feedback;
+    }
+  }
+
+  function enterEditMode(messageIndex: number, message: Message): void {
+    if (!input || !message || message.role !== 'user') return;
     editingMessageIndex = messageIndex;
     input.value = message.text || '';
     input.style.height = 'auto';
@@ -406,16 +458,16 @@ try {
     input.focus();
   }
 
-  function exitEditMode(clearInput) {
+  function exitEditMode(clearInput: boolean): void {
     editingMessageIndex = -1;
     if (editBanner) editBanner.hidden = true;
-    if (clearInput) {
+    if (clearInput && input) {
       input.value = '';
       input.style.height = 'auto';
     }
   }
 
-  function openEditableFile(fileName, sourceUri) {
+  function openEditableFile(fileName: string, sourceUri: string): void {
     const safeName = String(fileName || '').trim();
     if (!safeName || !isEditableFilePath(safeName)) {
       return;
@@ -423,50 +475,25 @@ try {
     vscode.postMessage({ type: 'openAttachment', file: { name: safeName, sourceUri: sourceUri || '' } });
   }
 
-  document.addEventListener('click', function(event) {
+  document.addEventListener('click', function(event: MouseEvent) {
     const target = event.target;
     if (!(target instanceof Element)) return;
 
     const copyButton = target.closest('[data-action="copy-code"]');
-    if (copyButton) {
+    if (copyButton instanceof HTMLElement) {
       copyCode(copyButton);
       return;
     }
 
     const messageActionBar = target.closest('.msg-actions');
     if (messageActionBar) {
-      const messageEl = target.closest('.msg');
-      const messageIndex = Number(messageActionBar.getAttribute('data-message-index'));
-      const message = displayMessages[messageIndex];
+      const messageIndexStr = messageActionBar.getAttribute('data-index');
+      const messageIndex = messageIndexStr ? Number(messageIndexStr) : -1;
+      const message = messageIndex >= 0 ? displayMessages[messageIndex] : undefined;
 
       if (target.closest('[data-action="copy-message"]')) {
+        const messageEl = target.closest('.msg') as HTMLElement;
         copyMessageText(messageEl);
-        return;
-      }
-
-      if (target.closest('[data-action="edit-message"]')) {
-        enterEditMode(messageIndex, message);
-        return;
-      }
-
-      if (target.closest('[data-action="branch-message"]')) {
-        if (Number.isInteger(messageIndex) && messageIndex >= 0) {
-          vscode.postMessage({ type: 'branchChat', messageIndex: messageIndex });
-        }
-        return;
-      }
-
-      if (target.closest('[data-action="like-message"]')) {
-        const nextFeedback = target.closest('[data-action="like-message"]').classList.contains('active') ? null : 'like';
-        syncFeedbackAcrossCopies(messageIndex, nextFeedback);
-        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: nextFeedback });
-        return;
-      }
-
-      if (target.closest('[data-action="dislike-message"]')) {
-        const nextFeedback = target.closest('[data-action="dislike-message"]').classList.contains('active') ? null : 'dislike';
-        syncFeedbackAcrossCopies(messageIndex, nextFeedback);
-        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: nextFeedback });
         return;
       }
     }
@@ -484,12 +511,12 @@ try {
 
     const inlineCode = target.closest('.msg-body :not(pre) > code.is-file');
     if (inlineCode) {
-      const fileName = inlineCode.textContent.trim();
+      const fileName = inlineCode.textContent?.trim() || '';
       openEditableFile(fileName, '');
     }
   });
 
-  document.addEventListener('keydown', function(event) {
+  document.addEventListener('keydown', function(event: KeyboardEvent) {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -501,7 +528,7 @@ try {
     }
   });
 
-  function renderAttachments(files) {
+  function renderAttachments(files: FileAttachment[]): HTMLElement | null {
     if (!files || files.length === 0) {
       return null;
     }
@@ -518,7 +545,7 @@ try {
         item.addEventListener('click', function() {
           openEditableFile(file.name || '', file.sourceUri || '');
         });
-        item.addEventListener('keydown', function(event) {
+        item.addEventListener('keydown', function(event: KeyboardEvent) {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             openEditableFile(file.name || '', file.sourceUri || '');
@@ -551,10 +578,10 @@ try {
     return wrap;
   }
 
-  function addMsg(messageOrText, role, files, messageIndex) {
-    const message = typeof messageOrText === 'object' && messageOrText !== null
-      ? messageOrText
-      : { text: messageOrText, role: role, files: files, feedback: null };
+  function addMsg(messageOrText: string | Message, role?: 'user' | 'ai' | 'error', files?: FileAttachment[], messageIndex?: number): HTMLElement {
+    const message: Message = typeof messageOrText === 'object' && messageOrText !== null
+      ? messageOrText as Message
+      : { text: messageOrText as string, role: role || 'user', files: files, feedback: null };
     const resolvedRole = message.role || role;
     const resolvedFiles = message.files || files;
     const isUser = resolvedRole === 'user';
@@ -575,93 +602,87 @@ try {
     } else {
       body.innerHTML = fmt(message.text || '');
     }
-    const attachments = renderAttachments(resolvedFiles);
+    const attachments = renderAttachments(resolvedFiles || []);
     if (attachments) {
       body.appendChild(attachments);
     }
     el.appendChild(head);
     el.appendChild(body);
-    const actions = renderMessageActions(message, messageIndex);
-    if (actions) {
-      if (isUser) {
-        const meta = document.createElement('div');
-        meta.className = 'msg-meta-row';
-        meta.innerHTML = '<span class="msg-time msg-time-inline">' + getTime() + '</span>';
-        meta.appendChild(actions);
-        el.appendChild(meta);
-      } else {
-        el.appendChild(actions);
-      }
-    }
     if (typeof messageIndex === 'number' && messageIndex >= 0) {
       displayMessages[messageIndex] = message;
+      const actions = renderMessageActions(message, messageIndex);
+      el.appendChild(actions);
     }
-    chat.appendChild(el);
-    chat.scrollTop = chat.scrollHeight;
+    if (chat) {
+      chat.appendChild(el);
+      chat.scrollTop = chat.scrollHeight;
+    }
     return el;
   }
 
-  function showDeleteModal(id, title) {
+  function showDeleteModal(id: string, title: string): void {
     currentDeletingId = id;
     if (deleteThreadTitle) deleteThreadTitle.textContent = title;
     if (deleteModal) deleteModal.classList.add('visible');
   }
 
-  function hideDeleteModal() {
+  function hideDeleteModal(): void {
     currentDeletingId = null;
     if (deleteModal) deleteModal.classList.remove('visible');
   }
 
-  function showLoader() {
+  function showLoader(): void {
     loader = document.createElement('div');
     loader.className = 'msg';
-    loader.innerHTML = '<div class="msg-head"><div class="av av-ai">LL</div><span>LLeM</span><span class="msg-time">' + getTime() + '</span></div><div class="msg-body msg-body-muted">Cooking up a reply...</div>';
-    chat.appendChild(loader);
-    chat.scrollTop = chat.scrollHeight;
-    thinkingBar.classList.add('active');
+    loader.innerHTML = '<div class="msg-head"><div class="av av-user">You</div><span>You</span><span class="msg-time">' + getTime() + '</span></div><div class="msg-body msg-body-muted">Cooking up a reply...</div>';
+    if (chat) {
+      chat.appendChild(loader);
+      chat.scrollTop = chat.scrollHeight;
+    }
+    if (thinkingBar) thinkingBar.classList.add('active');
   }
 
-  function hideLoader() {
+  function hideLoader(): void {
     if (loader && loader.parentNode) {
       loader.parentNode.removeChild(loader);
     }
     loader = null;
-    thinkingBar.classList.remove('active');
+    if (thinkingBar) thinkingBar.classList.remove('active');
   }
 
-  function setSending(value) {
+  function setSending(value: boolean): void {
     sending = value;
-    sendBtn.disabled = value;
-    input.disabled = value;
-    stopBtn.classList.toggle('visible', value);
+    if (sendBtn) (sendBtn as HTMLButtonElement).disabled = value;
+    if (input) (input as HTMLTextAreaElement).disabled = value;
+    if (stopBtn) stopBtn.classList.toggle('visible', value);
     if (!value) {
-      input.focus();
-      thinkingBar.classList.remove('active');
+      if (input) input.focus();
+      if (thinkingBar) thinkingBar.classList.remove('active');
     }
   }
 
-  function clearStreamRenderTimer() {
+  function clearStreamRenderTimer(): void {
     if (streamRenderTimer) {
       clearTimeout(streamRenderTimer);
       streamRenderTimer = null;
     }
   }
 
-  function clearStreamMetaTimer() {
+  function clearStreamMetaTimer(): void {
     if (streamMetaTimer) {
       clearInterval(streamMetaTimer);
       streamMetaTimer = null;
     }
   }
 
-  function formatElapsed(ms) {
+  function formatElapsed(ms: number): string {
     const total = Math.max(0, Math.floor(ms / 1000));
     const mins = Math.floor(total / 60);
     const secs = String(total % 60).padStart(2, '0');
     return mins > 0 ? mins + ':' + secs : secs + 's';
   }
 
-  function updateStreamMeta() {
+  function updateStreamMeta(): void {
     if (!streamMetaEl) return;
     const parts = [formatElapsed(Date.now() - streamStartedAt)];
     if (streamChunkCount > 0) parts.push(streamChunkCount + ' chunk' + (streamChunkCount === 1 ? '' : 's'));
@@ -669,13 +690,13 @@ try {
     streamMetaEl.textContent = parts.join(' · ');
   }
 
-  function startStreamMetaTimer() {
+  function startStreamMetaTimer(): void {
     clearStreamMetaTimer();
     updateStreamMeta();
     streamMetaTimer = setInterval(updateStreamMeta, STREAM_META_INTERVAL);
   }
 
-  function resetStreamRefs() {
+  function resetStreamRefs(): void {
     clearStreamRenderTimer();
     clearStreamMetaTimer();
     streamEl = null;
@@ -689,7 +710,7 @@ try {
     streamChunkCount = 0;
   }
 
-  function appendRegenButton(target) {
+  function appendRegenButton(target: HTMLElement | null): void {
     if (!target || target.querySelector('.regen-btn')) return;
     const button = document.createElement('button');
     button.className = 'regen-btn';
@@ -703,7 +724,7 @@ try {
     target.appendChild(button);
   }
 
-  function renderStreamNow() {
+  function renderStreamNow(): void {
     clearStreamRenderTimer();
     if (!streamPreviewEl) return;
     streamLastRender = Date.now();
@@ -715,10 +736,10 @@ try {
       streamPreviewEl.textContent = streamRaw;
     }
     updateStreamMeta();
-    chat.scrollTop = chat.scrollHeight;
+    if (chat) chat.scrollTop = chat.scrollHeight;
   }
 
-  function scheduleStreamRender(force) {
+  function scheduleStreamRender(force: boolean): void {
     if (!streamPreviewEl) return;
     if (force) {
       renderStreamNow();
@@ -729,7 +750,7 @@ try {
     streamRenderTimer = setTimeout(renderStreamNow, delay);
   }
 
-  function finalizeStream(state, message, messageIndex) {
+  function finalizeStream(state: 'done' | 'stopped', message?: Message, messageIndex?: number): void {
     hideLoader();
     if (!streamEl || !streamPreviewEl) {
       setSending(false);
@@ -737,27 +758,36 @@ try {
       return;
     }
     scheduleStreamRender(true);
+    const finalText = typeof message?.text === 'string' && message.text.length > 0
+      ? message.text
+      : streamRaw;
+    const hasFinalText = finalText.length > 0;
     if (streamStatusEl) streamStatusEl.className = 'stream-status ' + state;
     if (streamStatusTitleEl) {
-      streamStatusTitleEl.textContent = state === 'done' ? 'Reply ready' : 'Generation stopped';
+      if (state === 'done') {
+        streamStatusTitleEl.textContent = hasFinalText ? 'Reply ready' : 'Reply finished without text';
+      } else {
+        streamStatusTitleEl.textContent = 'Generation stopped';
+      }
     }
     if (streamPreviewEl) {
-      if (streamRaw.length > 0) {
+      if (hasFinalText) {
         streamPreviewEl.className = 'stream-preview stream-preview-final';
-        streamPreviewEl.innerHTML = fmt(streamRaw);
+        streamPreviewEl.innerHTML = fmt(finalText);
       } else {
         streamPreviewEl.className = 'stream-preview stream-preview-empty';
-        streamPreviewEl.textContent = state === 'done' ? 'The reply came back empty.' : 'Generation stopped before output landed.';
+        streamPreviewEl.textContent = state === 'done' ? 'The reply came back empty. Check the LLeM output log for stream details.' : 'Generation stopped before output landed.';
       }
     }
     updateStreamMeta();
     if (state === 'done') {
-      if (typeof messageIndex === 'number' && messageIndex >= 0) {
-        displayMessages[messageIndex] = message || { role: 'ai', text: streamRaw, feedback: null };
-      }
-      const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex);
-      if (actions && !streamEl.querySelector('.msg-actions')) {
-        streamEl.appendChild(actions);
+      const isIndexValid = typeof messageIndex === 'number' && messageIndex >= 0;
+      if (isIndexValid) {
+        displayMessages[messageIndex!] = message || { role: 'ai', text: streamRaw, feedback: null };
+        const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex!);
+        if (actions && !streamEl.querySelector('.msg-actions')) {
+          streamEl.appendChild(actions);
+        }
       }
     }
     appendRegenButton(streamEl);
@@ -765,31 +795,31 @@ try {
     resetStreamRefs();
   }
 
-  function formatAttachmentBytes(bytes) {
+  function formatAttachmentBytes(bytes: number): string {
     if (bytes < 1024) return bytes + 'B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
     return (bytes / 1024 / 1024).toFixed(1) + 'MB';
   }
 
-  function getTransferTypes(transfer) {
+  function getTransferTypes(transfer: DataTransfer | null): string[] {
     return Array.from((transfer && transfer.types) || []);
   }
 
-  function getLowerTransferTypes(transfer) {
+  function getLowerTransferTypes(transfer: DataTransfer | null): string[] {
     return getTransferTypes(transfer).map(function(type) {
       return String(type).toLowerCase();
     });
   }
 
-  function isVsCodeDragType(type) {
+  function isVsCodeDragType(type: string): boolean {
     return String(type || '').toLowerCase().startsWith('application/vnd.code.');
   }
 
-  function canAcceptDropEvent(event) {
+  function canAcceptDropEvent(event: DragEvent): boolean {
     return Boolean(event && event.shiftKey && hasFilePayload(event));
   }
 
-  function acceptDropEvent(event) {
+  function acceptDropEvent(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) {
@@ -797,7 +827,7 @@ try {
     }
   }
 
-  function getAttachmentSize(file) {
+  function getAttachmentSize(file: any): number {
     if (!file) {
       return 0;
     }
@@ -810,7 +840,7 @@ try {
     return 0;
   }
 
-  function attachmentFingerprint(file) {
+  function attachmentFingerprint(file: any): string {
     const data = String((file && file.data) || '');
     return [
       String((file && file.name) || '').toLowerCase(),
@@ -823,14 +853,14 @@ try {
     ].join('|');
   }
 
-  function appendAttachmentRecords(files) {
+  function appendAttachmentRecords(files: FileAttachment[]): void {
     const incoming = Array.from(files || []);
     if (incoming.length === 0) {
       return;
     }
 
     const seen = new Set(pendingFiles.map(attachmentFingerprint));
-    const accepted = [];
+    const accepted: FileAttachment[] = [];
 
     incoming.forEach(function(file) {
       const key = attachmentFingerprint(file);
@@ -847,7 +877,7 @@ try {
     }
   }
 
-  function hasFilePayload(event) {
+  function hasFilePayload(event: DragEvent): boolean {
     const transfer = event.dataTransfer;
     if (!transfer) {
       return false;
@@ -862,11 +892,11 @@ try {
            items.some(function(item) { return item.kind === 'file'; });
   }
 
-  function trimDroppedUri(value) {
+  function trimDroppedUri(value: any): string {
     return String(value || '').trim().replace(/^["']|["']$/g, '');
   }
 
-  function looksLikeDroppedUri(value) {
+  function looksLikeDroppedUri(value: string): boolean {
     const candidate = trimDroppedUri(value);
     return /^file:\/\//i.test(candidate) ||
            /^vscode-remote:\/\//i.test(candidate) ||
@@ -875,7 +905,7 @@ try {
            /^\//.test(candidate);
   }
 
-  function addDroppedUri(uris, value) {
+  function addDroppedUri(uris: string[], value: string): void {
     const candidate = trimDroppedUri(value);
     if (!candidate || candidate.startsWith('#') || !looksLikeDroppedUri(candidate)) {
       return;
@@ -885,7 +915,7 @@ try {
     }
   }
 
-  function collectDroppedUrisFromText(text, uris) {
+  function collectDroppedUrisFromText(text: string, uris: string[]): void {
     String(text || '')
       .split(/\r?\n|\r/)
       .map(trimDroppedUri)
@@ -893,7 +923,7 @@ try {
       .forEach(function(line) { addDroppedUri(uris, line); });
   }
 
-  function collectDroppedUrisFromObject(value, uris) {
+  function collectDroppedUrisFromObject(value: any, uris: string[]): void {
     if (!value) {
       return;
     }
@@ -937,8 +967,8 @@ try {
     });
   }
 
-  function collectDroppedUris(transfer) {
-    const uris = [];
+  function collectDroppedUris(transfer: DataTransfer | null): string[] {
+    const uris: string[] = [];
     if (!transfer) {
       return uris;
     }
@@ -972,7 +1002,7 @@ try {
     return uris;
   }
 
-  function isSupportedAttachment(file) {
+  function isSupportedAttachment(file: any): boolean {
     if (!file) {
       return false;
     }
@@ -985,30 +1015,30 @@ try {
     return dotIndex >= 0 && ATTACHABLE_EXTENSIONS.has(lowerName.slice(dotIndex));
   }
 
-  function setDropActive(active) {
-    dropOverlay.classList.toggle('visible', active);
-    inputBox.classList.toggle('drag-over', active);
-    chat.classList.toggle('drag-over', active);
+  function setDropActive(active: boolean): void {
+    if (dropOverlay) dropOverlay.classList.toggle('visible', active);
+    if (inputBox) inputBox.classList.toggle('drag-over', active);
+    if (chat) chat.classList.toggle('drag-over', active);
   }
 
-  function resetDropActive() {
+  function resetDropActive(): void {
     setDropActive(false);
   }
 
-  function readBlobAsDataUrl(blob) {
+  function readBlobAsDataUrl(blob: Blob): Promise<string> {
     return new Promise(function(resolve, reject) {
       const reader = new FileReader();
       reader.onerror = function() {
         reject(reader.error || new Error('Failed to read file.'));
       };
       reader.onload = function() {
-        resolve(reader.result || '');
+        resolve(reader.result as string || '');
       };
       reader.readAsDataURL(blob);
     });
   }
 
-  async function buildAttachment(file) {
+  async function buildAttachment(file: File): Promise<FileAttachment | null> {
     if (!isSupportedAttachment(file)) {
       alert(file.name + ' is not a supported attachment yet.');
       return null;
@@ -1027,7 +1057,7 @@ try {
     const dataUrl = await readBlobAsDataUrl(blobSource);
     const base64 = String(dataUrl).split(',')[1] || '';
 
-    const attachment = {
+    const attachment: FileAttachment = {
       name: file.name,
       type: type,
       data: base64,
@@ -1038,20 +1068,20 @@ try {
     return attachment;
   }
 
-  async function appendPendingFiles(files, source, requestId) {
+  async function appendPendingFiles(files: File[], source: string, requestId: string): Promise<void> {
     const incoming = Array.from(files || []);
     if (incoming.length === 0) {
       return;
     }
 
-    const appended = [];
+    const appended: FileAttachment[] = [];
     for (const file of incoming) {
       try {
         const attachment = await buildAttachment(file);
         if (attachment) {
           appended.push(attachment);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('LLeM Drag & Drop: Failed to read native file attachment.', {
           source: source,
           requestId: requestId,
@@ -1065,7 +1095,8 @@ try {
     appendAttachmentRecords(appended);
   }
 
-  function renderPreview() {
+  function renderPreview(): void {
+    if (!attachPreview) return;
     attachPreview.innerHTML = '';
     if (pendingFiles.length === 0) {
       attachPreview.classList.remove('visible');
@@ -1102,10 +1133,11 @@ try {
     });
   }
 
-  function renderHistory(items) {
+  function renderHistory(items: HistoryItem[]): void {
+    if (!historyList) return;
     historyList.innerHTML = '';
     const filtered = items.filter(function(item) {
-      const q = historySearch.value.toLowerCase();
+      const q = (historySearch?.value || '').toLowerCase();
       return (item.title || '').toLowerCase().includes(q);
     });
 
@@ -1169,20 +1201,20 @@ try {
     });
   }
 
-  function toggleHistory(show) {
+  function toggleHistory(show: boolean): void {
     if (show) {
-      historyView.classList.add('visible');
+      if (historyView) historyView.classList.add('visible');
       vscode.postMessage({ type: 'getHistory' });
-      historySearch.focus();
+      if (historySearch) historySearch.focus();
     } else {
-      historyView.classList.remove('visible');
+      if (historyView) historyView.classList.remove('visible');
     }
   }
 
   // History, internet, and other listeners are now handled below via safeListen.
 
-  function send() {
-    const text = input.value.trim();
+  function send(): void {
+    const text = input ? input.value.trim() : '';
     if ((!text && pendingFiles.length === 0) || sending) return;
     const attachedFiles = pendingFiles.slice();
     document.body.classList.remove('init');
@@ -1190,8 +1222,10 @@ try {
     if (welcome) welcome.remove();
     const localMessageIndex = displayMessages.length;
     addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
-    input.value = '';
-    input.style.height = 'auto';
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
     setSending(true);
     showLoader();
     if (editingMessageIndex >= 0) {
@@ -1199,7 +1233,7 @@ try {
         type: 'editMessage',
         messageIndex: editingMessageIndex,
         value: text || 'Update this message.',
-        model: modelSel.value,
+        model: modelSel?.value || '',
         files: attachedFiles,
         internet: internetEnabled
       });
@@ -1212,7 +1246,7 @@ try {
       vscode.postMessage({
         type: 'promptWithFile',
         value: text || 'Take a look at these files.',
-        model: modelSel.value,
+        model: modelSel?.value || '',
         files: attachedFiles,
         internet: internetEnabled
       });
@@ -1222,7 +1256,7 @@ try {
       vscode.postMessage({
         type: 'prompt',
         value: text,
-        model: modelSel.value,
+        model: modelSel?.value || '',
         internet: internetEnabled
       });
     }
@@ -1230,22 +1264,23 @@ try {
 
   // Internet toggle is handled below via safeListen.
 
-  input.addEventListener('input', function() {
+  input?.addEventListener('input', function() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 150) + 'px';
   });
 
-  input.addEventListener('paste', function(event) {
+  input?.addEventListener('paste', function(event: ClipboardEvent) {
     const items = event.clipboardData && event.clipboardData.items;
     if (!items) return;
-    for (const item of items) {
+    const itemsArray = Array.from(items);
+    for (const item of itemsArray) {
       if (!item.type.startsWith('image/')) continue;
       event.preventDefault();
       const file = item.getAsFile();
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function() {
-        const base64 = reader.result.split(',')[1];
+        const base64 = (reader.result as string).split(',')[1];
         appendAttachmentRecords([{ name: 'clipboard-image.png', type: file.type, data: base64, originalSize: file.size }]);
       };
       reader.readAsDataURL(file);
@@ -1259,7 +1294,7 @@ try {
 
   // FileInput is handled below.
 
-  window.addEventListener('dragenter', function(event) {
+  window.addEventListener('dragenter', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
       return;
     }
@@ -1268,7 +1303,7 @@ try {
     setDropActive(true);
   }, true);
 
-  window.addEventListener('dragover', function(event) {
+  window.addEventListener('dragover', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
       if (dragCounter > 0 && hasFilePayload(event)) {
         dragCounter = 0;
@@ -1283,7 +1318,7 @@ try {
     }
   }, true);
 
-  window.addEventListener('dragleave', function(event) {
+  window.addEventListener('dragleave', function(event: DragEvent) {
     if (dragCounter <= 0) {
       return;
     }
@@ -1295,7 +1330,7 @@ try {
     }
   }, true);
 
-  window.addEventListener('drop', function(event) {
+  window.addEventListener('drop', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
       if (dragCounter > 0) {
         dragCounter = 0;
@@ -1319,7 +1354,7 @@ try {
     }
   }, true);
 
-  function safeListen(idOrEl, event, handler) {
+  function safeListen(idOrEl: string | HTMLElement | null, event: string, handler: (ev: any) => any): void {
     const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
     if (el) el.addEventListener(event, handler);
   }
@@ -1373,13 +1408,17 @@ try {
   safeListen(internetBtn, 'click', function() {
     internetEnabled = !internetEnabled;
     log('[UI] Live web mode toggled: ' + (internetEnabled ? 'ON' : 'OFF'));
-    internetBtn.classList.toggle('active', internetEnabled);
-    internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
+    if (internetBtn) {
+      internetBtn.classList.toggle('active', internetEnabled);
+      internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
+    }
     const info = document.createElement('div');
     info.className = 'msg';
     info.innerHTML = '<div class="msg-body msg-body-info">🌐 Live web mode is now ' + (internetEnabled ? 'ON' : 'OFF') + '.</div>';
-    chat.appendChild(info);
-    chat.scrollTop = chat.scrollHeight;
+    if (chat) {
+      chat.appendChild(info);
+      chat.scrollTop = chat.scrollHeight;
+    }
   });
   safeListen(historyBtn, 'click', function() {
     const opening = historyView && !historyView.classList.contains('visible');
@@ -1405,12 +1444,12 @@ try {
     renderPreview();
   });
   safeListen(attachBtn, 'click', function() {
-    log('[UI] Attach button clicked');
     if (fileInput) fileInput.click();
   });
   safeListen(fileInput, 'change', function() {
+    if (!fileInput) return;
     const count = (fileInput.files || []).length;
-    log('[UI] File input changed (files=' + count + ')');
+    log('[DROP] ' + count + ' file(s) selected via native picker');
     void appendPendingFiles(Array.from(fileInput.files || []), 'file-input', 'file-input-' + Date.now());
     fileInput.value = '';
   });
@@ -1418,13 +1457,13 @@ try {
     exitEditMode(true);
     pendingFiles = [];
     renderPreview();
-    input.focus();
+    if (input) input.focus();
   });
   safeListen(historySearch, 'input', function() {
     renderHistory(historyItems);
   });
 
-  window.addEventListener('message', function(event) {
+  window.addEventListener('message', function(event: MessageEvent) {
     const msg = event.data;
     if (msg.type !== 'streamChunk') {
       log('[MSG←] ' + msg.type + (msg.id ? ' id=' + msg.id : '') + (msg.value && typeof msg.value === 'string' ? ' len=' + msg.value.length : ''));
@@ -1439,7 +1478,7 @@ try {
       case 'error':
         log('[ERROR] Extension error: ' + msg.value, 'error');
         if (streamEl) {
-          finalizeStream('stopped', null, -1);
+          finalizeStream('stopped', undefined, -1);
         } else {
           hideLoader();
           setSending(false);
@@ -1480,9 +1519,9 @@ try {
         body.appendChild(shell);
         streamEl.appendChild(head);
         streamEl.appendChild(body);
-        chat.appendChild(streamEl);
-        chat.scrollTop = chat.scrollHeight;
-        thinkingBar.classList.add('active');
+        chat?.appendChild(streamEl);
+        if (chat) chat.scrollTop = chat.scrollHeight;
+        if (thinkingBar) thinkingBar.classList.add('active');
         startStreamMetaTimer();
         break;
       }
@@ -1495,20 +1534,26 @@ try {
         break;
       case 'streamEnd':
         log('[STREAM] Stream ended (chunks=' + streamChunkCount + ', chars=' + streamRaw.length + ')');
-        finalizeStream('done', msg.message || null, typeof msg.messageIndex === 'number' ? msg.messageIndex : -1);
+        finalizeStream('done', msg.message || undefined, typeof msg.messageIndex === 'number' ? msg.messageIndex : -1);
+        break;
+      case 'stop':
+        log('[MSG←] Stop signal received');
+        finalizeStream('stopped', undefined, -1);
         break;
       case 'streamAbort':
         log('[STREAM] Stream aborted');
-        finalizeStream('stopped', null, -1);
+        finalizeStream('stopped', undefined, -1);
         break;
       case 'modelsList':
-        modelSel.innerHTML = '';
-        msg.value.forEach(function(model) {
-          const option = document.createElement('option');
-          option.value = model;
-          option.textContent = model;
-          modelSel.appendChild(option);
-        });
+        if (modelSel) {
+          modelSel.innerHTML = '';
+          (msg.value as string[]).forEach(function(model) {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            modelSel.appendChild(option);
+          });
+        }
         log('[MODELS] Loaded ' + msg.value.length + ' model(s): ' + msg.value.join(', '));
         break;
       case 'clearChat':
@@ -1520,7 +1565,7 @@ try {
         hideLoader();
         setSending(false);
         document.body.classList.add('init');
-        chat.innerHTML = welcomeMarkup();
+        if (chat) chat.innerHTML = welcomeMarkup();
         displayMessages = [];
         pendingFiles = [];
         exitEditMode(true);
@@ -1538,29 +1583,31 @@ try {
         setTimeout(function() { if (input) input.focus(); }, 50);
         break;
       case 'restoreMessages':
-        chat.innerHTML = '';
+        if (chat) chat.innerHTML = '';
         displayMessages = msg.value || [];
         if (msg.value && msg.value.length > 0) {
           log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
           document.body.classList.remove('init');
-          msg.value.forEach(function(item, index) {
+          (msg.value as Message[]).forEach(function(item, index) {
             addMsg(item, item.role, item.files, index);
           });
         } else {
           log('[RESTORE] No messages to restore — showing welcome screen');
           document.body.classList.add('init');
-          chat.innerHTML = welcomeMarkup();
+          if (chat) chat.innerHTML = welcomeMarkup();
         }
         break;
       case 'focusInput':
         log('[UI] focusInput received');
-        input.focus();
+        if (input) input.focus();
         break;
       case 'injectPrompt':
         log('[UI] injectPrompt received (len=' + (msg.value || '').length + ')');
-        input.value = msg.value;
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+        if (input) {
+          input.value = msg.value;
+          input.style.height = 'auto';
+          input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+        }
         send();
         break;
       case 'historyList':
@@ -1598,14 +1645,14 @@ try {
     log('[INIT] Posting ready signal to extension host');
     vscode.postMessage({ type: 'ready' });
   }, 300);
-} catch (err) {
+} catch (err: any) {
   document.body.textContent = '';
   const crash = document.createElement('div');
   crash.className = 'crash-screen';
   const title = document.createElement('h2');
   title.textContent = 'Webview JS crash';
   const pre = document.createElement('pre');
-  pre.textContent = err.name + ': ' + err.message + '\n' + err.stack;
+  pre.textContent = (err?.name || 'Error') + ': ' + (err?.message || String(err)) + '\n' + (err?.stack || '');
   crash.appendChild(title);
   crash.appendChild(pre);
   document.body.appendChild(crash);

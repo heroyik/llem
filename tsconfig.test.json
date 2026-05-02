@@ -10,9 +10,11 @@
     "src/bridgeAuth.ts",
     "src/bridgePayload.ts",
     "src/bridgeRateLimit.ts",
+    "src/chatPipelineHelpers.ts",
     "src/commandPolicy.ts",
     "src/fileActions.ts",
     "src/security.ts",
+    "src/streamParsing.ts",
     "src/webActions.ts"
   ]
 }

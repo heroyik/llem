@@ -2,6 +2,7 @@ import axios from 'axios';
 import { getConfig } from './config';
 import { PerfLogger } from './perfLogger';
 import { resolveAIEndpoint, streamCompletion } from './aiClient';
+import { buildContinuationSystemMessage } from './chatPipelineHelpers';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage } from './types';
 
 export interface ChatPipelineHost {
@@ -134,25 +135,19 @@ export class ChatPipeline {
                     turnExecuted = true;
                     const reportMsg = `\n\n---\n**Action Report**\n${externalReport.join('\n')}`;
                     combinedUiFeedback += reportMsg;
-                    // System feedback for external tools is already appended to history by executeActions
                 }
 
                 if (turnExecuted) {
                     // Update full AI message with what we've processed so far
                     // We strip action tags from the display version later, but we need the feedback here
                     fullAiMessage += cleanedAiResponse + combinedUiFeedback;
-                    
-                    // The assistant message is pushed to history here if it wasn't already (or we ensure it's handled)
-                    // resolveInternalActions doesn't push to history, but executeActions DOES.
-                    // Wait! If BOTH run, executeActions pushes the RAW ai message to history.
-                    // If ONLY internal runs, we need to push it.
-                    
-                    if (!externalReport.length) {
-                        // If no external actions, executeActions wasn't there to push history
-                        this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse });
-                        this.host.getChatHistory().push({ role: 'user', content: combinedSystemFeedback || '[SYSTEM: Actions completed. Proceed with next steps.]' });
+
+                    this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse });
+                    const continuationMessage = buildContinuationSystemMessage(combinedSystemFeedback, externalReport);
+                    if (continuationMessage) {
+                        this.host.getChatHistory().push({ role: 'user', content: continuationMessage });
                     }
-                    
+
                     // Re-prompt
                     const nextReqMessages = this.host.buildRequestMessages(options.internetEnabled, DEFAULT_BACKGROUND_LABEL);
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal);
@@ -165,7 +160,13 @@ export class ChatPipeline {
                 break;
             }
 
-            const finalDisplayMessage: DisplayMessage = { text: this.stripActionTags(fullAiMessage), role: 'ai', feedback: null };
+            const finalAssistantText = this.stripActionTags(fullAiMessage);
+            this.host.getChatHistory().push({
+                role: 'assistant',
+                content: finalAssistantText || fullAiMessage
+            });
+
+            const finalDisplayMessage: DisplayMessage = { text: finalAssistantText, role: 'ai', feedback: null };
             this.host.getDisplayMessages().push(finalDisplayMessage);
             this.trimHistory();
             await this.host.saveHistory();

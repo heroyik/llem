@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
+import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 
 const ENDPOINT_CACHE_TTL_MS = 15_000;
 
@@ -71,53 +72,6 @@ function buildStreamBody(
     };
 }
 
-function extractStreamToken(line: string, isLMStudio: boolean): string {
-    if (!line.trim() || line.trim() === 'data: [DONE]') {
-        return '';
-    }
-
-    try {
-        const raw = line.startsWith('data: ') ? line.slice(6) : line;
-        const json = JSON.parse(raw);
-        if (json.error) {
-            return `[API error] ${json.error.message || json.error}`;
-        }
-
-        if (isLMStudio) {
-            return json.choices?.[0]?.delta?.content || '';
-        }
-
-        // Ollama specific
-        const msg = json.message;
-        if (!msg) {
-            return json.response || ''; // Fallback for some Ollama non-chat endpoints or older versions
-        }
-
-        if (msg.content) {
-            return msg.content;
-        }
-
-        // If content is missing but tool_calls exist, the model might be trying to use a tool.
-        // We should try to stringify the tool call if it's there, as our parser might handle it.
-        if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-            const firstCall = msg.tool_calls[0];
-            const name = firstCall.function?.name || '';
-            const args = firstCall.function?.arguments;
-            
-            // If the arguments is a string (like our XML format), use it.
-            // If it's an object, stringify it.
-            const argsStr = typeof args === 'string' ? args : JSON.stringify(args || '');
-            
-            // Reconstruct a pseudo-tag that our parser might recognize or at least show to the user.
-            return `<${name} ${argsStr.includes('path=') ? '' : 'arguments='}"${argsStr.replace(/"/g, '&quot;')}" />`;
-        }
-
-        return '';
-    } catch {
-        return '';
-    }
-}
-
 export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
     const response = await axios.post(options.endpoint.apiUrl, {
         ...buildStreamBody(
@@ -140,21 +94,21 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         let buffer = '';
         stream.on('data', (chunk: Buffer) => {
             buffer += chunk.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-                try {
-                    const token = extractStreamToken(line, options.endpoint.isLMStudio);
-                    if (token) {
-                        output += token;
-                        onToken(token);
-                    }
-                } catch {
-                    // Ignore malformed partial JSON chunks.
-                }
+            const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio);
+            buffer = parsed.remainder;
+            for (const token of parsed.tokens) {
+                output += token;
+                onToken(token);
             }
         });
-        stream.on('end', () => resolve());
+        stream.on('end', () => {
+            const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio, true);
+            for (const token of parsed.tokens) {
+                output += token;
+                onToken(token);
+            }
+            resolve();
+        });
         stream.on('error', (err: any) => reject(err));
     });
 
