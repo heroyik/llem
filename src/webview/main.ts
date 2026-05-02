@@ -277,7 +277,7 @@ try {
     vscode.postMessage({ type: 'showTerminal' });
   }
 
-  function copyAssistantMessage(messageEl) {
+  function copyMessageText(messageEl) {
     if (!(messageEl instanceof Element)) return;
     const body = messageEl.querySelector('.msg-body');
     if (!body) return;
@@ -292,8 +292,25 @@ try {
     });
   }
 
-  function actionButton(label, action, active) {
-    return '<button class="msg-action-btn' + (active ? ' active' : '') + '" data-action="' + action + '" type="button">' + label + '</button>';
+  function iconMarkup(kind) {
+    if (kind === 'copy') {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="3" width="8" height="10" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.5"></rect><path d="M3.5 10.5V5a2 2 0 0 1 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
+    }
+    if (kind === 'edit') {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 2.6a1.5 1.5 0 0 1 2.1 2.1l-7 7L3 12.9l1.2-2.9 6.7-7.4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="m9.8 3.7 2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
+    }
+    if (kind === 'branch') {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12.5 8A1.5 1.5 0 1 1 11 6.5 1.5 1.5 0 0 1 12.5 8ZM4 4.8v2.1c0 .6.4 1 1 1h4.5M4 11.2V9.1c0-.6.4-1 1-1h4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
+    }
+    return '';
+  }
+
+  function actionButton(label, action, active, iconKind) {
+    const classes = 'msg-action-btn' + (iconKind ? ' icon-only' : '') + (active ? ' active' : '');
+    const content = iconKind
+      ? iconMarkup(iconKind) + '<span class="sr-only">' + label + '</span>'
+      : label;
+    return '<button class="' + classes + '" data-action="' + action + '" type="button" aria-label="' + label + '" title="' + label + '">' + content + '</button>';
   }
 
   function renderMessageActions(message, messageIndex) {
@@ -306,7 +323,8 @@ try {
     wrap.setAttribute('data-message-index', String(messageIndex));
     if (message.role === 'user') {
       wrap.innerHTML =
-        actionButton('Edit', 'edit-message', false) +
+        actionButton('Copy', 'copy-message', false, 'copy') +
+        actionButton('Edit', 'edit-message', false, 'edit') +
         '<span class="msg-action-feedback"></span>';
       return wrap;
     }
@@ -395,7 +413,7 @@ try {
       const message = displayMessages[messageIndex];
 
       if (target.closest('[data-action="copy-message"]')) {
-        copyAssistantMessage(messageEl);
+        copyMessageText(messageEl);
         return;
       }
 
@@ -518,9 +536,11 @@ try {
     el.className = 'msg' + (isUser ? ' msg-user' : '') + (isErr ? ' msg-error' : '');
     const head = document.createElement('div');
     head.className = 'msg-head';
-    head.innerHTML = (isUser
-      ? '<div class="av av-user">You</div><span>You</span>'
-      : '<div class="av av-ai">LL</div><span>LLeM</span>') + '<span class="msg-time">' + getTime() + '</span>';
+    if (isUser) {
+      head.innerHTML = '<div class="av av-user">You</div><span>You</span>';
+    } else {
+      head.innerHTML = '<div class="av av-ai">LL</div><span>LLeM</span><span class="msg-time">' + getTime() + '</span>';
+    }
     const body = document.createElement('div');
     body.className = 'msg-body';
     if (isUser) {
@@ -536,7 +556,15 @@ try {
     el.appendChild(body);
     const actions = renderMessageActions(message, messageIndex);
     if (actions) {
-      el.appendChild(actions);
+      if (isUser) {
+        const meta = document.createElement('div');
+        meta.className = 'msg-meta-row';
+        meta.innerHTML = '<span class="msg-time msg-time-inline">' + getTime() + '</span>';
+        meta.appendChild(actions);
+        el.appendChild(meta);
+      } else {
+        el.appendChild(actions);
+      }
     }
     if (typeof messageIndex === 'number' && messageIndex >= 0) {
       displayMessages[messageIndex] = message;
