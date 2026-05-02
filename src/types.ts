@@ -28,6 +28,7 @@ export interface DisplayMessage {
     role: string;
     text: string;
     files?: Pick<AttachedFile, 'name' | 'type' | 'data' | 'sourceUri'>[];
+    feedback?: 'like' | 'dislike' | null;
 }
 
 export interface AIEndpoint {

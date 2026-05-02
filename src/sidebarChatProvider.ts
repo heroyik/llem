@@ -19,6 +19,9 @@ import type { AttachedFile, ChatMessage } from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { getLlemTerminal } from './terminalManager';
 import { logInfo, logError } from './logger';
+import { isEditableFilePath } from './editableFiles';
+import { ResponsePreferenceManager } from './responsePreferenceManager';
+import type { MessageFeedback } from './responsePreferenceManager';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
@@ -138,6 +141,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private readonly _chatSession: ChatSession;
     private readonly _historyManager: HistoryManager;
     private readonly _chatPipeline: ChatPipeline;
+    private readonly _responsePreferenceManager: ResponsePreferenceManager;
     private _setupStarted = false;
 
     constructor(private readonly _extensionUri: vscode.Uri, ctx: vscode.ExtensionContext) {
@@ -148,6 +152,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._systemPrompt = ctx.globalState.get<string>('aiSystemPrompt', SYSTEM_PROMPT);
         this._historyManager = new HistoryManager(ctx);
         this._chatSession = new ChatSession(ctx, () => this._systemPrompt);
+        this._responsePreferenceManager = new ResponsePreferenceManager(ctx);
         this._chatPipeline = new ChatPipeline({
             buildRequestMessages: (internetEnabled, backgroundLabel) => this._buildRequestMessages(internetEnabled, backgroundLabel),
             executeActions: (aiMessage) => this._executeActions(aiMessage),
@@ -394,6 +399,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             stopGeneration: () => this._stopGeneration(),
             fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
             openAttachment: (file) => this._openAttachment(file),
+            branchChat: (messageIndex) => this._branchChat(messageIndex),
+            setMessageFeedback: (messageIndex, feedback) => this._setMessageFeedback(messageIndex, feedback),
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
             deleteHistory: (id) => this.deleteHistory(id),
@@ -486,7 +493,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 const data = Buffer.from(bytes).toString('base64');
                 this._view.webview.postMessage({
                     type: 'injectAttachment',
-                    value: { name, type, data, requestId }
+                    value: { name, type, data, requestId, sourceUri: uri.toString(true) }
                 });
             } catch (err) {
                 this._view.webview.postMessage({
@@ -499,11 +506,21 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _openAttachment(file: { name?: string; data?: string; type?: string; sourceUri?: string }) {
         if (!file.name) { return; }
+        if (!isEditableFilePath(file.name)) {
+            void vscode.window.showInformationMessage(`Only editable text/code files can be opened from chat: ${file.name}`);
+            return;
+        }
 
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) { return; }
 
         try {
+            if (file.sourceUri) {
+                const uri = parseDroppedUri(file.sourceUri);
+                await openDocument(uri);
+                return;
+            }
+
             const { absPath } = await resolveLlemPath(workspaceRoot, file.name);
             await openDocument(vscode.Uri.file(absPath));
         } catch (err) {
@@ -575,6 +592,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return this._contextBuilder.buildRequestMessages({
             chatHistory: this._chatSession.chatHistory,
             systemPrompt: this._systemPrompt,
+            responsePreferenceDirective: this._responsePreferenceManager.getDirective(),
             brainEnabled: this._brainEnabled,
             internetEnabled,
             backgroundLabel
@@ -611,6 +629,40 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 // We don't throw here to avoid interrupting the chat pipeline if saving fails
             }
         }
+    }
+
+    private async _branchChat(messageIndex: number): Promise<void> {
+        if (!Number.isInteger(messageIndex) || messageIndex < 0) {
+            return;
+        }
+
+        const branch = this._chatSession.createBranchFromMessage(messageIndex);
+        if (!branch) {
+            return;
+        }
+
+        try {
+            await this.saveHistory();
+            this._chatSession.load(branch);
+            await this.saveHistory();
+            this._view?.webview.postMessage({ type: 'clearChat' });
+            this._restoreDisplayMessages();
+            this._view?.webview.postMessage({ type: 'historyLoaded', id: branch.id });
+            void vscode.window.showInformationMessage('Opened a new chat branch from that response.');
+        } catch (err) {
+            logError('[BRANCH] Failed to create branch: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    private async _setMessageFeedback(messageIndex: number, feedback: MessageFeedback | null): Promise<void> {
+        const message = this._chatSession.updateMessageFeedback(messageIndex, feedback);
+        if (!message) {
+            return;
+        }
+
+        const sourceKey = `${this._chatSession.id}:${messageIndex}`;
+        await this._responsePreferenceManager.setFeedback(sourceKey, message.text, feedback);
+        await this.saveHistory();
     }
 
     private _getHtml(webview: vscode.Webview): string {

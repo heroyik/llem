@@ -70,7 +70,7 @@ export class ChatPipeline {
             if (hasFiles) {
                 displayMessage.files = attachments.displayFiles;
             }
-            this.host.getDisplayMessages().push(displayMessage);
+            this.host.getDisplayMessages().push({ ...displayMessage, feedback: null });
 
             const reqMessages = this.host.buildRequestMessages(
                 options.internetEnabled,
@@ -157,10 +157,15 @@ export class ChatPipeline {
                 break;
             }
 
-            this.host.postWebviewMessage({ type: 'streamEnd' });
-            this.host.getDisplayMessages().push({ text: this.stripActionTags(fullAiMessage), role: 'ai' });
+            const finalDisplayMessage: DisplayMessage = { text: this.stripActionTags(fullAiMessage), role: 'ai', feedback: null };
+            this.host.getDisplayMessages().push(finalDisplayMessage);
             this.trimHistory();
             await this.host.saveHistory();
+            this.host.postWebviewMessage({
+                type: 'streamEnd',
+                message: finalDisplayMessage,
+                messageIndex: this.host.getDisplayMessages().length - 1
+            });
         } catch (error: any) {
             if (isAbortError(error)) {
                 this.host.postWebviewMessage({ type: 'streamAbort' });

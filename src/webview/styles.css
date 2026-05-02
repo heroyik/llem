@@ -568,13 +568,15 @@ select {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--panel-2);
+}
+.msg-attachment[role="button"] {
   cursor: pointer;
 }
-.msg-attachment:hover {
+.msg-attachment[role="button"]:hover {
   border-color: var(--border-strong);
   background: var(--panel-3);
 }
-.msg-attachment:focus-visible {
+.msg-attachment[role="button"]:focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
 }
@@ -844,6 +846,37 @@ textarea::placeholder {
 .regen-btn:hover {
   color: var(--text);
   border-color: var(--border-strong);
+}
+.msg-actions {
+  margin-left: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.msg-action-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color .14s ease, border-color .14s ease, background .14s ease;
+}
+.msg-action-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.msg-action-btn.active {
+  color: var(--text);
+  border-color: rgba(255, 158, 88, 0.35);
+  background: rgba(255, 158, 88, 0.12);
+}
+.msg-action-feedback {
+  min-width: 42px;
+  font-size: 10px;
+  color: var(--text-faint);
 }
 body.init .main-view {
   justify-content: center;

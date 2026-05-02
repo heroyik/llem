@@ -13,6 +13,8 @@ export interface WebviewMessageRouterHost {
     stopGeneration(): void;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
     openAttachment(file: { name?: string; sourceUri?: string }): Promise<void>;
+    branchChat(messageIndex: number): Promise<void>;
+    setMessageFeedback(messageIndex: number, feedback: 'like' | 'dislike' | null): Promise<void>;
     getHistory(): Promise<void>;
     loadHistory(id: string): Promise<void>;
     deleteHistory(id: string): Promise<void>;
@@ -67,6 +69,12 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'openAttachment':
             await host.openAttachment(message.file || {});
+            break;
+        case 'branchChat':
+            await host.branchChat(message.messageIndex);
+            break;
+        case 'setMessageFeedback':
+            await host.setMessageFeedback(message.messageIndex, message.feedback ?? null);
             break;
         case 'getHistory':
             await host.getHistory();

@@ -1,3 +1,5 @@
+import { isEditableFilePath, normalizeWorkspaceFilePath } from '../editableFiles';
+
 // @ts-nocheck
 window.onerror = function(msg, url, line) {
   const overlay = document.createElement('div');
@@ -177,37 +179,19 @@ try {
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
 
-    const COMMON_EXTENSIONS = new Set([
-      '.txt', '.md', '.csv', '.json',
-      '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.html', '.css', '.scss', '.less',
-      '.py', '.java', '.rs', '.go', '.cpp', '.c', '.h', '.hpp', '.cs',
-      '.yaml', '.yml', '.xml', '.toml', '.env', '.sh', '.bat', '.ps1',
-      '.rb', '.php', '.swift', '.kt', '.sql', '.vue', '.svelte'
-    ]);
-
-    function isLikelyFile(name) {
+    function isEditableWorkspaceFile(name) {
       const text = String(name || '').trim();
       if (!text || text.includes(' ') || text.includes('\n')) return false;
+      if (!isEditableFilePath(text)) return false;
 
       // 1. Check absolute path (rough check for Windows/POSIX)
       if (text.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(text)) {
-        const dotIndex = text.lastIndexOf('.');
-        if (dotIndex > 0) {
-          const ext = text.slice(dotIndex).toLowerCase();
-          if (COMMON_EXTENSIONS.has(ext)) return true;
-        }
-        return false;
+        return true;
       }
 
       // 2. Check relative path in workspace
-      let normalized = text.replace(/\\/g, '/');
-      if (normalized.startsWith('./')) normalized = normalized.slice(2);
+      const normalized = normalizeWorkspaceFilePath(text);
       if (workspaceFiles.has(normalized)) return true;
-
-      // 3. Special cases like .gitignore (only if they exist in workspaceFiles)
-      if (normalized === '.gitignore' || normalized === 'Makefile' || normalized === 'Dockerfile') {
-        if (workspaceFiles.has(normalized)) return true;
-      }
 
       return false;
     }
@@ -217,7 +201,7 @@ try {
     };
     md.renderer.rules.code_inline = function(tokens, idx, options, env, self) {
       const token = tokens[idx];
-      if (isLikelyFile(token.content)) {
+      if (isEditableWorkspaceFile(token.content)) {
         token.attrJoin('class', 'is-file');
       }
       return defaultCodeInline(tokens, idx, options, env, self);
@@ -242,10 +226,16 @@ try {
     }
 
     value = value.replace(/(?:<|call:)\s*create_file\s+path="([^"]+)">([\s\S]*?)<\/create_file>/gi, function(_, filePath, content) {
-      return pushBlock('<div class="file-badge">📁 Created file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
+      const attrs = isEditableFilePath(filePath)
+        ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
+        : '';
+      return pushBlock('<div class="file-badge"' + attrs + '>📁 Created file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
     value = value.replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)">([\s\S]*?)<\/edit_file>/gi, function(_, filePath, content) {
-      return pushBlock('<div class="edit-badge">✏️ Edited file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
+      const attrs = isEditableFilePath(filePath)
+        ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
+        : '';
+      return pushBlock('<div class="edit-badge"' + attrs + '>✏️ Edited file · ' + esc(filePath) + '</div><div class="code-wrap"><pre><code>' + esc(content) + '</code></pre><button class="copy-btn" data-action="copy-code">Copy</button></div>');
     });
     value = value.replace(/(?:<|call:)\s*run_command>([\s\S]*?)<\/run_command>/gi, function(_, command) {
       return pushBlock('<div class="cmd-badge"><span>▶ ' + esc(command.trim()) + '</span><button class="btn-open" data-action="open-terminal">Open</button></div>');
@@ -286,6 +276,65 @@ try {
     vscode.postMessage({ type: 'showTerminal' });
   }
 
+  function copyAssistantMessage(messageEl) {
+    if (!(messageEl instanceof Element)) return;
+    const body = messageEl.querySelector('.msg-body');
+    if (!body) return;
+    navigator.clipboard.writeText(body.innerText.trim()).then(function() {
+      const feedback = messageEl.querySelector('.msg-action-feedback');
+      if (!feedback) return;
+      const previous = feedback.textContent;
+      feedback.textContent = 'Copied';
+      setTimeout(function() {
+        feedback.textContent = previous || '';
+      }, 1400);
+    });
+  }
+
+  function actionButton(label, action, active) {
+    return '<button class="msg-action-btn' + (active ? ' active' : '') + '" data-action="' + action + '" type="button">' + label + '</button>';
+  }
+
+  function renderMessageActions(message, messageIndex) {
+    if (!message || message.role !== 'ai' || typeof messageIndex !== 'number' || messageIndex < 0) {
+      return null;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-actions';
+    wrap.setAttribute('data-message-index', String(messageIndex));
+    wrap.innerHTML =
+      actionButton('Copy', 'copy-message', false) +
+      actionButton('Branch', 'branch-message', false) +
+      actionButton('👍', 'like-message', message.feedback === 'like') +
+      actionButton('👎', 'dislike-message', message.feedback === 'dislike') +
+      '<span class="msg-action-feedback"></span>';
+    return wrap;
+  }
+
+  function setFeedbackState(actionBar, feedback) {
+    if (!(actionBar instanceof Element)) return;
+    const likeBtn = actionBar.querySelector('[data-action="like-message"]');
+    const dislikeBtn = actionBar.querySelector('[data-action="dislike-message"]');
+    if (likeBtn) likeBtn.classList.toggle('active', feedback === 'like');
+    if (dislikeBtn) dislikeBtn.classList.toggle('active', feedback === 'dislike');
+  }
+
+  function syncFeedbackAcrossCopies(messageIndex, feedback) {
+    const selector = '.msg-actions[data-message-index="' + String(messageIndex) + '"]';
+    document.querySelectorAll(selector).forEach(function(actionBar) {
+      setFeedbackState(actionBar, feedback);
+    });
+  }
+
+  function openEditableFile(fileName, sourceUri) {
+    const safeName = String(fileName || '').trim();
+    if (!safeName || !isEditableFilePath(safeName)) {
+      return;
+    }
+    vscode.postMessage({ type: 'openAttachment', file: { name: safeName, sourceUri: sourceUri || '' } });
+  }
+
   document.addEventListener('click', function(event) {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -296,17 +345,65 @@ try {
       return;
     }
 
+    const messageActionBar = target.closest('.msg-actions');
+    if (messageActionBar) {
+      const messageEl = target.closest('.msg');
+      const messageIndex = Number(messageActionBar.getAttribute('data-message-index'));
+
+      if (target.closest('[data-action="copy-message"]')) {
+        copyAssistantMessage(messageEl);
+        return;
+      }
+
+      if (target.closest('[data-action="branch-message"]')) {
+        if (Number.isInteger(messageIndex) && messageIndex >= 0) {
+          vscode.postMessage({ type: 'branchChat', messageIndex: messageIndex });
+        }
+        return;
+      }
+
+      if (target.closest('[data-action="like-message"]')) {
+        const nextFeedback = target.closest('[data-action="like-message"]').classList.contains('active') ? null : 'like';
+        syncFeedbackAcrossCopies(messageIndex, nextFeedback);
+        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: nextFeedback });
+        return;
+      }
+
+      if (target.closest('[data-action="dislike-message"]')) {
+        const nextFeedback = target.closest('[data-action="dislike-message"]').classList.contains('active') ? null : 'dislike';
+        syncFeedbackAcrossCopies(messageIndex, nextFeedback);
+        vscode.postMessage({ type: 'setMessageFeedback', messageIndex: messageIndex, feedback: nextFeedback });
+        return;
+      }
+    }
+
     if (target.closest('[data-action="open-terminal"]')) {
       openTerminal();
+      return;
+    }
+
+    const openFileTrigger = target.closest('[data-action="open-file"]');
+    if (openFileTrigger) {
+      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '');
       return;
     }
 
     const inlineCode = target.closest('.msg-body :not(pre) > code.is-file');
     if (inlineCode) {
       const fileName = inlineCode.textContent.trim();
-      if (fileName) {
-        vscode.postMessage({ type: 'openAttachment', file: { name: fileName } });
-      }
+      openEditableFile(fileName, '');
+    }
+  });
+
+  document.addEventListener('keydown', function(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+
+    const openFileTrigger = target.closest('[data-action="open-file"]');
+    if (openFileTrigger) {
+      event.preventDefault();
+      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '');
     }
   });
 
@@ -319,18 +416,23 @@ try {
     files.forEach(function(file) {
       const item = document.createElement('div');
       item.className = 'msg-attachment';
-      item.setAttribute('role', 'button');
-      item.setAttribute('tabindex', '0');
-      item.title = file.sourceUri ? 'Open ' + (file.name || 'attachment') : 'Find and open ' + (file.name || 'attachment');
-      item.addEventListener('click', function() {
-        vscode.postMessage({ type: 'openAttachment', file: { name: file.name || '', sourceUri: file.sourceUri || '' } });
-      });
-      item.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          vscode.postMessage({ type: 'openAttachment', file: { name: file.name || '', sourceUri: file.sourceUri || '' } });
-        }
-      });
+      const editable = isEditableFilePath(file.name || '');
+      if (editable) {
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.title = file.sourceUri ? 'Open ' + (file.name || 'attachment') : 'Find and open ' + (file.name || 'attachment');
+        item.addEventListener('click', function() {
+          openEditableFile(file.name || '', file.sourceUri || '');
+        });
+        item.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openEditableFile(file.name || '', file.sourceUri || '');
+          }
+        });
+      } else {
+        item.title = file.name || 'attachment';
+      }
       const isImage = file.type && file.type.startsWith('image/') && file.data;
       if (isImage) {
         const img = document.createElement('img');
@@ -355,9 +457,14 @@ try {
     return wrap;
   }
 
-  function addMsg(text, role, files) {
-    const isUser = role === 'user';
-    const isErr = role === 'error';
+  function addMsg(messageOrText, role, files, messageIndex) {
+    const message = typeof messageOrText === 'object' && messageOrText !== null
+      ? messageOrText
+      : { text: messageOrText, role: role, files: files, feedback: null };
+    const resolvedRole = message.role || role;
+    const resolvedFiles = message.files || files;
+    const isUser = resolvedRole === 'user';
+    const isErr = resolvedRole === 'error';
     const el = document.createElement('div');
     el.className = 'msg' + (isUser ? ' msg-user' : '') + (isErr ? ' msg-error' : '');
     const head = document.createElement('div');
@@ -368,18 +475,23 @@ try {
     const body = document.createElement('div');
     body.className = 'msg-body';
     if (isUser) {
-      body.innerText = text || '';
+      body.innerText = message.text || '';
     } else {
-      body.innerHTML = fmt(text || '');
+      body.innerHTML = fmt(message.text || '');
     }
-    const attachments = renderAttachments(files);
+    const attachments = renderAttachments(resolvedFiles);
     if (attachments) {
       body.appendChild(attachments);
     }
     el.appendChild(head);
     el.appendChild(body);
+    const actions = renderMessageActions(message, messageIndex);
+    if (actions) {
+      el.appendChild(actions);
+    }
     chat.appendChild(el);
     chat.scrollTop = chat.scrollHeight;
+    return el;
   }
 
   function showDeleteModal(id, title) {
@@ -510,7 +622,7 @@ try {
     streamRenderTimer = setTimeout(renderStreamNow, delay);
   }
 
-  function finalizeStream(state) {
+  function finalizeStream(state, message, messageIndex) {
     hideLoader();
     if (!streamEl || !streamPreviewEl) {
       setSending(false);
@@ -532,6 +644,12 @@ try {
       }
     }
     updateStreamMeta();
+    if (state === 'done') {
+      const actions = renderMessageActions(message || { role: 'ai', text: streamRaw, feedback: null }, messageIndex);
+      if (actions && !streamEl.querySelector('.msg-actions')) {
+        streamEl.appendChild(actions);
+      }
+    }
     appendRegenButton(streamEl);
     setSending(false);
     resetStreamRefs();
@@ -960,7 +1078,7 @@ try {
     document.body.classList.remove('init');
     const welcome = document.querySelector('.welcome');
     if (welcome) welcome.remove();
-    addMsg(text, 'user', attachedFiles);
+    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, -1);
     input.value = '';
     input.style.height = 'auto';
     setSending(true);
@@ -1185,17 +1303,17 @@ try {
         hideLoader();
         setSending(false);
         log('[STREAM] Response received (len=' + (msg.value || '').length + ')');
-        addMsg(msg.value, 'ai');
+        addMsg(msg.message || { text: msg.value, role: 'ai', feedback: null }, 'ai', undefined, typeof msg.messageIndex === 'number' ? msg.messageIndex : -1);
         break;
       case 'error':
         log('[ERROR] Extension error: ' + msg.value, 'error');
         if (streamEl) {
-          finalizeStream('stopped');
+          finalizeStream('stopped', null, -1);
         } else {
           hideLoader();
           setSending(false);
         }
-        addMsg(msg.value, 'error');
+        addMsg({ text: msg.value, role: 'error', feedback: null }, 'error', undefined, -1);
         break;
       case 'streamStart': {
         log('[STREAM] Stream started');
@@ -1246,11 +1364,11 @@ try {
         break;
       case 'streamEnd':
         log('[STREAM] Stream ended (chunks=' + streamChunkCount + ', chars=' + streamRaw.length + ')');
-        finalizeStream('done');
+        finalizeStream('done', msg.message || null, typeof msg.messageIndex === 'number' ? msg.messageIndex : -1);
         break;
       case 'streamAbort':
         log('[STREAM] Stream aborted');
-        finalizeStream('stopped');
+        finalizeStream('stopped', null, -1);
         break;
       case 'modelsList':
         modelSel.innerHTML = '';
@@ -1291,8 +1409,8 @@ try {
         if (msg.value && msg.value.length > 0) {
           log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
           document.body.classList.remove('init');
-          msg.value.forEach(function(item) {
-            addMsg(item.text, item.role, item.files);
+          msg.value.forEach(function(item, index) {
+            addMsg(item, item.role, item.files, index);
           });
         } else {
           log('[RESTORE] No messages to restore — showing welcome screen');
@@ -1327,6 +1445,9 @@ try {
         log('[DROP] Fetched ' + (msg.files || []).length + ' URI attachment(s)');
         appendAttachmentRecords(msg.files || []);
         break;
+      case 'injectAttachment':
+        appendAttachmentRecords([msg.value]);
+        break;
       case 'workspaceFilesList':
         workspaceFiles = new Set(msg.value || []);
         log('[FILES] Synchronized ' + workspaceFiles.size + ' workspace file path(s)');
@@ -1355,5 +1476,3 @@ try {
   crash.appendChild(pre);
   document.body.appendChild(crash);
 }
-
-

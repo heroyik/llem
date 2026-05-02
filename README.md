@@ -27,8 +27,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 ### 1. Download the Extension
 1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
 2. Look at the **Releases** section on the right sidebar.
-3. Click on the latest release tag (e.g., `v3.0.5`).
-4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.0.5.vsix`) to download it to your machine.
+3. Click on the latest release tag (e.g., `v3.1.0`).
+4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.0.vsix`) to download it to your machine.
 
 ### 2. Install in VS Code or Cursor
 1. Open **VS Code** or **Cursor**.
@@ -120,6 +120,81 @@ Open your VS Code `settings.json` to customize the experience.
 ---
 
 ## 📝 Release Notes
+
+### v3.1.0 — Gemini-Style Reply Actions, Branching, and Preference Memory
+
+**v3.1.0** is the first release that makes each completed reply feel more like a modern chat product, while still keeping the whole workflow local-first.
+
+#### New reply actions after every completed assistant turn
+
+Once an assistant reply finishes streaming, LLeM now shows a compact action row directly under that message.
+
+- **Copy**: Copies just that specific assistant response to your clipboard.
+- **Branch**: Creates a brand-new chat branch from that response so you can explore a different direction without losing the original thread.
+- **👍 Like**: Marks that answer style as something the user wants more of.
+- **👎 Dislike**: Marks that answer style as something the user wants less of.
+
+This interaction model is intentionally inspired by the post-reply controls you see in Gemini Web, but adapted to LLeM's local VS Code workflow.
+
+#### Chat branching
+
+Branching is now a first-class concept inside the chat experience.
+
+- You can branch from any completed assistant response.
+- The new branch becomes its own saved chat session.
+- The original conversation remains untouched in history.
+- The branch inherits the visible conversation context up to the selected reply, making it easy to explore alternate plans, implementations, or follow-up prompts.
+
+This is especially useful when you want to:
+
+- compare two implementation strategies,
+- keep one thread focused on debugging while another explores a refactor,
+- or preserve a "good state" before taking the conversation in a different direction.
+
+#### Persistent response-preference memory
+
+Likes and dislikes are not cosmetic. They now update a persistent memory layer that survives:
+
+- new chats,
+- branched chats,
+- and extension restarts.
+
+When you give feedback on a reply, LLeM stores a compact memory of that preference and uses it to steer future responses. In practice, that means:
+
+- replies you like help reinforce the kind of tone, structure, and answer shape you want,
+- replies you dislike tell the assistant to avoid similar response patterns later unless you explicitly ask for them.
+
+This preference memory is injected into the system context for future requests, so LLeM can adapt over time instead of acting like every conversation starts from zero.
+
+#### Better alignment between UI behavior and file opening rules
+
+This release also tightens the file interaction model inside chat:
+
+- only editable file types are shown as clickable in message content,
+- only editable attachments can be opened from chat,
+- and dropped file attachments preserve enough metadata to open the correct source more reliably.
+
+That keeps chat interactions cleaner and avoids misleading "clickable" affordances on files that are not actually editable in the intended way.
+
+#### What changed technically
+
+Under the hood, this release adds several important building blocks:
+
+- a shared editable-file classifier used by both the webview and extension host,
+- per-message feedback state in persisted chat history,
+- a new response preference manager backed by extension global state,
+- message-level UI actions for copy, branching, and feedback,
+- and branch session generation from the currently visible conversation timeline.
+
+#### Why this matters
+
+LLeM has always focused on local execution, real file edits, and practical repo-aware assistance. With **v3.1.0**, the chat UX becomes much more iterative:
+
+- you can fork thought paths without losing your place,
+- quickly reuse or share strong replies,
+- and gradually teach the assistant how you want it to respond.
+
+Still local. Still yours. Just much more adaptable.
 
 ### v3.0.5 — The "First Flight" Public Drop ✈️
 
