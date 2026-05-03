@@ -14,6 +14,12 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     const markdownItUri = webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'node_modules', 'markdown-it', 'dist', 'markdown-it.min.js')
     );
+    const katexCssUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'node_modules', 'katex', 'dist', 'katex.min.css')
+    );
+    const texmathCssUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'node_modules', 'markdown-it-texmath', 'css', 'texmath.css')
+    );
     const stylesUri = webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'assets', 'webview.css')
     );
@@ -33,6 +39,8 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>LLeM</title>
+  <link nonce="${nonce}" rel="stylesheet" href="${katexCssUri}">
+  <link nonce="${nonce}" rel="stylesheet" href="${texmathCssUri}">
   <link nonce="${nonce}" rel="stylesheet" href="${stylesUri}">
 </head>
 <body class="init" data-version="${safeExtensionVersion}">
@@ -90,6 +98,7 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
     <div class="input-wrap">
       <div class="input-box" id="inputBox">
+        <div class="queue-panel" id="queuePanel" hidden></div>
         <div class="attach-preview" id="attachPreview"></div>
         <div class="edit-banner" id="editBanner" hidden>
           <span class="edit-banner-label" id="editBannerLabel">Editing this message in a new branch</span>

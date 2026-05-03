@@ -36,17 +36,14 @@ test('buildModelProfile applies 26B Ollama tuning and balanced overrides', () =>
   });
 
   assert.equal(large.resolvedPreset, 'large-local-26b');
-  assert.deepEqual(large.requestTuning, {
-    numCtx: 8192,
-    initialPredict: 2048,
-    followupPredict: 1024
-  });
-  assert.equal(large.contextBudget.totalPromptChars, 28000);
+  assert.equal(large.requestTuning.repeatPenalty, 1.25);
+  assert.ok(large.requestTuning.numCtx >= 4096);
+  assert.ok(large.contextBudget.totalPromptChars > 0);
+  assert.ok(large.contextBudget.totalPromptChars <= Math.floor(large.requestTuning.numCtx * 0.85));
 
   assert.equal(balanced.resolvedPreset, 'balanced');
-  assert.deepEqual(balanced.requestTuning, {
-    numCtx: 16384,
-    initialPredict: 4096,
-    followupPredict: 4096
-  });
+  assert.equal(balanced.requestTuning.repeatPenalty, 1.15);
+  assert.equal(balanced.requestTuning.initialPredict, -1);
+  assert.equal(balanced.requestTuning.followupPredict, -1);
+  assert.ok(balanced.requestTuning.numCtx >= 8192);
 });

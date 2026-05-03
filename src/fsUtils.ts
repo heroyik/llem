@@ -4,12 +4,23 @@ import * as vscode from 'vscode';
 import { getVaultDir } from './config';
 import { safeResolveActionPath, SafePathResult } from './security';
 
-export async function openDocument(uri: vscode.Uri): Promise<void> {
-    if (uri.fsPath.toLowerCase().endsWith('.md')) {
+export async function openDocument(
+    uri: vscode.Uri,
+    options: { line?: number; forceEditor?: boolean } = {}
+): Promise<void> {
+    if (uri.fsPath.toLowerCase().endsWith('.md') && !options.forceEditor) {
         await vscode.commands.executeCommand('markdown.showPreview', uri);
         return;
     }
-    await vscode.window.showTextDocument(uri, { preview: false });
+
+    const document = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    if (typeof options.line === 'number' && Number.isFinite(options.line) && options.line > 0) {
+        const targetLine = Math.max(0, Math.min(document.lineCount - 1, Math.floor(options.line) - 1));
+        const position = new vscode.Position(targetLine, 0);
+        editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+    }
 }
 
 export function safeDateFolderName(date = new Date()): string {

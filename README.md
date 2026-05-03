@@ -345,6 +345,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.14
+
+- Bumped the VSIX build from `3.3.14` to `3.3.14`.
+- Added queued request pause/resume and reordering
+- Added direct editing for queued items
+- Expanded queue tests and stabilized package test suite
+- Packaged `release/llem-3.3.14.vsix`.
+
 ### v3.3.12
 
 - Bumped the VSIX build from `3.3.11` to `3.3.12`.

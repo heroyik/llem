@@ -1,10 +1,7 @@
 export interface WebviewMessageRouterHost {
     handleBrainMenu(): Promise<void>;
     handleInjectLocalBrain(files: any[]): Promise<void>;
-    handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean): Promise<void>;
-    handlePromptWithFile(prompt: string, modelName: string, files: any[], internetEnabled?: boolean): Promise<void>;
     handleSettingsMenu(): Promise<void>;
-    regenerate(): Promise<void>;
     resetChat(): void;
     restoreDisplayMessages(): void;
     sendModels(): Promise<void>;
@@ -12,9 +9,21 @@ export interface WebviewMessageRouterHost {
     showTerminal(): void;
     stopGeneration(): void;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
-    openAttachment(file: { name?: string; sourceUri?: string }): Promise<void>;
+    openAttachment(file: { name?: string; sourceUri?: string; line?: number }): Promise<void>;
     branchChat(messageIndex: number): Promise<void>;
-    editMessage(messageIndex: number, prompt: string, modelName: string, files: any[], internetEnabled?: boolean): Promise<void>;
+    enqueueRequest(request: {
+        kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
+        prompt: string;
+        modelName: string;
+        files?: any[];
+        internetEnabled?: boolean;
+        messageIndex?: number;
+    }): Promise<void>;
+    cancelQueuedRequest(id: string): Promise<void>;
+    clearQueuedRequests(): Promise<void>;
+    moveQueuedRequest(id: string, direction: 'up' | 'down'): Promise<void>;
+    editQueuedRequest(id: string): Promise<void>;
+    resumeQueue(): Promise<void>;
     setMessageFeedback(messageIndex: number, feedback: 'like' | 'dislike' | null): Promise<void>;
     getHistory(): Promise<void>;
     loadHistory(id: string): Promise<void>;
@@ -39,10 +48,21 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             await host.setDefaultModel(message.model);
             break;
         case 'prompt':
-            await host.handlePrompt(message.value, message.model, message.internet);
+            await host.enqueueRequest({
+                kind: 'prompt',
+                prompt: message.value,
+                modelName: message.model,
+                internetEnabled: message.internet
+            });
             break;
         case 'promptWithFile':
-            await host.handlePromptWithFile(message.value, message.model, message.files, message.internet);
+            await host.enqueueRequest({
+                kind: 'promptWithFile',
+                prompt: message.value,
+                modelName: message.model,
+                files: message.files,
+                internetEnabled: message.internet
+            });
             break;
         case 'newChat':
             await host.resetChat();
@@ -66,13 +86,35 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             host.stopGeneration();
             break;
         case 'regenerate':
-            await host.regenerate();
+            await host.enqueueRequest({
+                kind: 'regenerate',
+                prompt: '',
+                modelName: ''
+            });
             break;
         case 'showTerminal':
             host.showTerminal();
             break;
         case 'fetchUris':
             await host.fetchUris(message.uris, message.requestId);
+            break;
+        case 'enqueueRequest':
+            await host.enqueueRequest(message.request || {});
+            break;
+        case 'cancelQueuedRequest':
+            await host.cancelQueuedRequest(message.id);
+            break;
+        case 'clearQueuedRequests':
+            await host.clearQueuedRequests();
+            break;
+        case 'moveQueuedRequest':
+            await host.moveQueuedRequest(message.id, message.direction);
+            break;
+        case 'editQueuedRequest':
+            await host.editQueuedRequest(message.id);
+            break;
+        case 'resumeQueue':
+            await host.resumeQueue();
             break;
         case 'openAttachment':
             await host.openAttachment(message.file || {});
@@ -81,7 +123,14 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             await host.branchChat(message.messageIndex);
             break;
         case 'editMessage':
-            await host.editMessage(message.messageIndex, message.value, message.model, message.files || [], message.internet);
+            await host.enqueueRequest({
+                kind: 'editMessage',
+                prompt: message.value,
+                modelName: message.model,
+                files: message.files || [],
+                internetEnabled: message.internet,
+                messageIndex: message.messageIndex
+            });
             break;
         case 'setMessageFeedback':
             await host.setMessageFeedback(message.messageIndex, message.feedback ?? null);

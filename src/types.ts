@@ -67,6 +67,38 @@ export interface DisplayMessage {
     feedback?: 'like' | 'dislike' | null;
 }
 
+export type QueueRequestKind = 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
+
+export interface QueuedRequest {
+    id: string;
+    kind: QueueRequestKind;
+    prompt: string;
+    modelName: string;
+    files?: AttachedFile[];
+    internetEnabled?: boolean;
+    messageIndex?: number;
+    createdAt: number;
+    wasQueued?: boolean;
+}
+
+export interface QueueRequestSummary {
+    id: string;
+    kind: QueueRequestKind;
+    prompt: string;
+    modelName: string;
+    internetEnabled?: boolean;
+    messageIndex?: number;
+    createdAt: number;
+    attachmentCount: number;
+}
+
+export interface QueueStatePayload {
+    running: boolean;
+    paused: boolean;
+    activeRequest?: QueueRequestSummary;
+    pendingRequests: QueueRequestSummary[];
+}
+
 export interface AIEndpoint {
     apiUrl: string;
     isLMStudio: boolean;

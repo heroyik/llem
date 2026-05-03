@@ -15,13 +15,34 @@ import { handleSettingsMenu } from './settingsCommands';
 import type { SettingsCommandsHost } from './settingsCommands';
 import { routeWebviewMessage } from './webviewMessageRouter';
 import type { WebviewMessageRouterHost } from './webviewMessageRouter';
-import type { AttachedFile, ChatMessage, ModelProfile } from './types';
+import type {
+    AttachedFile,
+    ChatMessage,
+    ModelProfile,
+    QueuedRequest,
+    QueueRequestKind,
+    QueueRequestSummary,
+    QueueStatePayload
+} from './types';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { getLlemChannel } from './terminalManager';
 import { logInfo, logError } from './logger';
 import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFiles';
 import { ResponsePreferenceManager } from './responsePreferenceManager';
 import type { MessageFeedback } from './responsePreferenceManager';
+import {
+    cancelPendingRequest,
+    clearPendingRequests,
+    createRequestQueueState,
+    enqueueRequest as enqueueQueueState,
+    finishActiveRequest,
+    movePendingRequest,
+    pauseQueue,
+    promoteNextRequest,
+    resetQueueState,
+    resumeQueue as resumeQueueState,
+    type RequestQueueState
+} from './queueState';
 
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
@@ -128,6 +149,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _isSyncingBrain: boolean = false;
     public _brainEnabled: boolean = true;
     private _abortController?: AbortController;
+    private _activeRequestPromise?: Promise<void>;
+    private _isProcessingQueue = false;
+    private _queueState: RequestQueueState = createRequestQueueState();
     private _lastPrompt?: string;
     private _lastModel?: string;
     private _lastFiles?: AttachedFile[];
@@ -246,6 +270,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     public async resetChat() {
         logInfo('[NEW CHAT] resetChat() called (history length=' + this._chatSession.chatHistory.length + ', display length=' + this._chatSession.displayMessages.length + ')');
+        await this._resetQueueState({ abortActive: true });
         if (this._chatSession.displayMessages.length > 0) {
             try {
                 logInfo('[NEW CHAT] Saving current session before reset (id=' + this._chatSession.id + ')');
@@ -262,6 +287,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._lastFiles = undefined;
         this._lastInternetEnabled = undefined;
         this._view?.webview.postMessage({ type: 'clearChat' });
+        this._syncQueueStateToWebview();
         logInfo('[NEW CHAT] clearChat posted to webview — new thread ready');
     }
 
@@ -397,6 +423,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
 
         surface.webview.html = this._getHtml(surface.webview);
+        this._syncQueueStateToWebview();
         logInfo('[WEBVIEW] Webview surface ready, HTML injected');
     }
 
@@ -417,10 +444,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return {
             handleBrainMenu: () => this._handleBrainMenu(),
             handleInjectLocalBrain: (files) => this._handleInjectLocalBrain(files),
-            handlePrompt: (prompt, modelName, internetEnabled) => this._handlePrompt(prompt, modelName, internetEnabled),
-            handlePromptWithFile: (prompt, modelName, files, internetEnabled) => this._handlePromptWithFile(prompt, modelName, files, internetEnabled),
             handleSettingsMenu: () => this._handleSettingsMenu(),
-            regenerate: () => this._regenerate(),
             resetChat: () => this.resetChat(),
             restoreDisplayMessages: () => this._restoreDisplayMessages(),
             sendModels: () => this._sendModels(),
@@ -430,7 +454,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
             openAttachment: (file) => this._openAttachment(file),
             branchChat: (messageIndex) => this._branchChat(messageIndex),
-            editMessage: (messageIndex, prompt, modelName, files, internetEnabled) => this._editMessage(messageIndex, prompt, modelName, files, internetEnabled),
+            enqueueRequest: (request) => this._enqueueWebviewRequest(request),
+            cancelQueuedRequest: (id) => this._cancelQueuedRequest(id),
+            clearQueuedRequests: () => this._clearQueuedRequests(),
+            moveQueuedRequest: (id, direction) => this._moveQueuedRequest(id, direction),
+            editQueuedRequest: (id) => this._editQueuedRequest(id),
+            resumeQueue: () => this._resumeQueue(),
             setMessageFeedback: (messageIndex, feedback) => this._setMessageFeedback(messageIndex, feedback),
             getHistory: () => this.getHistory(),
             loadHistory: (id) => this.loadHistory(id),
@@ -447,15 +476,252 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         };
     }
 
+    private _createQueuedRequest(input: {
+        kind: QueueRequestKind;
+        prompt: string;
+        modelName: string;
+        files?: AttachedFile[];
+        internetEnabled?: boolean;
+        messageIndex?: number;
+    }): QueuedRequest {
+        return {
+            id: `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            kind: input.kind,
+            prompt: input.prompt,
+            modelName: input.modelName,
+            files: input.files?.map(file => ({ ...file })),
+            internetEnabled: input.internetEnabled,
+            messageIndex: input.messageIndex,
+            createdAt: Date.now()
+        };
+    }
+
+    private _summarizeQueuedRequest(request: QueuedRequest): QueueRequestSummary {
+        return {
+            id: request.id,
+            kind: request.kind,
+            prompt: request.prompt,
+            modelName: request.modelName,
+            internetEnabled: request.internetEnabled,
+            messageIndex: request.messageIndex,
+            createdAt: request.createdAt,
+            attachmentCount: request.files?.length || 0
+        };
+    }
+
+    private _queueStatePayload(): QueueStatePayload {
+        return {
+            running: Boolean(this._queueState.activeRequest),
+            paused: this._queueState.paused,
+            activeRequest: this._queueState.activeRequest ? this._summarizeQueuedRequest(this._queueState.activeRequest) : undefined,
+            pendingRequests: this._queueState.pendingRequests.map(request => this._summarizeQueuedRequest(request))
+        };
+    }
+
+    private _syncQueueStateToWebview(): void {
+        this._view?.webview.postMessage({ type: 'queueState', value: this._queueStatePayload() });
+    }
+
+    private async _enqueueWebviewRequest(input: {
+        kind?: QueueRequestKind;
+        prompt?: string;
+        modelName?: string;
+        files?: AttachedFile[];
+        internetEnabled?: boolean;
+        messageIndex?: number;
+    }): Promise<void> {
+        const kind = input.kind;
+        if (!kind) {
+            return;
+        }
+
+        if (kind === 'regenerate') {
+            await this._regenerate();
+            return;
+        }
+
+        if (kind === 'editMessage' && (!Number.isInteger(input.messageIndex) || (input.messageIndex ?? -1) < 0)) {
+            return;
+        }
+
+        const request = this._createQueuedRequest({
+            kind,
+            prompt: String(input.prompt || ''),
+            modelName: String(input.modelName || this._lastModel || ''),
+            files: input.files || [],
+            internetEnabled: input.internetEnabled,
+            messageIndex: input.messageIndex
+        });
+        await this._enqueueRequest(request);
+    }
+
+    private async _enqueueRequest(request: QueuedRequest): Promise<void> {
+        this._queueState = enqueueQueueState(this._queueState, request);
+        logInfo(`[QUEUE] Enqueued ${request.kind} (${request.id}); pending=${this._queueState.pendingRequests.length}`);
+        this._syncQueueStateToWebview();
+        void this._runNextRequestIfIdle();
+    }
+
+    private async _runNextRequestIfIdle(): Promise<void> {
+        if (this._isProcessingQueue) {
+            return;
+        }
+
+        const promoted = promoteNextRequest(this._queueState);
+        this._queueState = promoted.state;
+        const nextRequest = promoted.nextRequest;
+        if (!nextRequest) {
+            this._syncQueueStateToWebview();
+            return;
+        }
+
+        this._isProcessingQueue = true;
+        this._syncQueueStateToWebview();
+
+        const execution = this._executeQueuedRequest(nextRequest)
+            .catch((error) => {
+                logError('[QUEUE] Failed to execute queued request: ' + (error instanceof Error ? error.message : String(error)));
+            })
+            .finally(async () => {
+                this._queueState = finishActiveRequest(this._queueState);
+                this._activeRequestPromise = undefined;
+                this._isProcessingQueue = false;
+                this._syncQueueStateToWebview();
+                await this._runNextRequestIfIdle();
+            });
+
+        this._activeRequestPromise = execution;
+        await execution;
+    }
+
+    private async _executeQueuedRequest(request: QueuedRequest): Promise<void> {
+        logInfo(`[QUEUE] Starting ${request.kind} (${request.id})`);
+
+        if (request.wasQueued && request.kind !== 'editMessage') {
+            this._view?.webview.postMessage({
+                type: 'queuedRequestStarting',
+                value: {
+                    prompt: request.prompt,
+                    files: request.files || []
+                }
+            });
+        }
+
+        switch (request.kind) {
+            case 'promptWithFile':
+                await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                return;
+            case 'editMessage':
+                await this._runEditNow(request.messageIndex ?? -1, request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                return;
+            case 'regenerate':
+                this._chatSession.removeLastAssistantResponse();
+                if ((request.files || []).length > 0) {
+                    await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                    return;
+                }
+                await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled);
+                return;
+            case 'prompt':
+                await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled);
+                return;
+        }
+    }
+
+    private async _cancelQueuedRequest(id: string): Promise<void> {
+        const before = this._queueState.pendingRequests.length;
+        this._queueState = cancelPendingRequest(this._queueState, id);
+        if (this._queueState.pendingRequests.length === before) {
+            return;
+        }
+        logInfo('[QUEUE] Cancelled queued request ' + id);
+        this._syncQueueStateToWebview();
+    }
+
+    private async _clearQueuedRequests(): Promise<void> {
+        if (this._queueState.pendingRequests.length === 0) {
+            return;
+        }
+        this._queueState = clearPendingRequests(this._queueState);
+        logInfo('[QUEUE] Cleared pending queue');
+        this._syncQueueStateToWebview();
+    }
+
+    private async _moveQueuedRequest(id: string, direction: 'up' | 'down'): Promise<void> {
+        const moved = movePendingRequest(this._queueState, id, direction);
+        if (moved === this._queueState) {
+            return;
+        }
+        this._queueState = moved;
+        logInfo(`[QUEUE] Moved queued request ${id} ${direction}`);
+        this._syncQueueStateToWebview();
+    }
+
+    private async _editQueuedRequest(id: string): Promise<void> {
+        const request = this._queueState.pendingRequests.find(item => item.id === id);
+        if (!request) {
+            return;
+        }
+
+        this._queueState = cancelPendingRequest(this._queueState, id);
+        this._syncQueueStateToWebview();
+        this._view?.webview.postMessage({
+            type: 'editQueuedRequest',
+            value: {
+                kind: request.kind,
+                prompt: request.prompt,
+                modelName: request.modelName,
+                files: request.files || [],
+                internetEnabled: request.internetEnabled,
+                messageIndex: request.messageIndex
+            }
+        });
+    }
+
+    private async _resumeQueue(): Promise<void> {
+        if (!this._queueState.paused) {
+            return;
+        }
+
+        this._queueState = resumeQueueState(this._queueState);
+        logInfo('[QUEUE] Resumed pending queue');
+        this._syncQueueStateToWebview();
+        void this._runNextRequestIfIdle();
+    }
+
+    private async _resetQueueState(options: { abortActive?: boolean } = {}): Promise<void> {
+        this._queueState = resetQueueState();
+        this._syncQueueStateToWebview();
+
+        if (options.abortActive && this._abortController) {
+            this._abortController.abort();
+        }
+
+        if (this._activeRequestPromise) {
+            try {
+                await this._activeRequestPromise;
+            } catch {
+                // Execution errors are already logged at the queue layer.
+            }
+        }
+
+        this._activeRequestPromise = undefined;
+        this._isProcessingQueue = false;
+        this._queueState = resetQueueState();
+        this._syncQueueStateToWebview();
+    }
+
     private _settingsCommandHost(): SettingsCommandsHost {
         return {
             getSystemPrompt: () => this._systemPrompt,
             getTemperature: () => this._temperature,
             getTopK: () => this._topK,
             getTopP: () => this._topP,
-            resetConversationForSystemPromptChange: () => {
+            resetConversationForSystemPromptChange: async () => {
+                await this._resetQueueState({ abortActive: true });
                 this._chatSession.reset();
                 this._view?.webview.postMessage({ type: 'clearChat' });
+                this._syncQueueStateToWebview();
             },
             sendModels: () => this._sendModels(),
             setSystemPrompt: (value) => {
@@ -487,13 +753,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        this._chatSession.removeLastAssistantResponse();
-        if (this._lastFiles?.length) {
-            await this._handlePromptWithFile(this._lastPrompt, this._lastModel || '', this._lastFiles, this._lastInternetEnabled);
-            return;
-        }
-
-        await this._handlePrompt(this._lastPrompt, this._lastModel || '', this._lastInternetEnabled);
+        const request = this._createQueuedRequest({
+            kind: 'regenerate',
+            prompt: this._lastPrompt,
+            modelName: this._lastModel || '',
+            files: this._lastFiles,
+            internetEnabled: this._lastInternetEnabled
+        });
+        await this._enqueueRequest(request);
     }
 
     private _showTerminal(): void {
@@ -538,7 +805,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _openAttachment(file: { name?: string; data?: string; type?: string; sourceUri?: string }) {
+    private async _openAttachment(file: { name?: string; data?: string; type?: string; sourceUri?: string; line?: number }) {
         if (!file.name) { return; }
         if (!isEditableFilePath(file.name)) {
             void vscode.window.showInformationMessage(`Only editable text/code files can be opened from chat: ${file.name}`);
@@ -551,7 +818,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         try {
             if (file.sourceUri) {
                 const uri = parseDroppedUri(file.sourceUri);
-                await openDocument(uri);
+                await openDocument(uri, { line: file.line, forceEditor: true });
                 return;
             }
 
@@ -566,13 +833,16 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
 
             const { absPath } = await resolveLlemPath(workspaceRoot, requestedPath);
-            await openDocument(vscode.Uri.file(absPath));
+            await openDocument(vscode.Uri.file(absPath), { line: file.line, forceEditor: true });
         } catch (err) {
             vscode.window.showErrorMessage(`Could not open attachment: ${err}`);
         }
     }
 
     private _stopGeneration(): void {
+        this._queueState = pauseQueue(this._queueState);
+        this._syncQueueStateToWebview();
+
         if (!this._abortController) {
             return;
         }
@@ -693,13 +963,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         void vscode.window.showWarningMessage(`LLeM is using ${profile.modelName} with the ${profile.resolvedPreset} profile. For 26B local models, a request timeout of 600 seconds or higher is recommended.`);
     }
 
-    private async _handlePromptWithFile(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
+    private async _runPromptWithFilesNow(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
         if (!this._view) { logError('[PROMPT] handlePromptWithFile called but no view', false); return; }
         logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', internet=' + !!internetEnabled + ')');
         await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
     }
 
-    private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
+    private async _runPromptNow(prompt: string, modelName: string, internetEnabled?: boolean) {
         if (!this._view) { logError('[PROMPT] handlePrompt called but no view', false); return; }
         logInfo('[PROMPT] handlePrompt (model=' + modelName + ', internet=' + !!internetEnabled + ', len=' + prompt.length + ')');
         await this._chatPipeline.handlePrompt(prompt, modelName, internetEnabled);
@@ -759,7 +1029,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         await this.saveHistory();
     }
 
-    private async _editMessage(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<void> {
+    private async _runEditNow(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<void> {
         if (!Number.isInteger(messageIndex) || messageIndex < 0) {
             return;
         }
@@ -777,9 +1047,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._restoreDisplayMessages();
 
             if (files.length > 0) {
-                await this._handlePromptWithFile(prompt, modelName || this._lastModel || '', files, internetEnabled);
+                await this._runPromptWithFilesNow(prompt, modelName || this._lastModel || '', files, internetEnabled);
             } else {
-                await this._handlePrompt(prompt, modelName || this._lastModel || '', internetEnabled);
+                await this._runPromptNow(prompt, modelName || this._lastModel || '', internetEnabled);
             }
 
             void vscode.window.showInformationMessage('Created a new edited branch from that message.');
@@ -803,6 +1073,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     public async loadHistory(id: string) {
         if (!this._view) { return; }
         logInfo('[HISTORY] Loading session: ' + id);
+        await this._resetQueueState({ abortActive: true });
         const sessionData = await this._historyManager.getSession(id);
         if (sessionData) {
             if (this._chatSession.chatHistory.length > 0) {

@@ -652,6 +652,105 @@ select {
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
 }
+.queue-panel[hidden] {
+  display: none !important;
+}
+.queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+.queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.queue-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text);
+}
+.queue-meta {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.queue-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.queue-item.queue-item-active {
+  border-color: rgba(255, 158, 88, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(255, 158, 88, 0.08);
+}
+.queue-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.queue-kind {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.queue-item-active .queue-kind {
+  color: var(--accent-2);
+}
+.queue-text {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.queue-submeta {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.queue-btn {
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 4px 8px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+.queue-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+.queue-btn.queue-btn-danger:hover {
+  color: #fff;
+  border-color: rgba(255, 107, 122, 0.42);
+  background: rgba(255, 107, 122, 0.2);
+}
 .input-box:focus-within {
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow: var(--shadow), 0 0 0 1px rgba(255, 158, 88, 0.12);

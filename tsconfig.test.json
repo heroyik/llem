@@ -16,9 +16,11 @@
     "src/fileActions.ts",
     "src/performanceProfiles.ts",
     "src/promptBudgeting.ts",
+    "src/queueState.ts",
     "src/repetitionWatchdog.ts",
     "src/security.ts",
     "src/streamParsing.ts",
-    "src/webActions.ts"
+    "src/webActions.ts",
+    "src/webviewMessageRouter.ts"
   ]
 }

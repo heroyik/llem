@@ -197,6 +197,8 @@
   },
   "dependencies": {
     "axios": "^1.15.0",
-    "markdown-it": "^14.1.1"
+    "katex": "^0.16.45",
+    "markdown-it": "^14.1.1",
+    "markdown-it-texmath": "^1.0.0"
   }
 }

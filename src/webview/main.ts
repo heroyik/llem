@@ -1,5 +1,8 @@
 import { isEditableFilePath, resolveEditableWorkspacePath } from '../editableFiles';
 
+const texmath = require('markdown-it-texmath');
+const katex = require('katex');
+
 declare function acquireVsCodeApi(): {
   postMessage: (message: any) => void;
   getState: () => any;
@@ -28,11 +31,52 @@ interface HistoryItem {
   lastModified?: number;
 }
 
+interface QueueRequestSummary {
+  id: string;
+  kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
+  prompt: string;
+  modelName: string;
+  internetEnabled?: boolean;
+  messageIndex?: number;
+  createdAt: number;
+  attachmentCount: number;
+}
+
+interface QueueStatePayload {
+  running: boolean;
+  paused: boolean;
+  activeRequest?: QueueRequestSummary;
+  pendingRequests: QueueRequestSummary[];
+}
+
+interface QueueDraftPayload {
+  kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
+  prompt: string;
+  modelName: string;
+  files: FileAttachment[];
+  internetEnabled?: boolean;
+  messageIndex?: number;
+}
+
 interface WebviewWindow extends Window {
   markdownit?: any;
 }
 
 const typedWindow = window as WebviewWindow;
+
+function splitFileReference(rawValue: string): { path: string; line?: number } {
+  const value = String(rawValue || '').trim();
+  const match = value.match(/^(.*):(\d+)$/);
+  if (!match) {
+    return { path: value };
+  }
+
+  const line = Number(match[2]);
+  if (!Number.isFinite(line) || line <= 0) {
+    return { path: value };
+  }
+  return { path: match[1], line };
+}
 
 window.onerror = function(msg: string | Event, url?: string, line?: number) {
   const overlay = document.createElement('div');
@@ -79,6 +123,7 @@ try {
   const inputBox = document.getElementById('inputBox');
   const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
   const attachPreview = document.getElementById('attachPreview');
+  const queuePanel = document.getElementById('queuePanel');
   const editBanner = document.getElementById('editBanner');
   const editBannerLabel = document.getElementById('editBannerLabel');
   const cancelEditBtn = document.getElementById('cancelEditBtn');
@@ -91,6 +136,8 @@ try {
   let pendingFiles: FileAttachment[] = [];
   let editingMessageIndex = -1;
   let displayMessages: Message[] = [];
+  let queueState: QueueStatePayload = { running: false, paused: false, pendingRequests: [] };
+  let lastQueuePaused = false;
   let internetEnabled = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
@@ -122,6 +169,100 @@ try {
     '.py', '.java', '.rs', '.go',
     '.yaml', '.yml', '.xml', '.toml'
   ]);
+
+  function queueKindLabel(kind: QueueRequestSummary['kind']): string {
+    if (kind === 'promptWithFile') return 'Files';
+    if (kind === 'editMessage') return 'Edit';
+    if (kind === 'regenerate') return 'Retry';
+    return 'Prompt';
+  }
+
+  function queuePromptPreview(request: QueueRequestSummary): string {
+    const base = String(request.prompt || '').trim();
+    if (base) {
+      return base.length > 120 ? base.slice(0, 117) + '...' : base;
+    }
+    if (request.kind === 'regenerate') {
+      return 'Regenerate the last assistant reply.';
+    }
+    return 'Queued request';
+  }
+
+  function renderQueuePanel(): void {
+    if (!queuePanel) return;
+    const active = queueState.activeRequest;
+    const pending = queueState.pendingRequests || [];
+    if (!active && pending.length === 0 && !queueState.paused) {
+      queuePanel.innerHTML = '';
+      queuePanel.hidden = true;
+      return;
+    }
+
+    queuePanel.hidden = false;
+    const total = pending.length + (active ? 1 : 0);
+    const activeHtml = active ? [
+      '<div class="queue-item queue-item-active">',
+      '<div class="queue-copy">',
+      '<div class="queue-kind">Running now</div>',
+      '<div class="queue-text">' + esc(queuePromptPreview(active)) + '</div>',
+      '<div class="queue-submeta">' + esc(queueKindLabel(active.kind) + ' · ' + (active.modelName || 'default model') + (active.attachmentCount ? ' · ' + active.attachmentCount + ' file' + (active.attachmentCount === 1 ? '' : 's') : '')) + '</div>',
+      '</div>',
+      '<div class="queue-actions"><span class="queue-meta">Live output</span></div>',
+      '</div>'
+    ].join('') : '';
+
+    const pendingHtml = pending.map(function(request) {
+      const index = pending.findIndex(function(item) { return item.id === request.id; });
+      const moveUpBtn = index > 0
+        ? '<button class="queue-btn" data-action="move-queued-request" data-direction="up" data-queue-id="' + esc(request.id) + '" title="Move up">↑</button>'
+        : '';
+      const moveDownBtn = index < pending.length - 1
+        ? '<button class="queue-btn" data-action="move-queued-request" data-direction="down" data-queue-id="' + esc(request.id) + '" title="Move down">↓</button>'
+        : '';
+      const editBtn = '<button class="queue-btn" data-action="edit-queued-request" data-queue-id="' + esc(request.id) + '" title="Edit queued request">Edit</button>';
+      return [
+        '<div class="queue-item" data-queue-id="' + esc(request.id) + '">',
+        '<div class="queue-copy">',
+        '<div class="queue-kind">' + esc(queueKindLabel(request.kind)) + '</div>',
+        '<div class="queue-text">' + esc(queuePromptPreview(request)) + '</div>',
+        '<div class="queue-submeta">' + esc((request.modelName || 'default model') + (request.attachmentCount ? ' · ' + request.attachmentCount + ' file' + (request.attachmentCount === 1 ? '' : 's') : '') + (request.internetEnabled ? ' · Live web' : '')) + '</div>',
+        '</div>',
+        '<div class="queue-actions">' + moveUpBtn + moveDownBtn + editBtn + '<button class="queue-btn queue-btn-danger" data-action="cancel-queued-request" data-queue-id="' + esc(request.id) + '">Cancel</button></div>',
+        '</div>'
+      ].join('');
+    }).join('');
+
+    const clearAll = pending.length > 1
+      ? '<button class="queue-btn" data-action="clear-queued-requests">Clear queue</button>'
+      : '';
+    const resumeBtn = queueState.paused
+      ? '<button class="queue-btn" data-action="resume-queue">Resume</button>'
+      : '';
+    const statusText = queueState.running
+      ? 'Active request running'
+      : (queueState.paused ? 'Queue paused' : 'Waiting');
+
+    queuePanel.innerHTML = [
+      '<div class="queue-head">',
+      '<div><div class="queue-title">Request queue</div><div class="queue-meta">' + total + ' total · ' + pending.length + ' waiting · ' + statusText + '</div></div>',
+      '<div class="queue-actions">' + resumeBtn + clearAll + '</div>',
+      '</div>',
+      '<div class="queue-list">',
+      activeHtml,
+      pendingHtml,
+      '</div>'
+    ].join('');
+  }
+
+  function appendInfoMessage(text: string): void {
+    const info = document.createElement('div');
+    info.className = 'msg';
+    info.innerHTML = '<div class="msg-body msg-body-info">' + esc(text) + '</div>';
+    if (chat) {
+      chat.appendChild(info);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  }
 
       const extensionVersion = document.body.dataset.version || 'dev';
       function welcomeMarkup() {
@@ -210,6 +351,20 @@ try {
   }
 
   let mdRenderer: any = null;
+  function installMathRenderer(md: any) {
+    try {
+      md.use(texmath, {
+        engine: katex,
+        delimiters: 'dollars',
+        katexOptions: {
+          throwOnError: false,
+          strict: 'ignore'
+        }
+      });
+    } catch (error) {
+      log('[markdown] Failed to enable math rendering: ' + String(error), 'warn');
+    }
+  }
   function getMarkdownRenderer() {
     if (!typedWindow.markdownit) {
       return null;
@@ -224,6 +379,7 @@ try {
       typographer: true,
       breaks: true
     });
+    installMathRenderer(md);
     md.validateLink = function(url: string) {
       const value = String(url || '').trim().toLowerCase();
       return value.startsWith('https://') ||
@@ -240,6 +396,23 @@ try {
     };
     md.renderer.rules.link_open = function(tokens: any[], idx: number, options: any, env: any, self: any) {
       const token = tokens[idx];
+      const hrefIndex = token.attrIndex('href');
+      const href = hrefIndex >= 0 ? token.attrs[hrefIndex][1] : '';
+      const reference = splitFileReference(href);
+      if (reference.path && isEditableWorkspaceFile(reference.path)) {
+        if (hrefIndex >= 0) token.attrs[hrefIndex][1] = '#';
+        token.attrJoin('class', 'is-file-link');
+        token.attrSet('data-action', 'open-file');
+        token.attrSet('data-file-path', reference.path);
+        if (typeof reference.line === 'number') {
+          token.attrSet('data-line', String(reference.line));
+        }
+        token.attrSet('role', 'button');
+        token.attrSet('tabindex', '0');
+        token.attrSet('title', 'Open ' + reference.path);
+        return defaultLinkOpen(tokens, idx, options, env, self);
+      }
+
       const target = token.attrIndex('target');
       if (target < 0) token.attrPush(['target', '_blank']); else token.attrs[target][1] = '_blank';
       const rel = token.attrIndex('rel');
@@ -500,12 +673,20 @@ try {
     }
   }
 
-  function openEditableFile(fileName: string, sourceUri: string): void {
-    const safeName = String(fileName || '').trim();
+  function openEditableFile(fileName: string, sourceUri: string, line?: number): void {
+    const reference = splitFileReference(fileName);
+    const safeName = String(reference.path || '').trim();
     if (!safeName || !isEditableFilePath(safeName)) {
       return;
     }
-    vscode.postMessage({ type: 'openAttachment', file: { name: safeName, sourceUri: sourceUri || '' } });
+    vscode.postMessage({
+      type: 'openAttachment',
+      file: {
+        name: safeName,
+        sourceUri: sourceUri || '',
+        line: typeof line === 'number' ? line : reference.line
+      }
+    });
   }
 
   document.addEventListener('click', function(event: MouseEvent) {
@@ -515,6 +696,44 @@ try {
     const copyButton = target.closest('[data-action="copy-code"]');
     if (copyButton instanceof HTMLElement) {
       copyCode(copyButton);
+      return;
+    }
+
+    const cancelQueuedButton = target.closest('[data-action="cancel-queued-request"]');
+    if (cancelQueuedButton instanceof HTMLElement) {
+      const queueId = cancelQueuedButton.getAttribute('data-queue-id') || '';
+      if (queueId) {
+        vscode.postMessage({ type: 'cancelQueuedRequest', id: queueId });
+      }
+      return;
+    }
+
+    const editQueuedButton = target.closest('[data-action="edit-queued-request"]');
+    if (editQueuedButton instanceof HTMLElement) {
+      const queueId = editQueuedButton.getAttribute('data-queue-id') || '';
+      if (queueId) {
+        vscode.postMessage({ type: 'editQueuedRequest', id: queueId });
+      }
+      return;
+    }
+
+    if (target.closest('[data-action="clear-queued-requests"]')) {
+      vscode.postMessage({ type: 'clearQueuedRequests' });
+      return;
+    }
+
+    const moveQueuedButton = target.closest('[data-action="move-queued-request"]');
+    if (moveQueuedButton instanceof HTMLElement) {
+      const queueId = moveQueuedButton.getAttribute('data-queue-id') || '';
+      const direction = moveQueuedButton.getAttribute('data-direction');
+      if (queueId && (direction === 'up' || direction === 'down')) {
+        vscode.postMessage({ type: 'moveQueuedRequest', id: queueId, direction: direction });
+      }
+      return;
+    }
+
+    if (target.closest('[data-action="resume-queue"]')) {
+      vscode.postMessage({ type: 'resumeQueue' });
       return;
     }
 
@@ -538,7 +757,9 @@ try {
 
     const openFileTrigger = target.closest('[data-action="open-file"]');
     if (openFileTrigger) {
-      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '');
+      event.preventDefault();
+      const line = Number(openFileTrigger.getAttribute('data-line') || '');
+      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '', Number.isFinite(line) ? line : undefined);
       return;
     }
 
@@ -557,7 +778,8 @@ try {
     const openFileTrigger = target.closest('[data-action="open-file"]');
     if (openFileTrigger) {
       event.preventDefault();
-      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '');
+      const line = Number(openFileTrigger.getAttribute('data-line') || '');
+      openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '', Number.isFinite(line) ? line : undefined);
     }
   });
 
@@ -713,10 +935,9 @@ try {
   function setSending(value: boolean): void {
     sending = value;
     if (sendBtn) {
-      (sendBtn as HTMLButtonElement).disabled = value;
-      sendBtn.classList.toggle('hidden', value);
+      (sendBtn as HTMLButtonElement).disabled = false;
+      sendBtn.classList.remove('hidden');
     }
-    if (input) (input as HTMLTextAreaElement).disabled = value;
     if (stopBtn) stopBtn.classList.toggle('visible', value);
     if (!value) {
       if (input) input.focus();
@@ -1276,10 +1497,32 @@ try {
 
   // History, internet, and other listeners are now handled below via safeListen.
 
+  function postQueuedRequest(request: {
+    kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
+    prompt: string;
+    modelName: string;
+    files?: FileAttachment[];
+    internetEnabled?: boolean;
+    messageIndex?: number;
+  }): void {
+    vscode.postMessage({
+      type: 'enqueueRequest',
+      request: {
+        kind: request.kind,
+        prompt: request.prompt,
+        modelName: request.modelName,
+        files: request.files || [],
+        internetEnabled: request.internetEnabled,
+        messageIndex: request.messageIndex
+      }
+    });
+  }
+
   function send(): void {
     const text = input ? input.value.trim() : '';
-    if ((!text && pendingFiles.length === 0) || sending) return;
+    if (!text && pendingFiles.length === 0) return;
     const attachedFiles = pendingFiles.slice();
+    const isQueued = sending;
     document.body.classList.remove('init');
     const welcome = document.querySelector('.welcome');
     if (welcome) welcome.remove();
@@ -1288,47 +1531,44 @@ try {
         input.value = '';
         input.style.height = 'auto';
       }
-      setSending(true);
-      showLoader();
-      vscode.postMessage({
-        type: 'editMessage',
+      if (!isQueued) {
+        setSending(true);
+        showLoader();
+      }
+      postQueuedRequest({
+        kind: 'editMessage',
         messageIndex: editingMessageIndex,
-        value: text || 'Update this message.',
-        model: modelSel?.value || '',
+        prompt: text || 'Update this message.',
+        modelName: modelSel?.value || '',
         files: attachedFiles,
-        internet: internetEnabled
+        internetEnabled: internetEnabled
       });
       pendingFiles = [];
       renderPreview();
       exitEditMode(false);
       return;
     }
-    const localMessageIndex = displayMessages.length;
-    addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
+    if (!isQueued) {
+      const localMessageIndex = displayMessages.length;
+      addMsg({ text: text, role: 'user', files: attachedFiles, feedback: null }, 'user', attachedFiles, localMessageIndex);
+    }
     if (input) {
       input.value = '';
       input.style.height = 'auto';
     }
-    setSending(true);
-    showLoader();
-    if (attachedFiles.length > 0) {
-      vscode.postMessage({
-        type: 'promptWithFile',
-        value: text || 'Take a look at these files.',
-        model: modelSel?.value || '',
-        files: attachedFiles,
-        internet: internetEnabled
-      });
-      pendingFiles = [];
-      renderPreview();
-    } else {
-      vscode.postMessage({
-        type: 'prompt',
-        value: text,
-        model: modelSel?.value || '',
-        internet: internetEnabled
-      });
+    if (!isQueued) {
+      setSending(true);
+      showLoader();
     }
+    postQueuedRequest({
+      kind: attachedFiles.length > 0 ? 'promptWithFile' : 'prompt',
+      prompt: attachedFiles.length > 0 ? (text || 'Take a look at these files.') : text,
+      modelName: modelSel?.value || '',
+      files: attachedFiles,
+      internetEnabled: internetEnabled
+    });
+    pendingFiles = [];
+    renderPreview();
   }
 
   // Internet toggle is handled below via safeListen.
@@ -1494,13 +1734,7 @@ try {
       internetBtn.classList.toggle('active', internetEnabled);
       internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
     }
-    const info = document.createElement('div');
-    info.className = 'msg';
-    info.innerHTML = '<div class="msg-body msg-body-info">🌐 Live web mode is now ' + (internetEnabled ? 'ON' : 'OFF') + '.</div>';
-    if (chat) {
-      chat.appendChild(info);
-      chat.scrollTop = chat.scrollHeight;
-    }
+    appendInfoMessage('🌐 Live web mode is now ' + (internetEnabled ? 'ON' : 'OFF') + '.');
   });
   safeListen(historyBtn, 'click', function() {
     const opening = historyView && !historyView.classList.contains('visible');
@@ -1665,6 +1899,7 @@ try {
         pendingFiles = [];
         exitEditMode(true);
         renderPreview();
+        renderQueuePanel();
         if (input) {
           input.value = '';
           input.style.height = 'auto';
@@ -1692,6 +1927,7 @@ try {
           document.body.classList.add('init');
           if (chat) chat.innerHTML = welcomeMarkup();
         }
+        renderQueuePanel();
         break;
       case 'focusInput':
         log('[UI] focusInput received');
@@ -1705,6 +1941,53 @@ try {
           input.style.height = Math.min(input.scrollHeight, 150) + 'px';
         }
         send();
+        break;
+      case 'editQueuedRequest': {
+        const draft = (msg.value || {}) as QueueDraftPayload;
+        if (input) {
+          input.value = draft.prompt || '';
+          input.style.height = 'auto';
+          input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+        }
+        pendingFiles = (draft.files || []).map(function(file) { return { ...file }; });
+        renderPreview();
+        internetEnabled = Boolean(draft.internetEnabled);
+        if (internetBtn) {
+          internetBtn.classList.toggle('active', internetEnabled);
+          internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
+        }
+        if (modelSel && draft.modelName) {
+          if (!Array.from(modelSel.options).some(function(option) { return option.value === draft.modelName; })) {
+            const option = document.createElement('option');
+            option.value = draft.modelName;
+            option.textContent = draft.modelName;
+            modelSel.appendChild(option);
+          }
+          modelSel.value = draft.modelName;
+        }
+        if (draft.kind === 'editMessage' && typeof draft.messageIndex === 'number' && draft.messageIndex >= 0) {
+          editingMessageIndex = draft.messageIndex;
+          if (editBanner) editBanner.hidden = false;
+          if (editBannerLabel) editBannerLabel.textContent = 'Editing queued request from an earlier message';
+        } else {
+          exitEditMode(false);
+        }
+        appendInfoMessage('✏️ Queued request moved back into the composer for editing.');
+        setTimeout(function() { if (input) input.focus(); }, 50);
+        break;
+      }
+      case 'queuedRequestStarting':
+        document.body.classList.remove('init');
+        if (chat && chat.querySelector('.welcome')) {
+          chat.innerHTML = '';
+        }
+        addMsg({
+          text: msg.value?.prompt || '',
+          role: 'user',
+          files: msg.value?.files || [],
+          feedback: null
+        }, 'user', msg.value?.files || [], displayMessages.length);
+        showLoader();
         break;
       case 'historyList':
         historyItems = msg.value || [];
@@ -1721,6 +2004,22 @@ try {
         break;
       case 'historyLoaded':
         log('[HISTORY] Session loaded: ' + msg.id);
+        break;
+      case 'queueState':
+        queueState = (msg.value || { running: false, paused: false, pendingRequests: [] }) as QueueStatePayload;
+        setSending(Boolean(queueState.running));
+        renderQueuePanel();
+        if (queueState.paused && !lastQueuePaused) {
+          const waiting = queueState.pendingRequests.length;
+          appendInfoMessage(waiting > 0
+            ? '⏸ Generation stopped. The queue is paused with ' + waiting + ' waiting request' + (waiting === 1 ? '' : 's') + '.'
+            : '⏸ Generation stopped. The queue is paused until you resume it.');
+        } else if (!queueState.paused && lastQueuePaused) {
+          appendInfoMessage(queueState.running
+            ? '▶ Queue resumed. Running the next request now.'
+            : '▶ Queue resumed.');
+        }
+        lastQueuePaused = queueState.paused;
         break;
       case 'fetchedUris':
         log('[DROP] Fetched ' + (msg.files || []).length + ' URI attachment(s)');
