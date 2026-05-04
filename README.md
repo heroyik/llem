@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.18
+
+- Bumped the VSIX build from `3.3.17` to `3.3.18`.
+- Repackaged the current workspace state through the formal VSIX release flow.
+- Packaged `release/llem-3.3.18.vsix`.
+
 ### v3.3.17
 
 - Bumped the VSIX build from `3.3.16` to `3.3.17`.
