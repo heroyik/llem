@@ -149,9 +149,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private _isSyncingBrain: boolean = false;
     public _brainEnabled: boolean = true;
-    private _abortController?: AbortController;
-    private _activeRequestPromise?: Promise<void>;
-    private _isProcessingQueue = false;
+    private _isProcessingQueue: boolean = false;
+    private _activeRequestPromise: Promise<void> | undefined;
+    private _queueCheckTimer: NodeJS.Timeout | undefined;
+    private _abortController: AbortController | undefined;
     private _queueState: RequestQueueState = createRequestQueueState();
     private _lastPrompt?: string;
     private _lastModel?: string;
@@ -580,11 +581,32 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
+        if (this._queueCheckTimer) {
+            clearTimeout(this._queueCheckTimer);
+            this._queueCheckTimer = undefined;
+        }
+
         const promoted = promoteNextRequest(this._queueState);
         this._queueState = promoted.state;
         const nextRequest = promoted.nextRequest;
         if (!nextRequest) {
             this._syncQueueStateToWebview();
+
+            // If there are pending requests, they might be scheduled for later.
+            // Set a timer to check again.
+            if (this._queueState.pendingRequests.length > 0) {
+                const now = Date.now();
+                const scheduledTimes = this._queueState.pendingRequests
+                    .map(r => r.scheduledAt)
+                    .filter((t): t is number => !!t);
+
+                if (scheduledTimes.length > 0) {
+                    const nextReadyTime = Math.min(...scheduledTimes);
+                    const delay = Math.max(500, nextReadyTime - now);
+                    logInfo(`[QUEUE] Next request ready in ${delay}ms; setting check timer.`);
+                    this._queueCheckTimer = setTimeout(() => this._runNextRequestIfIdle(), delay);
+                }
+            }
             return;
         }
 
@@ -661,17 +683,56 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         result?: { repeated: boolean; stopReason?: string }
     ): Promise<void> {
         if (!result?.repeated) {
+            this._requestRetryGuard.clearRetryHistory(request);
             return;
         }
+
         const reason = result.stopReason || 'repetition detected';
-        this._requestRetryGuard.markRepeated(request, reason);
-        const filtered = this._requestRetryGuard.filterBlocked(this._queueState.pendingRequests);
-        if (filtered.blocked.length > 0) {
-            this._queueState = {
-                ...this._queueState,
-                pendingRequests: filtered.allowed
+        const { retryAllowed, nextDelayMs } = this._requestRetryGuard.markRepeated(request, reason);
+
+        if (retryAllowed) {
+            const retryCount = (request.retryCount ?? 0) + 1;
+            const scheduledAt = Date.now() + nextDelayMs;
+
+            // Inject a strategy shift hint to help the AI analyze the root cause
+            const strategyHint = `\n\n[SYSTEM HINT] A repetition loop was detected. Please analyze why this happened (e.g., outdated file info, conflicting instructions). Shift your strategy by breaking the task into smaller units or trying a different approach. Avoid repeating the same logic.`;
+            const updatedPrompt = request.prompt.includes('[SYSTEM HINT]') 
+                ? request.prompt 
+                : request.prompt + strategyHint;
+
+            const retryRequest: QueuedRequest = {
+                ...request,
+                prompt: updatedPrompt,
+                retryCount,
+                scheduledAt,
+                wasQueued: true
             };
-            logInfo(`[QUEUE] Removed ${filtered.blocked.length} queued retry request(s) after repetition stop`);
+
+            this._queueState = enqueueQueueState(this._queueState, retryRequest);
+            logInfo(`[QUEUE] Scheduled retry ${retryCount} for ${request.id} in ${nextDelayMs}ms`);
+
+            this._view?.webview.postMessage({
+                type: 'streamChunk',
+                value: `\n\n> ⏳ **[Cooldown]** Repetition detected. Analyzing cause and retrying in ${Math.round(nextDelayMs / 1000)}s... (Attempt ${retryCount}/3)\n\n`
+            });
+
+            this._syncQueueStateToWebview();
+            void this._runNextRequestIfIdle();
+        } else {
+            const filtered = this._requestRetryGuard.filterBlocked(this._queueState.pendingRequests);
+            if (filtered.blocked.length > 0) {
+                this._queueState = {
+                    ...this._queueState,
+                    pendingRequests: filtered.allowed
+                };
+                logInfo(`[QUEUE] Removed ${filtered.blocked.length} queued retry request(s) after repetition limit reached`);
+            }
+
+            this._view?.webview.postMessage({
+                type: 'streamChunk',
+                value: `\n\n> ⚠️ **[Limit Reached]** I've attempted to fix the repetition loop 3 times but was unsuccessful. It seems the task might be conflicting with current constraints or logic. **Could you please point out which part is incorrect or provide more specific instructions to help me break this loop?**\n\n`
+            });
+
             this._syncQueueStateToWebview();
         }
     }

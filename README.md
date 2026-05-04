@@ -355,6 +355,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.30
+
+- Bumped the VSIX build from `3.3.29` to `3.3.30`.
+- Implemented Intelligent Repetition Guard with tiered backoff (3s, 10s, 30s), non-blocking queue scheduling, and automated retry orchestration with UI cooldown feedback.
+- Packaged `release/llem-3.3.30.vsix`.
+
 ### v3.3.29
 
 - Bumped the VSIX build from `3.3.28` to `3.3.29`.

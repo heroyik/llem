@@ -32,7 +32,19 @@ export function promoteNextRequest(
         return { state };
     }
 
-    const [nextRequest, ...rest] = state.pendingRequests;
+    const now = Date.now();
+    // Find the first request that is either not scheduled or whose schedule has passed.
+    const readyIndex = state.pendingRequests.findIndex(r => !r.scheduledAt || r.scheduledAt <= now);
+    if (readyIndex < 0) {
+        return { state };
+    }
+
+    const nextRequest = state.pendingRequests[readyIndex];
+    const rest = [
+        ...state.pendingRequests.slice(0, readyIndex),
+        ...state.pendingRequests.slice(readyIndex + 1)
+    ];
+
     return {
         nextRequest,
         state: {

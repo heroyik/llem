@@ -4,6 +4,8 @@ import { buildQueuedRequestFingerprint } from './requestFingerprint';
 interface RetryEntry {
     fingerprint: string;
     reason: string;
+    retryCount: number;
+    lastAttemptAt: number;
     expiresAt: number;
 }
 
@@ -12,13 +14,32 @@ export class RequestRetryGuard {
 
     constructor(private readonly ttlMs = 2 * 60 * 1000) {}
 
-    public markRepeated(request: QueuedRequest, reason = 'repetition detected'): void {
+    public markRepeated(request: QueuedRequest, reason = 'repetition detected'): { retryAllowed: boolean; nextDelayMs: number } {
         const fingerprint = buildQueuedRequestFingerprint(request);
+        const existing = this.blocked.get(fingerprint);
+        
+        const retryCount = (existing?.retryCount ?? 0) + 1;
+        const lastAttemptAt = Date.now();
+        
+        // Tiered delays: 3s, 10s, 30s
+        const delays = [3000, 10000, 30000];
+        const nextDelayMs = retryCount <= delays.length ? delays[retryCount - 1] : 0;
+        const retryAllowed = retryCount <= delays.length;
+
         this.blocked.set(fingerprint, {
             fingerprint,
             reason,
-            expiresAt: Date.now() + this.ttlMs
+            retryCount,
+            lastAttemptAt,
+            expiresAt: Date.now() + (retryAllowed ? nextDelayMs + 5000 : this.ttlMs) 
         });
+
+        return { retryAllowed, nextDelayMs };
+    }
+
+    public clearRetryHistory(request: QueuedRequest): void {
+        const fingerprint = buildQueuedRequestFingerprint(request);
+        this.blocked.delete(fingerprint);
     }
 
     public shouldBlock(request: QueuedRequest): { blocked: boolean; reason?: string } {

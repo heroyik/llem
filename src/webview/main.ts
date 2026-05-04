@@ -32,7 +32,7 @@ interface HistoryItem {
   lastModified?: number;
 }
 
-interface QueueRequestSummary {
+  interface QueueRequestSummary {
   id: string;
   kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
   prompt: string;
@@ -41,6 +41,8 @@ interface QueueRequestSummary {
   messageIndex?: number;
   createdAt: number;
   attachmentCount: number;
+  scheduledAt?: number;
+  retryCount?: number;
 }
 
 interface QueueStatePayload {
@@ -222,12 +224,24 @@ try {
         ? '<button class="queue-btn" data-action="move-queued-request" data-direction="down" data-queue-id="' + esc(request.id) + '" title="Move down">↓</button>'
         : '';
       const editBtn = '<button class="queue-btn" data-action="edit-queued-request" data-queue-id="' + esc(request.id) + '" title="Edit queued request">Edit</button>';
+      
+      const now = Date.now();
+      const isCooldown = request.scheduledAt && request.scheduledAt > now;
+      const cooldownClass = isCooldown ? ' queue-item-cooldown' : '';
+      const retryLabel = request.retryCount ? ' (Retry ' + request.retryCount + '/3)' : '';
+      
+      let cooldownText = '';
+      if (isCooldown) {
+        const secs = Math.ceil((request.scheduledAt! - now) / 1000);
+        cooldownText = ' · <span class="cooldown-timer">Retrying in ' + secs + 's</span>';
+      }
+
       return [
-        '<div class="queue-item" data-queue-id="' + esc(request.id) + '">',
+        '<div class="queue-item' + cooldownClass + '" data-queue-id="' + esc(request.id) + '">',
         '<div class="queue-copy">',
-        '<div class="queue-kind">' + esc(queueKindLabel(request.kind)) + '</div>',
+        '<div class="queue-kind">' + esc(queueKindLabel(request.kind)) + retryLabel + '</div>',
         '<div class="queue-text">' + esc(queuePromptPreview(request)) + '</div>',
-        '<div class="queue-submeta">' + esc((request.modelName || 'default model') + (request.attachmentCount ? ' · ' + request.attachmentCount + ' file' + (request.attachmentCount === 1 ? '' : 's') : '') + (request.internetEnabled ? ' · Live web' : '')) + '</div>',
+        '<div class="queue-submeta">' + esc((request.modelName || 'default model') + (request.attachmentCount ? ' · ' + request.attachmentCount + ' file' + (request.attachmentCount === 1 ? '' : 's') : '') + (request.internetEnabled ? ' · Live web' : '')) + cooldownText + '</div>',
         '</div>',
         '<div class="queue-actions">' + moveUpBtn + moveDownBtn + editBtn + '<button class="queue-btn queue-btn-danger" data-action="cancel-queued-request" data-queue-id="' + esc(request.id) + '">Cancel</button></div>',
         '</div>'

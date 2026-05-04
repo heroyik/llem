@@ -79,6 +79,8 @@ export interface QueuedRequest {
     messageIndex?: number;
     createdAt: number;
     wasQueued?: boolean;
+    scheduledAt?: number;
+    retryCount?: number;
 }
 
 export interface QueueRequestSummary {
@@ -89,6 +91,8 @@ export interface QueueRequestSummary {
     internetEnabled?: boolean;
     messageIndex?: number;
     createdAt: number;
+    scheduledAt?: number;
+    retryCount?: number;
     attachmentCount: number;
 }
 
