@@ -6,7 +6,7 @@ import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles
 import { PerfLogger } from './perfLogger';
 import { resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
-import { getInstalledModelCatalog } from './modelDiscovery';
+import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
 import { logInfo, logStreamEvent } from './logger';
 import { RepetitionWatchdog } from './repetitionWatchdog';
@@ -145,8 +145,10 @@ export class ChatPipeline {
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
             PerfLogger.update({ promptSizeEstimateChars: promptChars, finalRequestChars: promptChars });
 
-            // B-3: 텍스트 전용 모델(이름에 vision/vl/llava 없음)에는 이미지 전달 차단
-            const modelSupportsVision = this.modelSupportsVision(selectedModel);
+            // B-3: Ollama API에서 vision capability를 확인하여 이미지 전달 여부 결정
+            const visionCheck = await this.modelSupportsVision(selectedModel, endpoint, installedModel);
+            const modelSupportsVision = visionCheck.supportsVision;
+            logInfo(`[PIPELINE] Vision check for '${selectedModel}': ${modelSupportsVision ? 'supported' : 'not supported'} (${visionCheck.reason})`);
             const imagesToSend = modelSupportsVision ? attachments.imageFiles : [];
             if (!modelSupportsVision && attachments.imageFiles.length > 0) {
                 logInfo(`[PIPELINE] Skipping ${attachments.imageFiles.length} image(s): model '${selectedModel}' does not appear to support vision input.`);
@@ -716,16 +718,27 @@ export class ChatPipeline {
     }
 
     /**
-     * B-3: 모델 이름으로 비전(이미지) 입력 지원 여부를 판단.
-     * llava / bakllava / vision / vl / minicpm-v / moondream 계열은 멀티모달.
-     * 그 외 gemma / llama / mistral 등 텍스트 전용 모델은 false.
+     * B-3: 모델이 이미지(비전) 입력을 지원하는지 판단.
+     * 1) Ollama API capabilities에 'vision'이 있으면 true
+     * 2) 모델 이름에 멀티모달 모델 식별자(e4b, 26b, gemma4 등)가 있으면 true
+     * 어느 하나라도 해당되면 vision 지원으로 판단 (OR 로직).
      */
-    private modelSupportsVision(modelName: string): boolean {
+    private async modelSupportsVision(
+        modelName: string,
+        endpoint: AIEndpoint,
+        installedModel?: { capabilities?: string[]; family?: string }
+    ): Promise<{ supportsVision: boolean; reason: string }> {
         if (!modelName) {
-            return false;
+            return { supportsVision: false, reason: 'empty model name' };
         }
+
+        // 이름 기반 휴리스틱: Modelfile에 capability 미선언된 모델도 커버
         const lower = modelName.toLowerCase();
-        return (
+        const nameMatch = (
+            lower.includes('e4b') ||
+            lower.includes('26b') ||
+            lower.includes('gemma4') ||
+            lower.includes('supergemma4') ||
             lower.includes('llava') ||
             lower.includes('vision') ||
             lower.includes(':vl') ||
@@ -738,6 +751,33 @@ export class ChatPipeline {
             lower.includes('qwen-vl') ||
             lower.includes('internvl')
         );
+
+        if (nameMatch) {
+            return { supportsVision: true, reason: 'matched model name heuristic' };
+        }
+
+        if (installedModel?.capabilities?.includes('vision')) {
+            return { supportsVision: true, reason: 'installed model metadata includes vision capability' };
+        }
+
+        if (typeof installedModel?.family === 'string') {
+            const family = installedModel.family.toLowerCase();
+            if (family.includes('vision') || family.includes('gemma4') || family.includes('llava') || family.includes('moondream')) {
+                return { supportsVision: true, reason: `installed model family matched '${installedModel.family}'` };
+            }
+        }
+
+        // API 확인: 이름으로 못 잡은 모델도 Ollama capabilities로 판단
+        if (!endpoint.isLMStudio) {
+            const endpointBaseUrl = endpoint.apiUrl.replace(/\/api\/chat$/, '');
+            const caps = await getModelCapabilities(modelName, endpointBaseUrl);
+            if (caps.includes('vision')) {
+                return { supportsVision: true, reason: 'ollama show/api capabilities include vision' };
+            }
+            return { supportsVision: false, reason: `no vision signal from name, metadata, or ollama capabilities (${caps.join(', ') || 'empty'})` };
+        }
+
+        return { supportsVision: false, reason: 'no vision signal from name or installed metadata under LM Studio mode' };
     }
 
     private trimHistory(maxHistory = 50): void {

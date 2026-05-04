@@ -33,6 +33,7 @@ export interface InstalledModelInfo {
     name: string;
     parameterSize?: string;
     family?: string;
+    capabilities?: string[];
 }
 
 export interface ModelProfile {
