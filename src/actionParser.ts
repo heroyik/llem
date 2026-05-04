@@ -72,16 +72,14 @@ export function parseUrlActions(message: string): TextAction[] {
 }
 
 export function parseFallbackFileBlocks(message: string): PathAction[] {
-    const regex = /```(?:[a-zA-Z]*)?\s*\n\/\/\s*(?:file|path):\s*([^\n]+)\n([\s\S]*?)```/gi;
     const actions: PathAction[] = [];
-    let match: RegExpExecArray | null;
+    const seen = new Set<string>();
 
-    while ((match = regex.exec(message)) !== null) {
-        actions.push({
-            path: match[1].trim(),
-            body: match[2].trim()
-        });
-    }
+    collectFallbackActions(message, /```(?:[a-zA-Z]*)?\s*\n\/\/\s*(?:file|path):\s*([^\n]+)\n([\s\S]*?)```/gi, actions, seen);
+    collectFallbackActions(message, /```(?:[a-zA-Z0-9_-]+)?\s+(?:path|file)=["']?([^"'`\n]+)["']?\s*\n([\s\S]*?)```/gi, actions, seen);
+    collectFallbackActions(message, /```((?:\.{0,2}\/)?[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+)\s*\n([\s\S]*?)```/gi, actions, seen);
+    collectFallbackActions(message, /```(?:[a-zA-Z0-9_-]+)\s+((?:\.{0,2}\/)?[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+)\s*\n([\s\S]*?)```/gi, actions, seen);
+    collectFallbackActions(message, /(?:^|\n)(?:#{1,6}\s*|(?:\*\*|`)?(?:file|path)\s*:\s*(?:\*\*|`)?)(`?((?:\.{0,2}\/)?[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+)`?)\s*\n```(?:[a-zA-Z0-9_-]*)?\s*\n([\s\S]*?)```/gi, actions, seen, { pathIndex: 2, bodyIndex: 3 });
 
     return actions;
 }
@@ -120,4 +118,35 @@ function parseTextActions(message: string, regex: RegExp): TextAction[] {
     }
 
     return actions;
+}
+
+function collectFallbackActions(
+    message: string,
+    regex: RegExp,
+    actions: PathAction[],
+    seen: Set<string>,
+    options?: { pathIndex?: number; bodyIndex?: number }
+): void {
+    const pathIndex = options?.pathIndex ?? 1;
+    const bodyIndex = options?.bodyIndex ?? 2;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(message)) !== null) {
+        const path = String(match[pathIndex] || '').trim().replace(/^['"`]+|['"`]+$/g, '');
+        const body = String(match[bodyIndex] || '').trim();
+        if (!looksLikeWorkspaceFilePath(path) || !body) {
+            continue;
+        }
+
+        const key = `${path}\n${body}`;
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        actions.push({ path, body });
+    }
+}
+
+function looksLikeWorkspaceFilePath(value: string): boolean {
+    return /(?:^|\/)[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+$/.test(value.trim());
 }

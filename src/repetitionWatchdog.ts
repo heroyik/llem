@@ -86,23 +86,38 @@ export class RepetitionWatchdog {
 
     private detectTokenSequenceLoop(): boolean {
         const n = this.tokens.length;
-        if (n < this.minTokenSequence * 2) return false;
+        if (n < this.minTokenSequence * 3) return false;
 
-        // Check for repeating sequences of length L
-        for (let l = this.minTokenSequence; l <= Math.floor(n / 2); l++) {
+        // Check for repeating sequences of length L.
+        // Require three consecutive copies to avoid false positives while generating code,
+        // markdown tables, or action-tag fragments.
+        for (let l = this.minTokenSequence; l <= Math.floor(n / 3); l++) {
             const currentTokens = this.tokens.slice(-l).map(t => t.trim());
             const previousTokens = this.tokens.slice(-2 * l, -l).map(t => t.trim());
+            const olderTokens = this.tokens.slice(-3 * l, -2 * l).map(t => t.trim());
+
             if (isLowSignalMarkdownStructureSequence(currentTokens) && isLowSignalMarkdownStructureSequence(previousTokens)) {
                 continue;
             }
-            if (isStructuredCodeOrActionSequence(currentTokens) && isStructuredCodeOrActionSequence(previousTokens)) {
+            if (
+                isStructuredCodeOrActionSequence(currentTokens)
+                && isStructuredCodeOrActionSequence(previousTokens)
+                && isStructuredCodeOrActionSequence(olderTokens)
+            ) {
+                continue;
+            }
+            if (
+                isLowSignalStructuredFragmentSequence(currentTokens)
+                && isLowSignalStructuredFragmentSequence(previousTokens)
+                && isLowSignalStructuredFragmentSequence(olderTokens)
+            ) {
                 continue;
             }
 
-            // Normalize tokens (trim) to catch variations in whitespace/tokenization
             const current = currentTokens.join('\u0000');
             const previous = previousTokens.join('\u0000');
-            if (current === previous && current.length > 10) {
+            const older = olderTokens.join('\u0000');
+            if (current === previous && previous === older && current.length > 10) {
                 this.abortedReason = `sequence loop (len=${l})`;
                 return true;
             }
@@ -312,12 +327,14 @@ function isLowSignalMarkdownStructureToken(token: string): boolean {
         /^`{3,}[a-z0-9_-]*$/i.test(normalized) ||
         /^~{3,}[a-z0-9_-]*$/i.test(normalized) ||
         /^#{1,6}$/.test(normalized) ||
+        /^#{1,6}\s*$/.test(normalized) ||
         /^>+$/.test(normalized) ||
         /^[-*+]$/.test(normalized) ||
         /^\d+\.$/.test(normalized) ||
         /^\[[ xX]\]$/.test(normalized) ||
         /^[-*_]{3,}$/.test(normalized) ||
-        /^[|:.\-]+$/.test(normalized)
+        /^[|:.\-]+$/.test(normalized) ||
+        /^\|?\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)*\|?$/.test(normalized)
     );
 }
 
@@ -373,6 +390,30 @@ function isCodeOrActionToken(token: string): boolean {
         /^<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized) ||
         /^<\/?(?:div|span|section|article|header|footer|main|motion)\b/i.test(normalized) ||
         /^(?:className|interface|type|export|const|let|var|function|return)$/.test(normalized) ||
+        /^(?:edit|file|find|replace|create|delete|read|list|run|command|path)$/.test(normalized) ||
         /^[{}()[\];,.:=<>/_-]+$/.test(normalized)
     );
+}
+
+function isLowSignalStructuredFragmentSequence(tokens: string[]): boolean {
+    const meaningfulTokens = tokens
+        .map(token => token.trim())
+        .filter(Boolean);
+
+    if (meaningfulTokens.length === 0) {
+        return false;
+    }
+
+    let fragmentCount = 0;
+    for (const token of meaningfulTokens) {
+        if (
+            isLowSignalMarkdownStructureToken(token)
+            || isCodeOrActionToken(token)
+            || /^(?:<\/?[a-z_:-]+|[a-z_:-]+\/?>)$/i.test(token)
+        ) {
+            fragmentCount++;
+        }
+    }
+
+    return fragmentCount >= Math.ceil(meaningfulTokens.length * 0.8);
 }

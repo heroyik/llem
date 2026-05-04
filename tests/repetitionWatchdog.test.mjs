@@ -253,3 +253,51 @@ test('RepetitionWatchdog ignores repeated action-tag closing sequences inside co
 
   assert.equal(detected, false);
 });
+
+test('RepetitionWatchdog ignores two-copy action tag fragment sequences', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    'Implementing the edit now.\n',
+    '</edit',
+    '_',
+    'file',
+    '>\n',
+    '</edit',
+    '_',
+    'file',
+    '>\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});
+
+test('RepetitionWatchdog ignores markdown divider during a normal answer', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    'Status summary follows.\n',
+    '### Plan\n',
+    '- First item\n',
+    '---',
+    '\n',
+    '### Next step\n',
+    '- Second item\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});

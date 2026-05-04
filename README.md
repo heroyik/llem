@@ -345,6 +345,20 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.21
+
+- Bumped the VSIX build from `3.3.21` to `3.3.21`.
+- Live stream output shows raw AI text without HTML/Markdown parsing during generation. Final reply renders as full Markdown. Removed sanitizeAssistantDisplayText from live renderStreamNow path.
+- Packaged `release/llem-3.3.21.vsix`.
+
+### v3.3.21
+
+- Bumped the VSIX build from `3.3.20` to `3.3.21`.
+- Live stream output now shows raw AI text without any HTML/Markdown parsing during generation — `<edit_file>`, `<find>`, `<replace>` action tags are visible as-is while streaming.
+- Final reply (after stream completes) continues to render as full Markdown with code highlighting, file badges, and action summaries.
+- Removed `sanitizeAssistantDisplayText()` call from the live `renderStreamNow()` path so the raw model output is never silently stripped mid-stream.
+- Packaged `release/llem-3.3.21.vsix`.
+
 ### v3.3.20
 
 - Bumped the VSIX build from `3.3.19` to `3.3.20`.

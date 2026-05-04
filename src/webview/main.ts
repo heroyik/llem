@@ -1070,13 +1070,14 @@ try {
     clearStreamRenderTimer();
     if (!streamPreviewEl) return;
     streamLastRender = Date.now();
-    const visibleText = sanitizeAssistantDisplayText(streamRaw);
-    if (visibleText.length === 0) {
+    // Live 스트리밍 중엔 HTML/마크다운 파싱 없이 raw 텍스트 그대로 표시
+    // (sanitizeAssistantDisplayText, fmt() 모두 사용하지 않음)
+    if (streamRaw.length === 0) {
       streamPreviewEl.className = 'stream-preview stream-preview-empty';
       streamPreviewEl.textContent = 'The first token will show up here the second it lands.';
     } else {
       streamPreviewEl.className = 'stream-preview stream-preview-live';
-      streamPreviewEl.innerHTML = fmt(visibleText);
+      streamPreviewEl.textContent = streamRaw;
     }
     updateStreamMeta();
     if (chat) chat.scrollTop = chat.scrollHeight;
@@ -2106,7 +2107,13 @@ try {
         log('[FILES] Synchronized ' + workspaceFiles.size + ' workspace file path(s)');
         rerenderDisplayedMessages();
         if (streamPreviewEl && streamRaw) {
-          streamPreviewEl.innerHTML = fmt(streamRaw);
+          if (streamPreviewEl.classList.contains('stream-preview-final')) {
+            // 완료 상태: 마크다운 렌더링
+            streamPreviewEl.innerHTML = fmt(sanitizeAssistantDisplayText(streamRaw));
+          } else {
+            // 라이브 상태: raw 텍스트 그대로 (파싱 없음)
+            streamPreviewEl.textContent = streamRaw;
+          }
         }
         break;
       default:

@@ -71,6 +71,33 @@ export const generated = true;
   ]);
 });
 
+test('parseFallbackFileBlocks extracts path attributes from fenced code', () => {
+  const actions = parseFallbackFileBlocks(`
+\`\`\`tsx path="src/components/Panel.tsx"
+export function Panel() {
+  return <section />;
+}
+\`\`\`
+`);
+
+  assert.deepEqual(actions, [
+    { path: 'src/components/Panel.tsx', body: 'export function Panel() {\n  return <section />;\n}' }
+  ]);
+});
+
+test('parseFallbackFileBlocks extracts file headings followed by fenced code', () => {
+  const actions = parseFallbackFileBlocks(`
+File: src/lib/util.ts
+\`\`\`ts
+export const sum = (a: number, b: number) => a + b;
+\`\`\`
+`);
+
+  assert.deepEqual(actions, [
+    { path: 'src/lib/util.ts', body: 'export const sum = (a: number, b: number) => a + b;' }
+  ]);
+});
+
 test('stripWrappingFence leaves unfenced content alone', () => {
   assert.equal(stripWrappingFence('plain text'), 'plain text');
 });

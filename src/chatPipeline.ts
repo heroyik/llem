@@ -560,7 +560,8 @@ export class ChatPipeline {
                     if (watchdog.addToken(token)) {
                         loopDetected = true;
                         const reason = watchdog.getAbortedReason();
-                        logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream.`);
+                        const recentPreview = streamedText.slice(-240).replace(/\s+/g, ' ').trim();
+                        logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream. Recent output: ${recentPreview}`);
                         abortController.abort();
                     }
                 }

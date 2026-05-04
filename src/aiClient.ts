@@ -1,7 +1,6 @@
 import axios from 'axios';
 import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types';
 import { getConfig } from './config';
-import { detectImportantSentenceLoop, detectRecentBlockLoop } from './repetitionWatchdog';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 import { logInfo, logStreamEvent, logStructured } from './logger';
 import { completedStreamOutcome, interruptedStreamOutcome, type StreamOutcome } from './streamOutcome';
@@ -113,10 +112,6 @@ function buildStreamBody(
     };
 }
 
-function isStuckInLoop(text: string): boolean {
-    return detectRecentBlockLoop(text).detected || detectImportantSentenceLoop(text).detected;
-}
-
 function containsReasoningTrace(rawText: string): boolean {
     return /"thinking"\s*:|"reasoning(?:_content|_text)?"\s*:|"thought"\s*:/.test(rawText);
 }
@@ -202,14 +197,6 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
                 output += token;
                 onToken(token);
 
-                if (output.length >= 90 && isStuckInLoop(output)) {
-                    repetitionDetected = true;
-                    logInfo(`[STREAM] Repetition detected for stream ${streamId}. Stopping early.`);
-                    logStreamEvent(streamId, 'repetition_detected', { outputLength: output.length });
-                    stream.destroy();
-                    resolveOnce();
-                    break;
-                }
             }
             chunkIndex += 1;
         });
@@ -274,10 +261,6 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         outputLength: output.length,
         chunkCount: chunkIndex
     });
-
-    if (repetitionDetected) {
-        return interruptedStreamOutcome(output, 'repetition_detected');
-    }
 
     return completedStreamOutcome(output);
 }
