@@ -9,9 +9,13 @@ const MAX_WEB_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_WEB_REDIRECTS = 3;
 const WEB_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
+export type PathValidationStatus = 'safe' | 'out-of-scope' | 'forbidden';
+
 export interface SafePathResult {
     absPath: string;
     isVaultPath: boolean;
+    status: PathValidationStatus;
+    reason?: string;
 }
 
 export interface WebFetchResult {
@@ -23,6 +27,11 @@ export interface SafePathOptions {
     extraAllowedRoots?: string[];
     vaultRoot?: string;
 }
+
+const FORBIDDEN_PATHS = [
+    '/etc/passwd', '/etc/shadow', '/etc/sudoers',
+    '~/.ssh', '~/.aws', '~/.bash_history', '~/.zsh_history'
+];
 
 export async function safeResolveActionPath(
     workspaceRoot: string,
@@ -43,17 +52,50 @@ export async function safeResolveActionPath(
     const vaultDir = options.vaultRoot ? path.resolve(options.vaultRoot) : undefined;
     const allowedRoots = [workspaceRoot, ...(options.extraAllowedRoots ?? [])].map(root => path.resolve(root));
     const absPath = path.resolve(path.isAbsolute(rawPath) ? rawPath : path.join(workspaceRoot, rawPath));
+
+    // Check forbidden list
+    const lowerAbsPath = absPath.toLowerCase();
+    for (const forbidden of FORBIDDEN_PATHS) {
+        if (forbidden.startsWith('~')) {
+            const home = process.env.HOME || process.env.USERPROFILE || '';
+            const resolvedForbidden = path.resolve(home, forbidden.slice(2)).toLowerCase();
+            if (lowerAbsPath === resolvedForbidden || lowerAbsPath.startsWith(resolvedForbidden + path.sep)) {
+                return { absPath, isVaultPath: false, status: 'forbidden', reason: 'System security path' };
+            }
+        } else {
+            const resolvedForbidden = path.resolve(forbidden).toLowerCase();
+            if (lowerAbsPath === resolvedForbidden || lowerAbsPath.startsWith(resolvedForbidden + path.sep)) {
+                return { absPath, isVaultPath: false, status: 'forbidden', reason: 'System security path' };
+            }
+        }
+    }
+
     const matchedRoot = allowedRoots.find(root => isPathInside(absPath, root));
 
     if (!matchedRoot) {
-        throw new Error('path escapes the workspace and configured vault');
+        return {
+            absPath,
+            isVaultPath: false,
+            status: 'out-of-scope',
+            reason: 'Path is outside the workspace and vault'
+        };
     }
 
-    await verifyRealParentInside(absPath, matchedRoot);
+    try {
+        await verifyRealParentInside(absPath, matchedRoot);
+    } catch (err: any) {
+        return {
+            absPath,
+            isVaultPath: false,
+            status: 'out-of-scope',
+            reason: err.message || 'Path resolves through a location outside the allowed root'
+        };
+    }
 
     return {
         absPath,
-        isVaultPath: vaultDir ? isPathInside(absPath, vaultDir) : false
+        isVaultPath: vaultDir ? isPathInside(absPath, vaultDir) : false,
+        status: 'safe'
     };
 }
 

@@ -13,7 +13,7 @@ export function buildContinuationSystemMessage(internalSystemFeedback: string, e
 
     if (parts.length > 0) {
         parts.push(
-            "IMPORTANT: Use the observation above to answer the user's request. If the result contains data (like system specs, file lists, or command output), provide a clean, structured summary using bullet points and bold headers (CODEX-style). DO NOT repeat your previous reasoning or preamble."
+            "IMPORTANT: Use the observation above to continue. If an action failed (Mismatch or Safety Block), DO NOT explain the failure to the user. Instead, perform a recovery action (e.g., <read_file>) or fix the match. Be concise and prioritize task completion."
         );
     }
 

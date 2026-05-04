@@ -460,6 +460,9 @@ try {
     if (value.lastIndexOf('<create_file') > value.lastIndexOf('</create_file>')) value += '</create_file>';
     if (value.lastIndexOf('<edit_file') > value.lastIndexOf('</edit_file>')) value += '</edit_file>';
     if (value.lastIndexOf('<run_command') > value.lastIndexOf('</run_command>')) value += '</run_command>';
+    if (value.lastIndexOf('<delete_file') > value.lastIndexOf('</delete_file>')) value += '</delete_file>';
+    if (value.lastIndexOf('<read_file') > value.lastIndexOf('</read_file>')) value += '</read_file>';
+    if (value.lastIndexOf('<list_files') > value.lastIndexOf('</list_files>')) value += '</list_files>';
     if ((value.match(/\`\`\`/g) || []).length % 2 !== 0) value += '\n' + String.fromCharCode(96, 96, 96);
 
     const blocks: { token: string; html: string }[] = [];
@@ -483,6 +486,21 @@ try {
     });
     value = value.replace(/(?:<|call:)\s*run_command>([\s\S]*?)<\/run_command>/gi, function(_: string, command: string) {
       return pushBlock('<div class="cmd-badge"><span>▶ ' + esc(command.trim()) + '</span><button class="btn-open" data-action="open-terminal">Open</button></div>');
+    });
+    value = value.replace(/(?:<|call:)\s*delete_file\s+path="([^"]+)"\s*\/?>/gi, function(_: string, filePath: string) {
+      const attrs = isEditableFilePath(filePath)
+        ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
+        : '';
+      return pushBlock('<div class="delete-badge"' + attrs + '>🗑️ Deleted file · ' + esc(filePath) + '</div>');
+    });
+    value = value.replace(/(?:<|call:)\s*read_file\s+path="([^"]+)"\s*\/?>/gi, function(_: string, filePath: string) {
+      const attrs = isEditableFilePath(filePath)
+        ? ' data-action="open-file" data-file-path="' + esc(filePath) + '" role="button" tabindex="0" title="Open ' + esc(filePath) + '"'
+        : '';
+      return pushBlock('<div class="read-badge"' + attrs + '>📖 Read file · ' + esc(filePath) + '</div>');
+    });
+    value = value.replace(/(?:<|call:)\s*list_files\s+path="([^"]+)"\s*\/?>/gi, function(_: string, filePath: string) {
+      return pushBlock('<div class="list-badge">📁 Listed directory · ' + esc(filePath) + '</div>');
     });
 
     const md = getMarkdownRenderer();
@@ -910,11 +928,74 @@ try {
     }
     const body = document.createElement('div');
     body.className = 'msg-body';
-    if (isUser) {
-      body.innerText = message.text || '';
+
+    // Handle System Action Summaries
+    if (!isUser && message.text && message.text.startsWith('[SYSTEM:')) {
+      el.classList.add('msg-system');
+      head.innerHTML = '<div class="av av-system" style="background: var(--panel-3); color: var(--accent-2);">⟡</div><span>System Action Summary</span>';
+      
+      const lines = message.text.split('\n');
+      const contentWrap = document.createElement('div');
+      contentWrap.className = 'summary-content-wrap';
+
+      let currentSection: HTMLElement | null = null;
+
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === '[SYSTEM: Action Results]') return;
+
+        if (trimmed.endsWith(':')) {
+          // New Section
+          currentSection = document.createElement('div');
+          currentSection.className = 'summary-section';
+          const title = document.createElement('div');
+          title.className = 'summary-title';
+          title.textContent = trimmed;
+          currentSection.appendChild(title);
+          contentWrap.appendChild(currentSection);
+        } else if (currentSection && (trimmed.startsWith('-') || trimmed.startsWith('*'))) {
+          // List Item
+          const item = document.createElement('div');
+          item.className = 'summary-item';
+          
+          const icon = document.createElement('span');
+          icon.className = 'summary-icon';
+          
+          const text = trimmed.replace(/^[-*]\s*/, '');
+          const isIssue = /failed|error|issue|block|mismatch|filter/i.test(text);
+          
+          icon.textContent = isIssue ? '⚠️' : '✅';
+          
+          const content = document.createElement('span');
+          content.className = 'summary-text' + (isIssue ? ' summary-issue' : ' summary-success');
+          content.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+          
+          item.appendChild(icon);
+          item.appendChild(content);
+          currentSection.appendChild(item);
+        } else if (trimmed) {
+          // Regular text
+          const p = document.createElement('p');
+          p.style.fontSize = '11px';
+          p.style.color = 'var(--text-faint)';
+          p.style.marginTop = '4px';
+          p.textContent = trimmed;
+          if (currentSection) {
+            currentSection.appendChild(p);
+          } else {
+            contentWrap.appendChild(p);
+          }
+        }
+      });
+      body.appendChild(contentWrap);
     } else {
-      body.innerHTML = fmt(message.text || '');
+      if (isUser) {
+        body.innerText = message.text || '';
+      } else {
+        body.innerHTML = fmt(message.text || '');
+      }
     }
+
     const attachments = renderAttachments(resolvedFiles || []);
     if (attachments) {
       body.appendChild(attachments);

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { writeUtf8FileAtomic } from './atomicWrite';
 import { FileMutationGuard } from './fileMutationGuard';
+import { SafePathResult } from './security';
 import type { ChatMessage } from './types';
 
 const EXCLUDED_DIRS = new Set([
@@ -9,11 +10,6 @@ const EXCLUDED_DIRS = new Set([
     '.next', '.cache', '__pycache__', '.DS_Store', 'coverage',
     '.turbo', '.nuxt', '.output', 'vendor', 'target'
 ]);
-
-export interface ResolvedActionPath {
-    absPath: string;
-    isVaultPath: boolean;
-}
 
 export interface FileActionResult {
     report: string[];
@@ -23,7 +19,7 @@ export interface FileActionResult {
     chatMessage?: ChatMessage;
 }
 
-export type ResolveActionPath = (requestedPath: string) => Promise<ResolvedActionPath>;
+export type ResolveActionPath = (requestedPath: string) => Promise<SafePathResult>;
 
 export interface FindReplaceResult {
     content: string;
@@ -101,7 +97,7 @@ export async function executeEditFileAction(
     body: string,
     resolvePath: ResolveActionPath
 ): Promise<FileActionResult> {
-    let safePath: ResolvedActionPath;
+    let safePath: SafePathResult;
     try {
         safePath = await resolvePath(relPath);
     } catch (err: any) {
@@ -152,7 +148,7 @@ export async function executeEditFileAction(
                 brainModified: false,
                 chatMessage: {
                     role: 'user',
-                    content: `[SYSTEM: edit_file failed — <find> text not found in ${relPath}.]\n\nThe exact current content of ${relPath} is provided below. Please re-issue your <edit_file> call using a <find> block that MATCHES THIS CONTENT EXACTLY (including whitespace, tabs, and line endings).\n\n\`\`\`\n${originalContent.slice(0, 10000)}\n\`\`\``
+                    content: `[SYSTEM: Edit failed — <find> text mismatch in ${relPath}.]\n\nCorrect file content is below. RE-ISSUE your <edit_file> using EXACT text matching.\n\n\`\`\`\n${originalContent.slice(0, 10000)}\n\`\`\``
                 }
             };
         }

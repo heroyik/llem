@@ -4,7 +4,7 @@ import { ActionLoopGuard } from './actionLoopGuard';
 import { FileStateGuard } from './fileStateGuard';
 import { getVaultDir } from './config';
 import { openDocument, resolveLlemPath } from './fsUtils';
-import { safeResolveActionPath } from './security';
+import { PathValidationStatus, SafePathResult, safeResolveActionPath } from './security';
 import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
 import {
@@ -48,7 +48,7 @@ const actionLoopGuard = new ActionLoopGuard();
 // 5순위: 파일 수정 전후 해시 비교로 <find> 실패 즉시 감지
 const fileStateGuard = new FileStateGuard();
 
-async function resolveActionPath(rootPath: string, requestedPath: string) {
+async function resolveActionPath(rootPath: string, requestedPath: string): Promise<SafePathResult> {
     return resolveLlemPath(rootPath, requestedPath);
 }
 
@@ -73,14 +73,36 @@ async function approveCommand(command: string): Promise<boolean> {
     return choice === 'Run Command';
 }
 
+async function approveFileAction(actionType: string, filePath: string): Promise<boolean> {
+    const choice = await vscode.window.showWarningMessage(
+        `LLeM wants to ${actionType} a file outside the workspace:\n\n${filePath}`,
+        { modal: true },
+        'Approve'
+    );
+    return choice === 'Approve';
+}
+
 const HANDLERS: ActionHandler[] = [
     async (ctx) => {
         for (const action of parseCreateActions(ctx.aiMessage)) {
+            const validation = await resolveActionPath(ctx.rootPath, action.path);
+            if (validation.status === 'forbidden') {
+                ctx.fileResult.report.push(`❌ Create blocked: ${action.path} — security restriction (forbidden path).`);
+                continue;
+            }
+            if (validation.status === 'out-of-scope') {
+                const approved = await approveFileAction('create', validation.absPath);
+                if (!approved) {
+                    ctx.fileResult.report.push(`🛑 Action Denied: create ${action.path}`);
+                    continue;
+                }
+            }
+
             if (actionLoopGuard.shouldBlock({ kind: 'create', path: action.path, body: action.body })) {
                 ctx.fileResult.report.push(`⚠️ Create skipped: ${action.path} — repeated create action was blocked.`);
                 continue;
             }
-            applyFileActionResult(ctx, await executeCreateFileAction(action.path, action.body, rel => resolveActionPath(ctx.rootPath, rel)));
+            applyFileActionResult(ctx, await executeCreateFileAction(action.path, action.body, async () => validation));
             if (!ctx.fileResult.report.some(item => item.includes(`❌ Create blocked: ${action.path}`) || item.includes(`❌ Create failed: ${action.path}`))) {
                 actionLoopGuard.remember({ kind: 'create', path: action.path, body: action.body });
             }
@@ -92,19 +114,31 @@ const HANDLERS: ActionHandler[] = [
     },
     async (ctx) => {
         for (const action of parseEditActions(ctx.aiMessage)) {
+            const validation = await resolveActionPath(ctx.rootPath, action.path);
+            if (validation.status === 'forbidden') {
+                ctx.fileResult.report.push(`❌ Edit blocked: ${action.path} — security restriction (forbidden path).`);
+                continue;
+            }
+            if (validation.status === 'out-of-scope') {
+                const approved = await approveFileAction('edit', validation.absPath);
+                if (!approved) {
+                    ctx.fileResult.report.push(`🛑 Action Denied: edit ${action.path}`);
+                    continue;
+                }
+            }
+
             if (actionLoopGuard.shouldBlock({ kind: 'edit', path: action.path, body: action.body })) {
                 ctx.fileResult.report.push(`⚠️ Edit skipped: ${action.path} — repeated edit action was blocked.`);
                 continue;
             }
 
             // 5순위: 수정 전 hash 스냅샷
-            const resolvedForHash = await resolveActionPath(ctx.rootPath, action.path);
-            fileStateGuard.snapshot(resolvedForHash.absPath);
+            fileStateGuard.snapshot(validation.absPath);
 
-            applyFileActionResult(ctx, await executeEditFileAction(action.path, action.body, rel => resolveActionPath(ctx.rootPath, rel)));
+            applyFileActionResult(ctx, await executeEditFileAction(action.path, action.body, async () => validation));
 
             // 5순위: 수정 후 hash 비교
-            const editEffect = fileStateGuard.checkResult(resolvedForHash.absPath);
+            const editEffect = fileStateGuard.checkResult(validation.absPath);
             if (editEffect === 'no-effect') {
                 ctx.fileResult.report.push(
                     `⚠️ Edit had no effect on ${action.path} — the <find> text may not match the current file content. ` +
@@ -123,17 +157,53 @@ const HANDLERS: ActionHandler[] = [
     },
     async (ctx) => {
         for (const action of parseDeleteActions(ctx.aiMessage)) {
-            applyFileActionResult(ctx, await executeDeleteFileAction(action.path, rel => resolveActionPath(ctx.rootPath, rel)));
+            const validation = await resolveActionPath(ctx.rootPath, action.path);
+            if (validation.status === 'forbidden') {
+                ctx.fileResult.report.push(`❌ Delete blocked: ${action.path} — security restriction (forbidden path).`);
+                continue;
+            }
+            if (validation.status === 'out-of-scope') {
+                const approved = await approveFileAction('delete', validation.absPath);
+                if (!approved) {
+                    ctx.fileResult.report.push(`🛑 Action Denied: delete ${action.path}`);
+                    continue;
+                }
+            }
+            applyFileActionResult(ctx, await executeDeleteFileAction(action.path, async () => validation));
         }
     },
     async (ctx) => {
         for (const action of parseReadFileActions(ctx.aiMessage)) {
-            applyFileActionResult(ctx, await executeReadFileAction(action.path, rel => resolveActionPath(ctx.rootPath, rel)));
+            const validation = await resolveActionPath(ctx.rootPath, action.path);
+            if (validation.status === 'forbidden') {
+                ctx.fileResult.report.push(`❌ Read blocked: ${action.path} — security restriction (forbidden path).`);
+                continue;
+            }
+            if (validation.status === 'out-of-scope') {
+                const approved = await approveFileAction('read', validation.absPath);
+                if (!approved) {
+                    ctx.fileResult.report.push(`🛑 Action Denied: read ${action.path}`);
+                    continue;
+                }
+            }
+            applyFileActionResult(ctx, await executeReadFileAction(action.path, async () => validation));
         }
     },
     async (ctx) => {
         for (const action of parseListActions(ctx.aiMessage)) {
-            applyFileActionResult(ctx, await executeListFilesAction(action.path, rel => resolveActionPath(ctx.rootPath, rel)));
+            const validation = await resolveActionPath(ctx.rootPath, action.path);
+            if (validation.status === 'forbidden') {
+                ctx.fileResult.report.push(`❌ List blocked: ${action.path} — security restriction (forbidden path).`);
+                continue;
+            }
+            if (validation.status === 'out-of-scope') {
+                const approved = await approveFileAction('list', validation.absPath);
+                if (!approved) {
+                    ctx.fileResult.report.push(`🛑 Action Denied: list ${action.path}`);
+                    continue;
+                }
+            }
+            applyFileActionResult(ctx, await executeListFilesAction(action.path, async () => validation));
         }
     },
     async (ctx) => {

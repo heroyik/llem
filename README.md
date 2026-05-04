@@ -355,6 +355,18 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.29
+
+- Bumped the VSIX build from `3.3.28` to `3.3.29`.
+- Implemented File System Access Transparency with user-approved out-of-workspace operations and high-fidelity UI feedback.
+- Packaged `release/llem-3.3.29.vsix`.
+
+### v3.3.28
+
+- Bumped the VSIX build from `3.3.27` to `3.3.28`.
+- Action transparency and loop prevention improvements
+- Packaged `release/llem-3.3.28.vsix`.
+
 ### v3.3.27
 
 - Bumped the VSIX build from `3.3.26` to `3.3.27`.

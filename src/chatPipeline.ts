@@ -222,12 +222,40 @@ export class ChatPipeline {
                 }
 
                 // 2. Resolve external actions (file, terminal)
-                // Note: executeActions already handles history and UI chunking for external tools
                 const externalReport = await this.host.executeActions(currentAiResponse.text);
                 if (externalReport.length > 0) {
                     turnExecuted = true;
-                    const reportMsg = `\n\n---\n**Observation: Action Results**\n${externalReport.join('\n')}`;
-                    combinedUiFeedback += reportMsg;
+                    
+                    const successItems = externalReport.filter(r => !r.includes('❌') && !r.includes('⚠️') && !r.includes('🛑'));
+                    const issueItems = externalReport.filter(r => r.includes('❌') || r.includes('⚠️') || r.includes('🛑'));
+
+                    let friendlySummary = `[SYSTEM: Action Summary]\n`;
+                    
+                    if (successItems.length > 0) {
+                        friendlySummary += `Completed:\n`;
+                        friendlySummary += `- ${successItems.join('\n- ')}\n`;
+                    }
+                    
+                    if (issueItems.length > 0) {
+                        friendlySummary += `Issues & Safety Blocks:\n`;
+                        for (const issue of issueItems) {
+                            if (issue.includes('not found')) {
+                                friendlySummary += `- **Mismatch**: The AI tried to edit a section that didn't match the file content. I've sent the current file to the AI for a retry.\n`;
+                            } else if (issue.includes('loop detected')) {
+                                friendlySummary += `- **Safety Block**: Detected a repetitive edit loop. I've paused edits on this file to prevent infinite changes.\n`;
+                            } else if (issue.includes('skipped') && issue.includes('repeated')) {
+                                friendlySummary += `- **Redundancy Filter**: Blocked a repeated action that was already attempted.\n`;
+                            } else if (issue.includes('Action Denied')) {
+                                friendlySummary += `- **Permission Denied**: Access to a file outside the workspace was requested but not approved by the user.\n`;
+                            } else if (issue.includes('blocked') && issue.includes('security restriction')) {
+                                friendlySummary += `- **Security Block**: Access to this path is strictly prohibited for safety (e.g., system configuration files).\n`;
+                            } else {
+                                friendlySummary += `- ${issue}\n`;
+                            }
+                        }
+                    }
+
+                    combinedUiFeedback += friendlySummary;
                 }
 
                 if (turnExecuted) {
