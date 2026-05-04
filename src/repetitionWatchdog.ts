@@ -95,6 +95,9 @@ export class RepetitionWatchdog {
             if (isLowSignalMarkdownStructureSequence(currentTokens) && isLowSignalMarkdownStructureSequence(previousTokens)) {
                 continue;
             }
+            if (isStructuredCodeOrActionSequence(currentTokens) && isStructuredCodeOrActionSequence(previousTokens)) {
+                continue;
+            }
 
             // Normalize tokens (trim) to catch variations in whitespace/tokenization
             const current = currentTokens.join('\u0000');
@@ -275,6 +278,30 @@ function isLowSignalMarkdownStructureSequence(tokens: string[]): boolean {
     return meaningfulCount > 0;
 }
 
+function isStructuredCodeOrActionSequence(tokens: string[]): boolean {
+    const meaningfulTokens = tokens
+        .map(token => token.trim())
+        .filter(Boolean);
+
+    if (meaningfulTokens.length === 0) {
+        return false;
+    }
+
+    const combined = meaningfulTokens.join(' ');
+    if (isStructuredCodeOrActionText(combined)) {
+        return true;
+    }
+
+    let structuredCount = 0;
+    for (const token of meaningfulTokens) {
+        if (isCodeOrActionToken(token)) {
+            structuredCount++;
+        }
+    }
+
+    return structuredCount >= Math.max(2, Math.ceil(meaningfulTokens.length * 0.6));
+}
+
 function isLowSignalMarkdownStructureToken(token: string): boolean {
     const normalized = String(token || '').trim();
     if (!normalized) {
@@ -334,4 +361,18 @@ function isStructuredCodeOrActionText(text: string): boolean {
     }
 
     return false;
+}
+
+function isCodeOrActionToken(token: string): boolean {
+    const normalized = String(token || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    return (
+        /^<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized) ||
+        /^<\/?(?:div|span|section|article|header|footer|main|motion)\b/i.test(normalized) ||
+        /^(?:className|interface|type|export|const|let|var|function|return)$/.test(normalized) ||
+        /^[{}()[\];,.:=<>/_-]+$/.test(normalized)
+    );
 }

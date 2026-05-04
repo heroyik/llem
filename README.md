@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.19
+
+- Bumped the VSIX build from `3.3.18` to `3.3.19`.
+- Fixed RepetitionWatchdog false positives that could truncate edit-file streams during repeated action-tag/code sequences. Added regression coverage for repeated closing-tag action streams.
+- Packaged `release/llem-3.3.19.vsix`.
+
 ### v3.3.18
 
 - Bumped the VSIX build from `3.3.17` to `3.3.18`.

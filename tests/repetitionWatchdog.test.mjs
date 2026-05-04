@@ -221,3 +221,35 @@ test('RepetitionWatchdog ignores action-tag code scaffolding while editing files
 
   assert.equal(detected, false);
 });
+
+test('RepetitionWatchdog ignores repeated action-tag closing sequences inside code edits', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    '먼저, 카드가 확장(expanded)될 수 있는 상태를 지원하도록 컴포넌트를 업데이트합니다.\n\n',
+    '<edit_file path="src/components/BentoCard.tsx">\n',
+    '<find>\n',
+    'export const BentoCard = ({ title, description }: BentoCardProps) => {\n',
+    '</find>\n',
+    '<replace>\n',
+    'export const BentoCard = ({ title, description, expanded = false }: BentoCardProps) => {\n',
+    '</replace>\n',
+    '</edit',
+    '_',
+    'file',
+    '>\n',
+    '</edit',
+    '_',
+    'file',
+    '>\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});
