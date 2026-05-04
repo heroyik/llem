@@ -504,6 +504,25 @@ try {
     return applyLiteralMarkdownFallback(html);
   }
 
+  function sanitizeAssistantDisplayText(text: string): string {
+    if (!text) return '';
+
+    let value = String(text)
+      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[\s\S]*?<\/(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)>/gi, '')
+      .replace(/<(?:delete_file|delete|read_file|read|list_files|list_dir|ls|call:delete_file|call:delete|call:read_file|call:read|call:list_files|call:list_dir|call:ls)\b[^>]*\/?>/gi, '')
+      .replace(/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[^>]*>/gi, '')
+      .replace(/<\/?(?:find|replace)\b[^>]*>/gi, '')
+      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[^>]*>[\s\S]*$/gi, '');
+
+    value = value
+      .split('\n')
+      .filter(line => !/^\s*\(?\s*(?:wait(?:[,!]|)|let(?:'|’)?s)\s+.*(?:\brefine\b|\breplace block\b|\bclean pass\b|\bworks perfectly\b|\bdynamic mapping\b|\buser(?:'|’)?s environment\b|provided\s+\w+\s+structure|[a-z0-9_/.-]+\.(?:ts|tsx|js|jsx|py|java|go|rs|rb|php|cs|json|md))[\s\S]*\)?\s*$/i.test(line.trim()))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n');
+
+    return value.trim();
+  }
+
   function copyCode(btn: HTMLElement) {
     const code = btn.parentElement?.querySelector('code');
     if (!code) return;
@@ -1051,12 +1070,13 @@ try {
     clearStreamRenderTimer();
     if (!streamPreviewEl) return;
     streamLastRender = Date.now();
-    if (streamRaw.length === 0) {
+    const visibleText = sanitizeAssistantDisplayText(streamRaw);
+    if (visibleText.length === 0) {
       streamPreviewEl.className = 'stream-preview stream-preview-empty';
       streamPreviewEl.textContent = 'The first token will show up here the second it lands.';
     } else {
       streamPreviewEl.className = 'stream-preview stream-preview-live';
-      streamPreviewEl.textContent = streamRaw;
+      streamPreviewEl.innerHTML = fmt(visibleText);
     }
     updateStreamMeta();
     if (chat) chat.scrollTop = chat.scrollHeight;
@@ -1084,7 +1104,8 @@ try {
     const finalText = typeof message?.text === 'string' && message.text.length > 0
       ? message.text
       : streamRaw;
-    const hasFinalText = finalText.length > 0;
+    const sanitizedFinalText = sanitizeAssistantDisplayText(finalText);
+    const hasFinalText = sanitizedFinalText.length > 0;
     if (streamStatusEl) streamStatusEl.className = 'stream-status ' + state;
     if (streamStatusTitleEl) {
       if (state === 'done') {
@@ -1096,7 +1117,7 @@ try {
     if (streamPreviewEl) {
       if (hasFinalText) {
         streamPreviewEl.className = 'stream-preview stream-preview-final';
-        streamPreviewEl.innerHTML = fmt(finalText);
+        streamPreviewEl.innerHTML = fmt(sanitizedFinalText);
       } else {
         streamPreviewEl.className = 'stream-preview stream-preview-empty';
         streamPreviewEl.textContent = state === 'done' ? 'The reply came back empty. Check the LLeM output log for stream details.' : 'Generation stopped before output landed.';

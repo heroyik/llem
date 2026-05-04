@@ -345,6 +345,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.20
+
+- Bumped the VSIX build from `3.3.19` to `3.3.20`.
+- Hardened assistant output sanitization to prevent leaked action tags and scratchpad text in streamed replies
+- Packaged `release/llem-3.3.20.vsix`.
+
 ### v3.3.19
 
 - Bumped the VSIX build from `3.3.18` to `3.3.19`.

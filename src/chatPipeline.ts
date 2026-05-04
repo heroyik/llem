@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { containsActionTags } from './actionTagGuard';
+import { sanitizeAssistantOutput } from './assistantOutputSanitizer';
 import { getConfig } from './config';
 import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
@@ -645,24 +646,7 @@ export class ChatPipeline {
     }
 
     private stripActionTags(text: string): string {
-        if (!text) { return ''; }
-        
-        let cleaned = text
-            .replace(/<(?:create_file|file|call:create_file|call:file)\s+[^>]*>[\s\S]*?<\/(?:create_file|file|call:create_file|call:file)>/gi, '')
-            .replace(/<(?:edit_file|edit|call:edit_file|call:edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit|call:edit_file|call:edit)>/gi, '')
-            .replace(/<(?:delete_file|delete|call:delete_file|call:delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete|call:delete_file|call:delete)>)?/gi, '')
-            .replace(/<(?:read_file|read|call:read_file|call:read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read|call:read_file|call:read)>)?/gi, '')
-            .replace(/<(?:list_files|list_dir|ls|call:list_files|call:list_dir|call:ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls|call:list_files|call:list_dir|call:ls)>)?/gi, '')
-            .replace(/<(?:run_command|command|bash|terminal|call:run_command|call:command|call:bash|call:terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal|call:run_command|call:command|call:bash|call:terminal)>/gi, '')
-            .replace(/<(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url|call:read_url|call:url|call:fetch_url)>/gi, '')
-            .replace(/<(?:read_brain|read_vault|call:read_brain|call:read_vault)>[\s\S]*?<\/(?:read_brain|read_vault|call:read_brain|call:read_vault)>/gi, '')
-            .replace(/<call:[^>]+>[\s\S]*?<\/call:[^>]+>/gi, '')
-            .replace(/<call:[^>]*\/>/gi, '');
-
-        // Fallback: strip unclosed tags if they appear near the end (common if stream was aborted)
-        cleaned = cleaned.replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|read_brain|read_vault|call:[a-z_]+)\s*[^>]*>?[\s\S]*$/gi, '');
-
-        return cleaned.trim();
+        return sanitizeAssistantOutput(text);
     }
 
     private postStreamErrorDetail(error: any, formatDetail: (detail: string) => string): void {

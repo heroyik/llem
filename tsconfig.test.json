@@ -8,6 +8,7 @@
     "src/actionParser.ts",
     "src/actionTagGuard.ts",
     "src/actionLoopGuard.ts",
+    "src/assistantOutputSanitizer.ts",
     "src/atomicWrite.ts",
     "src/bridgeAuth.ts",
     "src/bridgePayload.ts",
