@@ -109,3 +109,42 @@ test('RepetitionWatchdog aborts when an important sentence keeps returning', () 
   assert.equal(detected, true);
   assert.match(watchdog.getAbortedReason(), /important sentence loop/);
 });
+
+test('RepetitionWatchdog ignores markdown table separator patterns', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    '| Phase | Focus | Status | Progress | Key Deliverables |\n',
+    '|', ' :---', ' |', ' :---', ' |', ' :---', ' |', ' :---', ' |', ' :---', ' |\n',
+    '|', ' :---', ' |', ' :---', ' |', ' :---', ' |', ' :---', ' |', ' :---', ' |\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});
+
+test('RepetitionWatchdog ignores markdown fence and list scaffolding', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    '###\n', '###\n',
+    '```ts\n', '```ts\n',
+    '-\n', '-\n', '-\n',
+    '>\n', '>\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});

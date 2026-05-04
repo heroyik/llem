@@ -55,7 +55,7 @@ export class RepetitionWatchdog {
         if (token.length > 1) {
             const lastN = this.tokens.slice(-10);
             const occurrences = lastN.filter(t => t === token).length;
-            if (occurrences >= 8) {
+            if (occurrences >= 8 && !isLowSignalMarkdownStructureToken(token)) {
                 this.abortedReason = `token spam: "${token}"`;
                 return true;
             }
@@ -90,9 +90,15 @@ export class RepetitionWatchdog {
 
         // Check for repeating sequences of length L
         for (let l = this.minTokenSequence; l <= Math.floor(n / 2); l++) {
+            const currentTokens = this.tokens.slice(-l).map(t => t.trim());
+            const previousTokens = this.tokens.slice(-2 * l, -l).map(t => t.trim());
+            if (isLowSignalMarkdownStructureSequence(currentTokens) && isLowSignalMarkdownStructureSequence(previousTokens)) {
+                continue;
+            }
+
             // Normalize tokens (trim) to catch variations in whitespace/tokenization
-            const current = this.tokens.slice(-l).map(t => t.trim()).join('\u0000');
-            const previous = this.tokens.slice(-2 * l, -l).map(t => t.trim()).join('\u0000');
+            const current = currentTokens.join('\u0000');
+            const previous = previousTokens.join('\u0000');
             if (current === previous && current.length > 10) {
                 this.abortedReason = `sequence loop (len=${l})`;
                 return true;
@@ -114,6 +120,9 @@ export class RepetitionWatchdog {
         for (let l = this.minTextMatch; l <= Math.floor(subLen / 2); l++) {
             const suffix = sub.slice(-l);
             const prev = sub.slice(-2 * l, -l);
+            if (isLowSignalMarkdownStructureText(suffix) && isLowSignalMarkdownStructureText(prev)) {
+                continue;
+            }
             if (suffix === prev) {
                 this.abortedReason = `text suffix loop (len=${l})`;
                 return true;
@@ -237,4 +246,53 @@ function isSignificantText(text: string, minSignificantChars: number): boolean {
     }
     const uniqueChars = new Set(significantChars.map(char => char.toLowerCase()));
     return uniqueChars.size >= 5;
+}
+
+function isLowSignalMarkdownStructureSequence(tokens: string[]): boolean {
+    if (tokens.length === 0) {
+        return false;
+    }
+
+    let meaningfulCount = 0;
+    for (const token of tokens) {
+        const normalized = token.trim();
+        if (!normalized) {
+            continue;
+        }
+        meaningfulCount++;
+        if (!isLowSignalMarkdownStructureToken(normalized)) {
+            return false;
+        }
+    }
+
+    return meaningfulCount > 0;
+}
+
+function isLowSignalMarkdownStructureToken(token: string): boolean {
+    const normalized = String(token || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    return (
+        /^`{3,}[a-z0-9_-]*$/i.test(normalized) ||
+        /^~{3,}[a-z0-9_-]*$/i.test(normalized) ||
+        /^#{1,6}$/.test(normalized) ||
+        /^>+$/.test(normalized) ||
+        /^[-*+]$/.test(normalized) ||
+        /^\d+\.$/.test(normalized) ||
+        /^\[[ xX]\]$/.test(normalized) ||
+        /^[-*_]{3,}$/.test(normalized) ||
+        /^[|:.\-]+$/.test(normalized)
+    );
+}
+
+function isLowSignalMarkdownStructureText(text: string): boolean {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    const stripped = normalized.replace(/[|:.\-`~#>*+\[\]\sxX0-9]/g, '');
+    return stripped.length === 0;
 }
