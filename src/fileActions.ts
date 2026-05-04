@@ -149,7 +149,11 @@ export async function executeEditFileAction(
             return {
                 report,
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                chatMessage: {
+                    role: 'user',
+                    content: `[SYSTEM: edit_file failed — <find> text not found in ${relPath}.]\n\nThe exact current content of ${relPath} is provided below. Please re-issue your <edit_file> call using a <find> block that MATCHES THIS CONTENT EXACTLY (including whitespace, tabs, and line endings).\n\n\`\`\`\n${originalContent.slice(0, 10000)}\n\`\`\``
+                }
             };
         }
 

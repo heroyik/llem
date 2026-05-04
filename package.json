@@ -2,7 +2,7 @@
   "name": "llem",
   "displayName": "LLeM",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
-  "version": "3.3.21",
+  "version": "3.3.27",
   "publisher": "nIcK",
   "author": "nIck(heroyik@gmail.com)",
   "repository": {

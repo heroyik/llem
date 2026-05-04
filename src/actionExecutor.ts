@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ActionLoopGuard } from './actionLoopGuard';
+import { FileStateGuard } from './fileStateGuard';
 import { getVaultDir } from './config';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { safeResolveActionPath } from './security';
@@ -44,6 +45,8 @@ interface ActionHandlerContext extends ActionReportContext {
 type ActionHandler = (ctx: ActionHandlerContext) => Promise<void>;
 
 const actionLoopGuard = new ActionLoopGuard();
+// 5순위: 파일 수정 전후 해시 비교로 <find> 실패 즉시 감지
+const fileStateGuard = new FileStateGuard();
 
 async function resolveActionPath(rootPath: string, requestedPath: string) {
     return resolveLlemPath(rootPath, requestedPath);
@@ -93,8 +96,27 @@ const HANDLERS: ActionHandler[] = [
                 ctx.fileResult.report.push(`⚠️ Edit skipped: ${action.path} — repeated edit action was blocked.`);
                 continue;
             }
+
+            // 5순위: 수정 전 hash 스냅샷
+            const resolvedForHash = await resolveActionPath(ctx.rootPath, action.path);
+            fileStateGuard.snapshot(resolvedForHash.absPath);
+
             applyFileActionResult(ctx, await executeEditFileAction(action.path, action.body, rel => resolveActionPath(ctx.rootPath, rel)));
-            if (!ctx.fileResult.report.some(item => item.includes(`❌ Edit blocked: ${action.path}`) || item.includes(`❌ Edit failed: ${action.path}`))) {
+
+            // 5순위: 수정 후 hash 비교
+            const editEffect = fileStateGuard.checkResult(resolvedForHash.absPath);
+            if (editEffect === 'no-effect') {
+                ctx.fileResult.report.push(
+                    `⚠️ Edit had no effect on ${action.path} — the <find> text may not match the current file content. ` +
+                    `Try using <read_file> to get the current content first.`
+                );
+            } else if (editEffect === 'loop-detected') {
+                ctx.fileResult.report.push(
+                    `🛑 Edit loop detected on ${action.path} — same file edited 3 times with no change. Blocking further edits on this file.`
+                );
+                actionLoopGuard.remember({ kind: 'edit', path: action.path, body: action.body });
+                break;
+            } else if (!ctx.fileResult.report.some(item => item.includes(`❌ Edit blocked: ${action.path}`) || item.includes(`❌ Edit failed: ${action.path}`))) {
                 actionLoopGuard.remember({ kind: 'edit', path: action.path, body: action.body });
             }
         }

@@ -1070,14 +1070,62 @@ try {
     clearStreamRenderTimer();
     if (!streamPreviewEl) return;
     streamLastRender = Date.now();
-    // Live 스트리밍 중엔 HTML/마크다운 파싱 없이 raw 텍스트 그대로 표시
-    // (sanitizeAssistantDisplayText, fmt() 모두 사용하지 않음)
+    
     if (streamRaw.length === 0) {
       streamPreviewEl.className = 'stream-preview stream-preview-empty';
       streamPreviewEl.textContent = 'The first token will show up here the second it lands.';
     } else {
       streamPreviewEl.className = 'stream-preview stream-preview-live';
-      streamPreviewEl.textContent = streamRaw;
+      
+      const hasAction = /<(create_file|edit_file|run_command|delete_file|read_file|list_files)/i.test(streamRaw);
+      if (hasAction) {
+        // 액션 감지 시 깔끔한 진행 상태 표시
+        let actionLabel = 'Processing...';
+        let actionPath = '';
+        
+        if (streamRaw.includes('<edit_file')) {
+          actionLabel = '✏️ Editing file';
+          const match = streamRaw.match(/path="([^"]+)"/);
+          if (match) actionPath = match[1];
+        } else if (streamRaw.includes('<create_file')) {
+          actionLabel = '📁 Creating file';
+          const match = streamRaw.match(/path="([^"]+)"/);
+          if (match) actionPath = match[1];
+        } else if (streamRaw.includes('<run_command')) {
+          actionLabel = '▶ Running command';
+        } else if (streamRaw.includes('<read_file')) {
+          actionLabel = '📖 Reading file';
+          const match = streamRaw.match(/path="([^"]+)"/);
+          if (match) actionPath = match[1];
+        }
+
+        const cleanText = sanitizeAssistantDisplayText(streamRaw);
+        const textHtml = cleanText ? `<div style="margin-bottom:12px">${fmt(cleanText)}</div>` : '';
+        
+        const elapsed = formatElapsed(Date.now() - streamStartedAt);
+        const metaHtml = `
+          <div class="action-step-meta">
+            <span>⏱ ${elapsed}</span>
+            <span>🧩 ${streamChunkCount} chunks</span>
+            <span>📝 ${streamRaw.length} chars</span>
+          </div>
+        `;
+
+        streamPreviewEl.innerHTML = `
+          ${textHtml}
+          <div class="stream-action-progress">
+            <div class="action-step-badge">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+              <span>${esc(actionLabel)}</span>
+            </div>
+            ${actionPath ? `<div class="action-step-detail">${esc(actionPath)}</div>` : ''}
+            ${metaHtml}
+          </div>
+        `;
+      } else {
+        // 일반 텍스트는 산문화해서 표시
+        streamPreviewEl.innerHTML = fmt(sanitizeAssistantDisplayText(streamRaw)) || esc(streamRaw);
+      }
     }
     updateStreamMeta();
     if (chat) chat.scrollTop = chat.scrollHeight;

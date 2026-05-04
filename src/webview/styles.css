@@ -644,6 +644,45 @@ select {
   white-space: nowrap;
 }
 
+.stream-action-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent-glow);
+  border-radius: 12px;
+  animation: pulseProgress 2s infinite ease-in-out;
+}
+
+.action-step-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.action-step-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.action-step-detail {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: 'SF Mono', monospace;
+  padding-left: 22px;
+}
+
+@keyframes pulseProgress {
+  0% { border-color: rgba(255, 158, 88, 0.1); box-shadow: 0 0 0 rgba(255, 158, 88, 0); }
+  50% { border-color: rgba(255, 158, 88, 0.3); box-shadow: 0 0 12px rgba(255, 158, 88, 0.1); }
+  100% { border-color: rgba(255, 158, 88, 0.1); box-shadow: 0 0 0 rgba(255, 158, 88, 0); }
+}
+
 .input-box {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1225,6 +1264,32 @@ body.init .input-wrap {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.action-step-detail {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.action-step-meta {
+    margin-top: 8px;
+    font-size: 10px;
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid var(--vscode-widget-border);
+    padding-top: 6px;
+}
+
+.action-step-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 .history-item-meta {
   font-size: 11px;

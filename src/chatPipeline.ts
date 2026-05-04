@@ -145,7 +145,16 @@ export class ChatPipeline {
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
             PerfLogger.update({ promptSizeEstimateChars: promptChars, finalRequestChars: promptChars });
 
-            this.attachImagesToRequest(endpoint, reqMessages, attachments.imageFiles);
+            // B-3: 텍스트 전용 모델(이름에 vision/vl/llava 없음)에는 이미지 전달 차단
+            const modelSupportsVision = this.modelSupportsVision(selectedModel);
+            const imagesToSend = modelSupportsVision ? attachments.imageFiles : [];
+            if (!modelSupportsVision && attachments.imageFiles.length > 0) {
+                logInfo(`[PIPELINE] Skipping ${attachments.imageFiles.length} image(s): model '${selectedModel}' does not appear to support vision input.`);
+                for (const img of attachments.imageFiles) {
+                    attachments.notices.push(`\n\n> 🖼️ **[Image skipped]** ${img.name}: the active model (\`${selectedModel}\`) does not support image input. Switch to a vision model or remove the image.\n\n`);
+                }
+            }
+            this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
 
             this.host.postWebviewMessage({ type: 'streamStart' });
 
@@ -170,6 +179,18 @@ export class ChatPipeline {
             if (currentAiResponse.repeated) {
                 repeatedStopReason = currentAiResponse.stopReason;
                 this.postSingleLoopStopNotice(currentAiResponse.stopReason);
+                // B-1: 반복 감지된 응답은 히스토리에 추가하지 않고 즉시 종료
+                // (이미 L119에서 user 메시지만 push된 상태이므로 오염 없이 반환)
+                logInfo('[PIPELINE] Initial response repeated — skipping history push to prevent context contamination.');
+                const emptyFinalDisplay: DisplayMessage = { text: currentAiResponse.text, role: 'ai', feedback: null };
+                this.host.getDisplayMessages().push(emptyFinalDisplay);
+                await this.host.saveHistory();
+                this.host.postWebviewMessage({
+                    type: 'streamEnd',
+                    message: emptyFinalDisplay,
+                    messageIndex: this.host.getDisplayMessages().length - 1
+                });
+                return { repeated: true, stopReason: repeatedStopReason };
             }
             if (planningOnlyInitialTurn) {
                 if (containsActionTags(currentAiResponse.text)) {
@@ -215,10 +236,24 @@ export class ChatPipeline {
                     // Update full AI message with what we've processed so far
                     fullAiMessage += cleanedAiResponse + combinedUiFeedback;
 
-                    this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse.text });
+                    // B-2: 마지막 메시지가 이미 assistant이면 중복 push 방지
+                    const chatHistory = this.host.getChatHistory();
+                    if (chatHistory.length === 0 || chatHistory[chatHistory.length - 1].role !== 'assistant') {
+                        chatHistory.push({ role: 'assistant', content: currentAiResponse.text });
+                    } else {
+                        logInfo('[PIPELINE] Skipped duplicate assistant push — last message already has role=assistant.');
+                    }
                     const continuationMessage = buildContinuationSystemMessage(combinedSystemFeedback, externalReport);
                     if (continuationMessage) {
-                        this.host.getChatHistory().push({ role: 'user', content: continuationMessage });
+                        // B-2: 마지막 메시지가 이미 user이면 continuation 중복 방지
+                        const lastRole = chatHistory[chatHistory.length - 1]?.role;
+                        if (lastRole !== 'user') {
+                            chatHistory.push({ role: 'user', content: continuationMessage });
+                        } else {
+                            // 이미 user 메시지가 있으면 내용을 append
+                            chatHistory[chatHistory.length - 1].content += '\n\n' + continuationMessage;
+                            logInfo('[PIPELINE] Merged continuation into existing user message to prevent duplicate.');
+                        }
                     }
 
                     // Re-prompt
@@ -238,6 +273,12 @@ export class ChatPipeline {
                         repeatedStopReason = currentAiResponse.stopReason;
                         this.postSingleLoopStopNotice(currentAiResponse.stopReason);
                         fullAiMessage += currentAiResponse.text;
+                        // B-1: followup 반복 감지 시 마지막 오염 assistant 메시지 제거
+                        const hist = this.host.getChatHistory();
+                        if (hist.length > 0 && hist[hist.length - 1].role === 'assistant') {
+                            hist.pop();
+                            logInfo('[PIPELINE] Removed repeated assistant message from history (followup turn).');
+                        }
                         break;
                     }
                     
@@ -579,8 +620,14 @@ export class ChatPipeline {
             });
 
             if (loopDetected && !result.repeated) {
+                let text = streamedText || result.text;
+                // 태그 보정
+                if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
+                if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
+                if (text.includes('<run_command') && !text.includes('</run_command>')) text += '\n</run_command>';
+
                 return {
-                    text: streamedText || result.text,
+                    text,
                     stopReason: 'watchdog_loop',
                     repeated: true,
                     aborted: true
@@ -591,8 +638,14 @@ export class ChatPipeline {
             clearInterval(flushInterval);
             flushBuffer();
             if (loopDetected || err?.name === 'AbortError' || axios.isCancel(err)) {
+                let text = streamedText;
+                // 태그 보정
+                if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
+                if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
+                if (text.includes('<run_command') && !text.includes('</run_command>')) text += '\n</run_command>';
+
                 return {
-                    text: streamedText,
+                    text,
                     stopReason: loopDetected ? 'watchdog_loop' : 'manual_abort',
                     repeated: loopDetected,
                     aborted: true
@@ -632,6 +685,31 @@ export class ChatPipeline {
 
     private selectedModel(modelName: string, defaultModel: string): string {
         return modelName || defaultModel;
+    }
+
+    /**
+     * B-3: 모델 이름으로 비전(이미지) 입력 지원 여부를 판단.
+     * llava / bakllava / vision / vl / minicpm-v / moondream 계열은 멀티모달.
+     * 그 외 gemma / llama / mistral 등 텍스트 전용 모델은 false.
+     */
+    private modelSupportsVision(modelName: string): boolean {
+        if (!modelName) {
+            return false;
+        }
+        const lower = modelName.toLowerCase();
+        return (
+            lower.includes('llava') ||
+            lower.includes('vision') ||
+            lower.includes(':vl') ||
+            lower.includes('-vl') ||
+            lower.includes('_vl') ||
+            lower.includes('bakllava') ||
+            lower.includes('moondream') ||
+            lower.includes('minicpm-v') ||
+            lower.includes('cogvlm') ||
+            lower.includes('qwen-vl') ||
+            lower.includes('internvl')
+        );
     }
 
     private trimHistory(maxHistory = 50): void {

@@ -18,6 +18,16 @@ This extension was built because I was tired of being ghosted by AI every time I
 > [!IMPORTANT]
 > **LLeM is 100% local.** Your code never leaves your machine. No cloud, no drama, just pure local intelligence.
 
+## 🚀 What's New
+
+### v3.3.25
+- **[UI/UX] Live Stream Metadata**: Action progress badges now display real-time statistics, including total duration, chunk count, and character count, giving you full visibility into the AI's generation performance.
+
+### v3.3.23
+- **[Robustness] AI Self-Correction Loop**: When a file edit fails due to context mismatch, LLeM now automatically feeds the actual file content back to the AI for an immediate, accurate retry.
+- **[UI/UX] Action Progress Visualization**: Live streaming now shows clean, "Codex-style" progress badges for file operations instead of raw XML, keeping you informed without the clutter.
+- **[Reliability] Tag Normalization**: Improved handling of aborted or incomplete streams to ensure actions are executed even if the connection drops.
+
 ---
 
 ## 📥 Installation
@@ -345,11 +355,27 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
-### v3.3.21
+### v3.3.27
 
-- Bumped the VSIX build from `3.3.21` to `3.3.21`.
-- Live stream output shows raw AI text without HTML/Markdown parsing during generation. Final reply renders as full Markdown. Removed sanitizeAssistantDisplayText from live renderStreamNow path.
-- Packaged `release/llem-3.3.21.vsix`.
+- Bumped the VSIX build from `3.3.26` to `3.3.27`.
+- Added live stream metadata (duration, chunks, chars) to action progress UI
+- Packaged `release/llem-3.3.27.vsix`.
+
+### v3.3.24
+
+- Bumped the VSIX build from `3.3.23` to `3.3.24`.
+- Implemented AI self-correction loop and Codex-style action progress visualization
+- Packaged `release/llem-3.3.24.vsix`.
+
+### v3.3.22
+
+- Bumped the VSIX build from `3.3.21` to `3.3.22`.
+- **B-1 fix**: Repeated/watchdog-aborted responses are no longer pushed to the chat history. Previously, the aborted assistant message would linger in history and seed the next turn with a contaminated context, causing cascading repetition loops. Now the pipeline returns immediately without writing the bad response to history.
+- **B-2 fix**: Consecutive `assistant → assistant` or `user → user` message pushes during agentic action loops are now de-duplicated. If a `continuation` user message arrives when the last history entry is already a `user` entry, the content is merged rather than creating a second entry.
+- **B-3 fix**: Images are no longer forwarded to text-only models (gemma, llama, mistral, etc.). The model name is inspected for known vision indicators (`llava`, `vision`, `:vl`, `bakllava`, `moondream`, etc.) and a clear in-chat notice is shown when an image is skipped.
+- **B-4 fix**: `RequestRetryGuard` fingerprints now use a normalized, punctuation-stripped 300-character prompt core instead of the raw prompt string. Rephrased retries of the same request are blocked even when the exact wording changes.
+- **FileStateGuard**: New `src/fileStateGuard.ts` computes SHA-256 hashes before and after every `edit_file` action. A `no-effect` warning is surfaced when the file is unchanged (typically a `<find>` mismatch). After 3 consecutive no-effect edits on the same file, `loop-detected` is returned and further edits on that path are blocked via `ActionLoopGuard`.
+- Packaged `release/llem-3.3.22.vsix`.
 
 ### v3.3.21
 
