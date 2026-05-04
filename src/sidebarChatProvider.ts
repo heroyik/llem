@@ -30,6 +30,7 @@ import { logInfo, logError } from './logger';
 import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFiles';
 import { ResponsePreferenceManager } from './responsePreferenceManager';
 import type { MessageFeedback } from './responsePreferenceManager';
+import { RequestRetryGuard } from './requestRetryGuard';
 import {
     cancelPendingRequest,
     clearPendingRequests,
@@ -166,6 +167,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private readonly _historyManager: HistoryManager;
     private readonly _chatPipeline: ChatPipeline;
     private readonly _responsePreferenceManager: ResponsePreferenceManager;
+    private readonly _requestRetryGuard = new RequestRetryGuard();
     private _setupStarted = false;
     private readonly _largeModelWarningsShown = new Set<string>();
 
@@ -451,6 +453,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
             stopGeneration: () => this._stopGeneration(),
+            openExternalUrl: (url) => this._openExternalUrl(url),
             fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
             openAttachment: (file) => this._openAttachment(file),
             branchChat: (messageIndex) => this._branchChat(messageIndex),
@@ -556,6 +559,16 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _enqueueRequest(request: QueuedRequest): Promise<void> {
+        const retryStatus = this._requestRetryGuard.shouldBlock(request);
+        if (retryStatus.blocked) {
+            const reason = retryStatus.reason || 'recent repetition stop';
+            logInfo(`[QUEUE] Blocked immediate retry for ${request.kind} (${request.id}) due to ${reason}`);
+            this._view?.webview.postMessage({
+                type: 'response',
+                value: `> ⚠️ **[LLeM]** 방금 반복 중단된 요청과 같은 요청이라 잠시 다시 실행하지 않았습니다. 이유: ${reason}`
+            });
+            return;
+        }
         this._queueState = enqueueQueueState(this._queueState, request);
         logInfo(`[QUEUE] Enqueued ${request.kind} (${request.id}); pending=${this._queueState.pendingRequests.length}`);
         this._syncQueueStateToWebview();
@@ -609,22 +622,57 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         switch (request.kind) {
             case 'promptWithFile':
-                await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                await this._handleExecutionResult(
+                    request,
+                    await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled)
+                );
                 return;
             case 'editMessage':
-                await this._runEditNow(request.messageIndex ?? -1, request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                await this._handleExecutionResult(
+                    request,
+                    await this._runEditNow(request.messageIndex ?? -1, request.prompt, request.modelName, request.files || [], request.internetEnabled)
+                );
                 return;
             case 'regenerate':
                 this._chatSession.removeLastAssistantResponse();
                 if ((request.files || []).length > 0) {
-                    await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled);
+                    await this._handleExecutionResult(
+                        request,
+                        await this._runPromptWithFilesNow(request.prompt, request.modelName, request.files || [], request.internetEnabled)
+                    );
                     return;
                 }
-                await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled);
+                await this._handleExecutionResult(
+                    request,
+                    await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled)
+                );
                 return;
             case 'prompt':
-                await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled);
+                await this._handleExecutionResult(
+                    request,
+                    await this._runPromptNow(request.prompt, request.modelName, request.internetEnabled)
+                );
                 return;
+        }
+    }
+
+    private async _handleExecutionResult(
+        request: QueuedRequest,
+        result?: { repeated: boolean; stopReason?: string }
+    ): Promise<void> {
+        if (!result?.repeated) {
+            return;
+        }
+        const reason = result.stopReason || 'repetition detected';
+        this._requestRetryGuard.markRepeated(request, reason);
+        const filtered = this._requestRetryGuard.filterBlocked(this._queueState.pendingRequests);
+        if (filtered.blocked.length > 0) {
+            this._queueState = {
+                ...this._queueState,
+                pendingRequests: filtered.allowed
+            };
+            logInfo(`[QUEUE] Removed ${filtered.blocked.length} queued retry request(s) after repetition stop`);
+            this._syncQueueStateToWebview();
         }
     }
 
@@ -767,6 +815,20 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         getLlemChannel().show();
     }
 
+    private async _openExternalUrl(url: string): Promise<void> {
+        const value = String(url || '').trim();
+        if (!/^https?:\/\//i.test(value) && !/^mailto:/i.test(value)) {
+            return;
+        }
+
+        try {
+            await vscode.env.openExternal(vscode.Uri.parse(value, true));
+        } catch (err) {
+            void vscode.window.showErrorMessage(`Could not open link: ${value}`);
+            logError('[LINK] Failed to open external URL: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
     private async _fetchUris(uris: string[], requestId?: string): Promise<void> {
         if (!this._view) { return; }
         for (const uriString of uris) {
@@ -812,9 +874,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!workspaceRoot) { return; }
-
         try {
             if (file.sourceUri) {
                 const uri = parseDroppedUri(file.sourceUri);
@@ -822,14 +881,15 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) { return; }
+
             let requestedPath = file.name;
-            if (!requestedPath.includes('/') && !requestedPath.includes('\\')) {
-                const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-                const relativePaths = files.map(entry => vscode.workspace.asRelativePath(entry, false));
-                const matchedPath = resolveEditableWorkspacePath(requestedPath, relativePaths);
-                if (matchedPath) {
-                    requestedPath = matchedPath;
-                }
+            const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
+            const relativePaths = files.map(entry => vscode.workspace.asRelativePath(entry, false));
+            const matchedPath = resolveEditableWorkspacePath(requestedPath, relativePaths);
+            if (matchedPath) {
+                requestedPath = matchedPath;
             }
 
             const { absPath } = await resolveLlemPath(workspaceRoot, requestedPath);
@@ -932,6 +992,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         attachmentNames?: string[];
         attachmentChars?: number;
         prunedAttachmentChars?: number;
+        executionPhase?: 'initial' | 'followup';
     } = {}): ChatMessage[] {
         return this._contextBuilder.buildRequestMessages({
             chatHistory: this._chatSession.chatHistory,
@@ -945,7 +1006,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             activeEngineName: options.activeEngineName,
             attachmentNames: options.attachmentNames,
             attachmentChars: options.attachmentChars,
-            prunedAttachmentChars: options.prunedAttachmentChars
+            prunedAttachmentChars: options.prunedAttachmentChars,
+            executionPhase: options.executionPhase
         });
     }
 
@@ -966,13 +1028,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private async _runPromptWithFilesNow(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
         if (!this._view) { logError('[PROMPT] handlePromptWithFile called but no view', false); return; }
         logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', internet=' + !!internetEnabled + ')');
-        await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
+        return await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
     }
 
     private async _runPromptNow(prompt: string, modelName: string, internetEnabled?: boolean) {
         if (!this._view) { logError('[PROMPT] handlePrompt called but no view', false); return; }
         logInfo('[PROMPT] handlePrompt (model=' + modelName + ', internet=' + !!internetEnabled + ', len=' + prompt.length + ')');
-        await this._chatPipeline.handlePrompt(prompt, modelName, internetEnabled);
+        return await this._chatPipeline.handlePrompt(prompt, modelName, internetEnabled);
     }
 
     private async _executeActions(aiMessage: string): Promise<string[]> {
@@ -1029,7 +1091,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         await this.saveHistory();
     }
 
-    private async _runEditNow(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<void> {
+    private async _runEditNow(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<{ repeated: boolean; stopReason?: string } | undefined> {
         if (!Number.isInteger(messageIndex) || messageIndex < 0) {
             return;
         }
@@ -1047,10 +1109,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._restoreDisplayMessages();
 
             if (files.length > 0) {
-                await this._runPromptWithFilesNow(prompt, modelName || this._lastModel || '', files, internetEnabled);
-            } else {
-                await this._runPromptNow(prompt, modelName || this._lastModel || '', internetEnabled);
+                return await this._runPromptWithFilesNow(prompt, modelName || this._lastModel || '', files, internetEnabled);
             }
+            return await this._runPromptNow(prompt, modelName || this._lastModel || '', internetEnabled);
 
             void vscode.window.showInformationMessage('Created a new edited branch from that message.');
         } catch (err) {

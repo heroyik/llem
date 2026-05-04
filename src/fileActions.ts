@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeUtf8FileAtomic } from './atomicWrite';
+import { FileMutationGuard } from './fileMutationGuard';
 import type { ChatMessage } from './types';
 
 const EXCLUDED_DIRS = new Set([
@@ -28,7 +29,10 @@ export interface FindReplaceResult {
     content: string;
     editCount: number;
     missingTargets: number;
+    invalid?: string;
 }
+
+const fileMutationGuard = new FileMutationGuard();
 
 export function emptyFileActionResult(): FileActionResult {
     return {
@@ -54,9 +58,28 @@ export async function executeCreateFileAction(
     label = 'Created'
 ): Promise<FileActionResult> {
     try {
+        const contentValidationError = validateCreateFileContent(content);
+        if (contentValidationError) {
+            return {
+                report: [`❌ Create blocked: ${relPath} — ${contentValidationError}`],
+                workspaceModified: false,
+                brainModified: false
+            };
+        }
         const { absPath, isVaultPath } = await resolvePath(relPath);
+        if (!fileMutationGuard.tryAcquire(absPath)) {
+            return {
+                report: [`⚠️ Create skipped: ${relPath} — another mutation is already in progress for this file.`],
+                workspaceModified: false,
+                brainModified: false
+            };
+        }
         await fs.promises.mkdir(path.dirname(absPath), { recursive: true });
-        await writeUtf8FileAtomic(absPath, content);
+        try {
+            await writeUtf8FileAtomic(absPath, content);
+        } finally {
+            fileMutationGuard.release(absPath);
+        }
 
         return {
             report: [`✅ ${label}: ${relPath}`],
@@ -109,6 +132,13 @@ export async function executeEditFileAction(
 
         const originalContent = await fs.promises.readFile(safePath.absPath, 'utf-8');
         const edited = applyFindReplacePairs(originalContent, body);
+        if (edited.invalid) {
+            return {
+                report: [`❌ Edit blocked: ${relPath} — ${edited.invalid}`],
+                workspaceModified: false,
+                brainModified: false
+            };
+        }
         const report: string[] = [];
 
         for (let i = 0; i < edited.missingTargets; i += 1) {
@@ -123,7 +153,18 @@ export async function executeEditFileAction(
             };
         }
 
-        await writeUtf8FileAtomic(safePath.absPath, edited.content, stat.mode);
+        if (!fileMutationGuard.tryAcquire(safePath.absPath)) {
+            return {
+                report: [`⚠️ Edit skipped: ${relPath} — another mutation is already in progress for this file.`],
+                workspaceModified: false,
+                brainModified: false
+            };
+        }
+        try {
+            await writeUtf8FileAtomic(safePath.absPath, edited.content, stat.mode);
+        } finally {
+            fileMutationGuard.release(safePath.absPath);
+        }
         report.push(`✏️ Edited: ${relPath} (${edited.editCount} replacement${edited.editCount === 1 ? '' : 's'})`);
 
         return {
@@ -254,6 +295,16 @@ export async function executeListFilesAction(
 }
 
 export function applyFindReplacePairs(content: string, body: string): FindReplaceResult {
+    const bodyValidationError = validateEditActionBody(body);
+    if (bodyValidationError) {
+        return {
+            content,
+            editCount: 0,
+            missingTargets: 0,
+            invalid: bodyValidationError
+        };
+    }
+
     const findReplaceRegex = /<find>([\s\S]*?)<\/find>\s*<replace>([\s\S]*?)<\/replace>/g;
     let result = content;
     let editCount = 0;
@@ -276,6 +327,47 @@ export function applyFindReplacePairs(content: string, body: string): FindReplac
         editCount,
         missingTargets
     };
+}
+
+function validateEditActionBody(body: string): string | undefined {
+    const text = String(body || '');
+    const openFind = countTagOccurrences(text, /<find>/g);
+    const closeFind = countTagOccurrences(text, /<\/find>/g);
+    const openReplace = countTagOccurrences(text, /<replace>/g);
+    const closeReplace = countTagOccurrences(text, /<\/replace>/g);
+
+    if (openFind !== closeFind) {
+        return 'incomplete <find> block.';
+    }
+    if (openReplace !== closeReplace) {
+        return 'incomplete <replace> block.';
+    }
+    if (openFind !== openReplace) {
+        return 'each <find> must have a matching <replace>.';
+    }
+    if (openFind === 0) {
+        return 'no valid <find>/<replace> pairs were provided.';
+    }
+
+    return undefined;
+}
+
+function countTagOccurrences(text: string, regex: RegExp): number {
+    return (text.match(regex) || []).length;
+}
+
+function validateCreateFileContent(content: string): string | undefined {
+    const text = String(content || '');
+    if (!text.trim()) {
+        return 'generated content was empty.';
+    }
+
+    const fenceCount = countTagOccurrences(text, /```/g);
+    if (fenceCount % 2 !== 0) {
+        return 'generated content appears truncated (unbalanced code fence).';
+    }
+
+    return undefined;
 }
 
 async function pathExists(filePath: string): Promise<boolean> {

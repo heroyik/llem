@@ -10,6 +10,7 @@ import {
     getVaultDir,
     getConfig,
 } from './config';
+import { buildDesignPlanningDirective, shouldUseDesignPlanningMode, type RequestExecutionPhase } from './designPlanningMode';
 import { PerfLogger } from './perfLogger';
 import { collectRelevantTerms, pruneHistoryMessages, truncateText } from './promptBudgeting';
 import type { BrainFilesCache, ChatMessage, ModelProfile, TextContextCache } from './types';
@@ -57,6 +58,7 @@ export interface RequestMessageBuildOptions {
     attachmentNames?: string[];
     attachmentChars?: number;
     prunedAttachmentChars?: number;
+    executionPhase?: RequestExecutionPhase;
 }
 
 export class ContextBuilder {
@@ -187,6 +189,10 @@ export class ContextBuilder {
         const internetDirective = getInternetDirective(options.internetEnabled);
         const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
         const contextBudget = options.modelProfile?.contextBudget;
+        const latestUserPrompt = findLatestUserPrompt(reqMessages);
+        const designPlanningDirective = shouldUseDesignPlanningMode(latestUserPrompt, options.attachmentNames || [])
+            ? buildDesignPlanningDirective(options.executionPhase ?? 'initial')
+            : '';
         const activeRuntimeDirective = options.activeModelName
             ? `\n\n[ACTIVE RUNTIME]\nThis request is being answered by the real local engine "${options.activeEngineName || 'Local Engine'}" using the loaded model "${options.activeModelName}". If the user asks which model is being used right now, answer with this active runtime model exactly. Do NOT infer the answer from source files, config defaults, or examples in the workspace unless the user explicitly asks about code or settings values.`
             : '';
@@ -202,7 +208,7 @@ export class ContextBuilder {
             : vaultContext;
 
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
             let systemContent = buildSystemContent();
             if (contextBudget) {
                 const minimumHistoryBudget = 4_000;
@@ -353,4 +359,14 @@ export class ContextBuilder {
 
         return result;
     }
+}
+
+function findLatestUserPrompt(messages: ChatMessage[]): string {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.role === 'user' && typeof message.content === 'string') {
+            return message.content;
+        }
+    }
+    return '';
 }

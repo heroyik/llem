@@ -8,6 +8,7 @@ export interface WebviewMessageRouterHost {
     showBrainNetwork(): void;
     showTerminal(): void;
     stopGeneration(): void;
+    openExternalUrl(url: string): Promise<void>;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
     openAttachment(file: { name?: string; sourceUri?: string; line?: number }): Promise<void>;
     branchChat(messageIndex: number): Promise<void>;
@@ -94,6 +95,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'showTerminal':
             host.showTerminal();
+            break;
+        case 'openExternalUrl':
+            await host.openExternalUrl(message.url || '');
             break;
         case 'fetchUris':
             await host.fetchUris(message.uris, message.requestId);

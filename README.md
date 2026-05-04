@@ -345,6 +345,38 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.16
+
+- Bumped the VSIX build from `3.3.16` to `3.3.16`.
+- Added structured repetition abort handling, retry and action loop guards, safer file mutation validation, restored clickable editable files, and added default-browser opening for chat URL links
+- Packaged `release/llem-3.3.16.vsix`.
+
+### v3.3.16
+
+- Bumped the extension version from `3.3.15` to `3.3.16`.
+- Fixed Korean IME Enter handling so composing Hangul no longer sends a duplicated trailing message.
+- Added composition-aware Enter submission logic with regression coverage for `isComposing` and IME confirm keycode `229`.
+- Hardened stream loop handling so repetition detection is promoted into structured pipeline state instead of being treated like a normal completion.
+- Stopped follow-up execution after repetition aborts, including watchdog-triggered stops and turn-to-turn repeated continuation loops.
+- Added request fingerprinting and retry fencing so the same request cannot immediately restart after a repetition stop.
+- Added action loop guarding so repeated `create_file` and `edit_file` patterns are blocked before they spin in place.
+- Added file mutation guarding so the same file cannot be mutated twice at the same time during model-driven actions.
+- Rejected incomplete `<find>/<replace>` edit bodies before disk write, preventing truncated edit actions from corrupting files.
+- Rejected obviously truncated `create_file` output such as unbalanced fenced code blocks before writing files.
+- Generalized plan-first enforcement for implementation requests, not just special design-guideline file names.
+- Added implementation planning mode so code-generation requests are guided toward a compact file split and smaller Next.js/TypeScript steps first.
+- Added a stronger post-processing guard that blocks action-tag execution if the model disobeys the initial plan-only response.
+- Restored clickable editable-file behavior in chat by improving local file link validation, workspace-path resolution, and message rerendering after workspace file sync.
+- Added default-browser opening for URL links in chat by routing external links through the extension host with `vscode.env.openExternal(...)`.
+- Expanded tests for stream outcome handling, retry guards, action loop guards, file mutation guards, design planning mode, editable file resolution, external link routing, and file-safety edge cases.
+
+### v3.3.15
+
+- Bumped the VSIX build from `3.3.14` to `3.3.15`.
+- Fixed Korean IME Enter handling to prevent duplicate trailing messages
+- added regression tests for composition-safe prompt submission
+- Packaged `release/llem-3.3.15.vsix`.
+
 ### v3.3.14
 
 - Bumped the VSIX build from `3.3.14` to `3.3.14`.

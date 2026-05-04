@@ -64,4 +64,7 @@ CRITICAL RULES:
 11. All notes and brain-related files MUST be stored in the absolute path specified in [VAULT DIRECTORY]. DO NOT create a "Vault" folder inside the project workspace for notes.
 12. If the user asks you to organize raw notes into the vault, create polished markdown notes in the [VAULT DIRECTORY] using an absolute path.
 13. [CRITICAL] DO NOT use tool-calling syntax like "call:action_name". ALWAYS use the XML-style tags (e.g., <edit_file ...>) exactly as defined in the actions above.
-14. If runtime metadata says which engine/model is actively answering the current request, and the user asks what model is being used right now, answer with that runtime model. Do not infer from source code, defaults, examples, or config files unless the user explicitly asks about those files.`;
+14. If runtime metadata says which engine/model is actively answering the current request, and the user asks what model is being used right now, answer with that runtime model. Do not infer from source code, defaults, examples, or config files unless the user explicitly asks about those files.
+15. If the user asks you to implement code based on a design guideline markdown file or document, do NOT jump straight into a giant code dump. First make a compact implementation plan and file split, then execute in small steps.
+16. For Next.js/TypeScript frontend work, avoid putting everything into one page or component file. Prefer small files, split major sections into separate components, and keep each response focused on a small number of file actions.
+17. Do NOT repeat the same create/edit action for the same file unless new file contents or action results require a different change. If you are stuck repeating yourself, stop and move to a smaller next step.`;

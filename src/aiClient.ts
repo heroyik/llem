@@ -4,6 +4,7 @@ import { getConfig } from './config';
 import { detectImportantSentenceLoop, detectRecentBlockLoop } from './repetitionWatchdog';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 import { logInfo, logStreamEvent, logStructured } from './logger';
+import { completedStreamOutcome, interruptedStreamOutcome, type StreamOutcome } from './streamOutcome';
 
 const ENDPOINT_CACHE_TTL_MS = 15_000;
 const REASONING_ONLY_ERROR = 'The selected model streamed reasoning without a final answer. Disable thinking for this model or choose one that returns answer content.';
@@ -120,7 +121,7 @@ function containsReasoningTrace(rawText: string): boolean {
     return /"thinking"\s*:|"reasoning(?:_content|_text)?"\s*:|"thought"\s*:/.test(rawText);
 }
 
-export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<string> {
+export async function streamCompletion(options: StreamOptions, onToken: (token: string) => void): Promise<StreamOutcome> {
     const streamId = createStreamId();
     logStreamEvent(streamId, 'request_start', {
         endpoint: options.endpoint.apiUrl,
@@ -159,7 +160,15 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
     let rawPreview = '';
     let chunkIndex = 0;
     let repetitionDetected = false;
+    let resolved = false;
     await new Promise<void>((resolve, reject) => {
+        const resolveOnce = () => {
+            if (resolved) {
+                return;
+            }
+            resolved = true;
+            resolve();
+        };
         const stream = response.data;
         let buffer = '';
         stream.on('data', (chunk: Buffer) => {
@@ -195,19 +204,20 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
 
                 if (output.length >= 90 && isStuckInLoop(output)) {
                     repetitionDetected = true;
-                    const stopMsg = '\n\n[LLeM: 무한 반복이 감지되어 생성을 중단했습니다.]';
-                    output += stopMsg;
-                    onToken(stopMsg);
                     logInfo(`[STREAM] Repetition detected for stream ${streamId}. Stopping early.`);
                     logStreamEvent(streamId, 'repetition_detected', { outputLength: output.length });
                     stream.destroy();
-                    resolve();
+                    resolveOnce();
                     break;
                 }
             }
             chunkIndex += 1;
         });
         stream.on('end', () => {
+            if (repetitionDetected) {
+                resolveOnce();
+                return;
+            }
             const parsed = parseStreamBuffer(buffer, options.endpoint.isLMStudio, true);
             logStreamEvent(streamId, 'stream_end_flush', {
                 trailingBufferChars: buffer.length,
@@ -219,9 +229,13 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
                 output += token;
                 onToken(token);
             }
-            resolve();
+            resolveOnce();
         });
         stream.on('error', (err: any) => {
+            if (repetitionDetected) {
+                resolveOnce();
+                return;
+            }
             logStreamEvent(streamId, 'stream_error', {
                 name: err?.name || 'Error',
                 message: err?.message || String(err)
@@ -261,7 +275,11 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         chunkCount: chunkIndex
     });
 
-    return output;
+    if (repetitionDetected) {
+        return interruptedStreamOutcome(output, 'repetition_detected');
+    }
+
+    return completedStreamOutcome(output);
 }
 
 function buildNonStreamingBody(model: string, prompt: string): Record<string, unknown> {

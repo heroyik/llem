@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { containsActionTags } from './actionTagGuard';
 import { getConfig } from './config';
 import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
@@ -9,6 +10,9 @@ import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBu
 import { logInfo, logStreamEvent } from './logger';
 import { RepetitionWatchdog } from './repetitionWatchdog';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
+import { shouldUseDesignPlanningMode } from './designPlanningMode';
+import { isLoopStopReason, type StreamOutcome } from './streamOutcome';
+import type { RequestExecutionPhase } from './designPlanningMode';
 
 export interface ChatPipelineHost {
     buildRequestMessages(options?: {
@@ -20,6 +24,7 @@ export interface ChatPipelineHost {
         attachmentNames?: string[];
         attachmentChars?: number;
         prunedAttachmentChars?: number;
+        executionPhase?: RequestExecutionPhase;
     }): ChatMessage[];
     executeActions(aiMessage: string): Promise<string[]>;
     getChatHistory(): ChatMessage[];
@@ -33,6 +38,11 @@ export interface ChatPipelineHost {
     setAbortController(controller?: AbortController): void;
     setLastPrompt(prompt: string, modelName: string, files?: AttachedFile[], internetEnabled?: boolean): void;
     warnLargeModelTimeout(profile: ModelProfile, timeoutMs: number): void;
+}
+
+export interface PromptExecutionResult {
+    repeated: boolean;
+    stopReason?: string;
 }
 
 interface PromptRunOptions {
@@ -65,18 +75,19 @@ export class ChatPipeline {
         modelName: string,
         files: AttachedFile[],
         internetEnabled?: boolean
-    ): Promise<void> {
-        await this.runPrompt({ prompt, modelName, files, internetEnabled });
+    ): Promise<PromptExecutionResult> {
+        return await this.runPrompt({ prompt, modelName, files, internetEnabled });
     }
 
-    public async handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean): Promise<void> {
-        await this.runPrompt({ prompt, modelName, internetEnabled });
+    public async handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean): Promise<PromptExecutionResult> {
+        return await this.runPrompt({ prompt, modelName, internetEnabled });
     }
 
-    private async runPrompt(options: PromptRunOptions): Promise<void> {
+    private async runPrompt(options: PromptRunOptions): Promise<PromptExecutionResult> {
         const files = options.files ?? [];
         const hasFiles = files.length > 0;
         let abortController: AbortController | undefined;
+        let repeatedStopReason: string | undefined;
 
         try {
             const config = getConfig();
@@ -92,6 +103,10 @@ export class ChatPipeline {
             });
             const attachments = this.prepareAttachments(files, modelProfile);
             const reusableFiles = this.compactFilesForReuse(files);
+            const planningOnlyInitialTurn = shouldUseDesignPlanningMode(
+                options.prompt,
+                files.map(file => file.name)
+            );
             this.host.warnLargeModelTimeout(modelProfile, config.timeout);
             PerfLogger.update({
                 modelName: selectedModel,
@@ -122,7 +137,8 @@ export class ChatPipeline {
                 activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
                 attachmentNames: attachments.textAttachmentNames,
                 attachmentChars: attachments.includedChars,
-                prunedAttachmentChars: attachments.prunedChars
+                prunedAttachmentChars: attachments.prunedChars,
+                executionPhase: 'initial'
             });
 
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
@@ -150,18 +166,32 @@ export class ChatPipeline {
                 modelProfile,
                 'initial'
             );
+            if (currentAiResponse.repeated) {
+                repeatedStopReason = currentAiResponse.stopReason;
+                this.postSingleLoopStopNotice(currentAiResponse.stopReason);
+            }
+            if (planningOnlyInitialTurn) {
+                if (containsActionTags(currentAiResponse.text)) {
+                    logInfo('[PIPELINE] Initial planning-only response contained action tags. Blocking execution.');
+                    this.host.postWebviewMessage({
+                        type: 'streamChunk',
+                        value: '\n\n> ⚠️ **[LLeM]** 첫 계획 응답에서 액션 태그가 감지되어 실행을 차단했습니다. 계획만 남기고 구현은 다음 단계로 넘깁니다.\n\n'
+                    });
+                }
+                fullAiMessage = currentAiResponse.text;
+            }
 
             let turn = 0;
             const maxTurns = 10;
 
-            while (turn < maxTurns) {
+            while (turn < maxTurns && !currentAiResponse.repeated && !planningOnlyInitialTurn) {
                 let turnExecuted = false;
                 let combinedSystemFeedback = '';
                 let combinedUiFeedback = '';
-                let cleanedAiResponse = currentAiResponse;
+                let cleanedAiResponse = currentAiResponse.text;
 
                 // 1. Resolve internal read requests (vault, url)
-                const internalResult = await this.resolveInternalActions(currentAiResponse, endpoint, selectedModel, config.timeout, abortController.signal);
+                const internalResult = await this.resolveInternalActions(currentAiResponse.text, endpoint, selectedModel, config.timeout, abortController.signal);
                 if (internalResult.executed) {
                     turnExecuted = true;
                     cleanedAiResponse = internalResult.cleanedResponse;
@@ -171,7 +201,7 @@ export class ChatPipeline {
 
                 // 2. Resolve external actions (file, terminal)
                 // Note: executeActions already handles history and UI chunking for external tools
-                const externalReport = await this.host.executeActions(currentAiResponse);
+                const externalReport = await this.host.executeActions(currentAiResponse.text);
                 if (externalReport.length > 0) {
                     turnExecuted = true;
                     const reportMsg = `\n\n---\n**Observation: Action Results**\n${externalReport.join('\n')}`;
@@ -179,12 +209,12 @@ export class ChatPipeline {
                 }
 
                 if (turnExecuted) {
-                    const previousAiResponsePrefix = currentAiResponse.trim().slice(0, 200);
+                    const previousAiResponsePrefix = currentAiResponse.text.trim().slice(0, 200);
 
                     // Update full AI message with what we've processed so far
                     fullAiMessage += cleanedAiResponse + combinedUiFeedback;
 
-                    this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse });
+                    this.host.getChatHistory().push({ role: 'assistant', content: currentAiResponse.text });
                     const continuationMessage = buildContinuationSystemMessage(combinedSystemFeedback, externalReport);
                     if (continuationMessage) {
                         this.host.getChatHistory().push({ role: 'user', content: continuationMessage });
@@ -199,19 +229,24 @@ export class ChatPipeline {
                         activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
                         attachmentNames: attachments.textAttachmentNames,
                         attachmentChars: attachments.includedChars,
-                        prunedAttachmentChars: attachments.prunedChars
+                        prunedAttachmentChars: attachments.prunedChars,
+                        executionPhase: 'followup'
                     });
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
+                    if (currentAiResponse.repeated) {
+                        repeatedStopReason = currentAiResponse.stopReason;
+                        this.postSingleLoopStopNotice(currentAiResponse.stopReason);
+                        fullAiMessage += currentAiResponse.text;
+                        break;
+                    }
                     
                     // Loop detection: if Turn N starts exactly like Turn N-1, it's stuck.
-                    const isSimilar = currentAiResponse.trim().slice(0, 300) === previousAiResponsePrefix;
-                    if (isSimilar && currentAiResponse.length > 30) {
+                    const isSimilar = currentAiResponse.text.trim().slice(0, 300) === previousAiResponsePrefix;
+                    if (isSimilar && currentAiResponse.text.length > 30) {
                         logInfo('[PIPELINE] Turn-to-turn loop detected. Breaking execution chain.');
-                        this.host.postWebviewMessage({ 
-                            type: 'streamChunk', 
-                            value: '\n\n> ⚠️ **[System]** The model is repeating itself. Stopping the loop to provide the final answer.' 
-                        });
-                        fullAiMessage += currentAiResponse;
+                        repeatedStopReason = 'turn_to_turn_loop';
+                        this.postSingleLoopStopNotice('repetition_detected');
+                        fullAiMessage += currentAiResponse.text;
                         break;
                     }
 
@@ -220,8 +255,12 @@ export class ChatPipeline {
                 }
 
                 // No more actions
-                fullAiMessage += currentAiResponse;
+                fullAiMessage += currentAiResponse.text;
                 break;
+            }
+
+            if (!fullAiMessage && currentAiResponse.text) {
+                fullAiMessage = currentAiResponse.text;
             }
 
             const finalAssistantText = this.stripActionTags(fullAiMessage);
@@ -245,10 +284,17 @@ export class ChatPipeline {
                 message: finalDisplayMessage,
                 messageIndex: this.host.getDisplayMessages().length - 1
             });
+            return {
+                repeated: Boolean(repeatedStopReason),
+                stopReason: repeatedStopReason
+            };
         } catch (error: any) {
             if (isAbortError(error)) {
                 this.host.postWebviewMessage({ type: 'streamAbort' });
-                return;
+                return {
+                    repeated: false,
+                    stopReason: 'manual_abort'
+                };
             }
 
             const { ollamaBase } = getConfig();
@@ -266,6 +312,9 @@ export class ChatPipeline {
                     return `Tip: ${refined}`;
                 });
             }
+            return {
+                repeated: false
+            };
         } finally {
             if (abortController) {
                 this.host.setAbortController(undefined);
@@ -454,7 +503,7 @@ export class ChatPipeline {
         signal?: AbortSignal,
         modelProfile?: ModelProfile,
         phase: 'initial' | 'followup' = 'initial'
-    ): Promise<string> {
+    ): Promise<StreamOutcome> {
         const streamStart = performance.now();
         let firstTokenTime = 0;
         let tokenCount = 0;
@@ -462,6 +511,7 @@ export class ChatPipeline {
         // Repetition Watchdog
         const watchdog = new RepetitionWatchdog();
         let loopDetected = false;
+        let streamedText = '';
 
         const abortController = new AbortController();
         const combinedSignal = signal 
@@ -502,6 +552,7 @@ export class ChatPipeline {
                 }
                 tokenCount++;
                 buffer += token;
+                streamedText += token;
 
                 // Watchdog Logic
                 if (!loopDetected && token.trim().length > 0) {
@@ -509,10 +560,6 @@ export class ChatPipeline {
                         loopDetected = true;
                         const reason = watchdog.getAbortedReason();
                         logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream.`);
-                        this.host.postWebviewMessage({ 
-                            type: 'streamChunk', 
-                            value: `\n\n> ⚠️ **[Watchdog]** Repeating output detected (${reason}). Stopping stream to save resources.\n\n` 
-                        });
                         abortController.abort();
                     }
                 }
@@ -529,16 +576,38 @@ export class ChatPipeline {
                 streamTokensPerSecond: firstTokenTime > 0 && totalSeconds > 0 ? tokenCount / totalSeconds : 0
             });
 
+            if (loopDetected && !result.repeated) {
+                return {
+                    text: streamedText || result.text,
+                    stopReason: 'watchdog_loop',
+                    repeated: true,
+                    aborted: true
+                };
+            }
             return result;
         } catch (err: any) {
             clearInterval(flushInterval);
             flushBuffer();
             if (loopDetected || err?.name === 'AbortError' || axios.isCancel(err)) {
-                // Return what we have so far if it's an intentional stop
-                return buffer; 
+                return {
+                    text: streamedText,
+                    stopReason: loopDetected ? 'watchdog_loop' : 'manual_abort',
+                    repeated: loopDetected,
+                    aborted: true
+                };
             }
             throw err;
         }
+    }
+
+    private postSingleLoopStopNotice(stopReason?: string): void {
+        const label = isLoopStopReason(stopReason as any)
+            ? '[LLeM] Repeating output detected. Stopping this run before it loops again.'
+            : '[LLeM] This run was stopped before continuing.';
+        this.host.postWebviewMessage({
+            type: 'streamChunk',
+            value: `\n\n> ⚠️ **${label}**\n\n`
+        });
     }
 
     private createCombinedSignal(s1: AbortSignal, s2: AbortSignal): AbortSignal {

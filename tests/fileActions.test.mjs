@@ -33,6 +33,13 @@ test('applyFindReplacePairs reports missing targets without changing content', (
   assert.equal(result.missingTargets, 1);
 });
 
+test('applyFindReplacePairs rejects incomplete edit bodies', () => {
+  const result = applyFindReplacePairs('hello world', '<find>hello</find><replace>goodbye');
+
+  assert.equal(result.editCount, 0);
+  assert.equal(result.invalid, 'incomplete <replace> block.');
+});
+
 test('executeCreateFileAction writes nested files and reports the opened path', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'llem-file-actions-'));
   const resolvePath = async (relPath) => ({
@@ -47,6 +54,23 @@ test('executeCreateFileAction writes nested files and reports the opened path', 
     assert.equal(result.workspaceModified, true);
     assert.equal(result.openFile, createdPath);
     assert.equal(await readFile(createdPath, 'utf8'), 'hello');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('executeCreateFileAction rejects unbalanced fenced content', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'llem-file-actions-'));
+  const resolvePath = async (relPath) => ({
+    absPath: path.join(root, relPath),
+    isVaultPath: false
+  });
+
+  try {
+    const result = await executeCreateFileAction('broken.ts', '```ts\nexport const broken = true;\n', resolvePath);
+
+    assert.equal(result.workspaceModified, false);
+    assert.match(result.report[0], /unbalanced code fence/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

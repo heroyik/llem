@@ -14,6 +14,7 @@ function createHost() {
     showBrainNetwork: () => { calls.push(['showBrainNetwork']); },
     showTerminal: () => { calls.push(['showTerminal']); },
     stopGeneration: () => { calls.push(['stopGeneration']); },
+    openExternalUrl: async (url) => { calls.push(['openExternalUrl', url]); },
     fetchUris: async (uris, requestId) => { calls.push(['fetchUris', uris, requestId]); },
     openAttachment: async (file) => { calls.push(['openAttachment', file]); },
     branchChat: async (messageIndex) => { calls.push(['branchChat', messageIndex]); },
@@ -109,5 +110,15 @@ test('routeWebviewMessage maps edit and regenerate to queued requests', async ()
       prompt: '',
       modelName: ''
     }]
+  ]);
+});
+
+test('routeWebviewMessage forwards external link open requests', async () => {
+  const { host, calls } = createHost();
+
+  await routeWebviewMessage({ type: 'openExternalUrl', url: 'https://example.com/docs' }, host);
+
+  assert.deepEqual(calls, [
+    ['openExternalUrl', 'https://example.com/docs']
   ]);
 });

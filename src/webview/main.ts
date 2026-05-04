@@ -1,4 +1,5 @@
 import { isEditableFilePath, resolveEditableWorkspacePath } from '../editableFiles';
+import { shouldSubmitOnEnter } from '../inputComposition';
 
 const texmath = require('markdown-it-texmath');
 const katex = require('katex');
@@ -139,6 +140,7 @@ try {
   let queueState: QueueStatePayload = { running: false, paused: false, pendingRequests: [] };
   let lastQueuePaused = false;
   let internetEnabled = false;
+  let inputCompositionActive = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
     internetBtn.classList.toggle('active', internetEnabled);
@@ -381,7 +383,12 @@ try {
     });
     installMathRenderer(md);
     md.validateLink = function(url: string) {
-      const value = String(url || '').trim().toLowerCase();
+      const rawValue = String(url || '').trim();
+      const value = rawValue.toLowerCase();
+      const reference = splitFileReference(rawValue);
+      if (reference.path && isEditableWorkspaceFile(reference.path)) {
+        return true;
+      }
       return value.startsWith('https://') ||
              value.startsWith('http://') ||
              value.startsWith('mailto:') ||
@@ -676,16 +683,28 @@ try {
   function openEditableFile(fileName: string, sourceUri: string, line?: number): void {
     const reference = splitFileReference(fileName);
     const safeName = String(reference.path || '').trim();
-    if (!safeName || !isEditableFilePath(safeName)) {
+    const resolvedWorkspacePath = resolveEditableWorkspacePath(safeName, workspaceFiles);
+    const isAbsoluteEditablePath = isEditableFilePath(safeName) && (safeName.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(safeName));
+    if (!safeName || (!resolvedWorkspacePath && !isAbsoluteEditablePath && !sourceUri)) {
       return;
     }
     vscode.postMessage({
       type: 'openAttachment',
       file: {
-        name: safeName,
+        name: resolvedWorkspacePath || safeName,
         sourceUri: sourceUri || '',
         line: typeof line === 'number' ? line : reference.line
       }
+    });
+  }
+
+  function rerenderDisplayedMessages(): void {
+    if (!chat || displayMessages.length === 0) {
+      return;
+    }
+    chat.innerHTML = '';
+    displayMessages.forEach(function(message, index) {
+      addMsg(message, message.role as 'user' | 'ai' | 'error', message.files, index);
     });
   }
 
@@ -755,6 +774,16 @@ try {
       return;
     }
 
+    const externalLink = target.closest('a[href]');
+    if (externalLink instanceof HTMLAnchorElement && !externalLink.closest('[data-action="open-file"]')) {
+      const href = externalLink.getAttribute('href') || '';
+      if (href && href !== '#' && (/^https?:\/\//i.test(href) || /^mailto:/i.test(href))) {
+        event.preventDefault();
+        vscode.postMessage({ type: 'openExternalUrl', url: href });
+        return;
+      }
+    }
+
     const openFileTrigger = target.closest('[data-action="open-file"]');
     if (openFileTrigger) {
       event.preventDefault();
@@ -780,6 +809,16 @@ try {
       event.preventDefault();
       const line = Number(openFileTrigger.getAttribute('data-line') || '');
       openEditableFile(openFileTrigger.getAttribute('data-file-path') || '', '', Number.isFinite(line) ? line : undefined);
+      return;
+    }
+
+    const externalLink = target.closest('a[href]');
+    if (externalLink instanceof HTMLAnchorElement) {
+      const href = externalLink.getAttribute('href') || '';
+      if (href && href !== '#' && (/^https?:\/\//i.test(href) || /^mailto:/i.test(href))) {
+        event.preventDefault();
+        vscode.postMessage({ type: 'openExternalUrl', url: href });
+      }
     }
   });
 
@@ -1578,6 +1617,14 @@ try {
     input.style.height = Math.min(input.scrollHeight, 150) + 'px';
   });
 
+  input?.addEventListener('compositionstart', function() {
+    inputCompositionActive = true;
+  });
+
+  input?.addEventListener('compositionend', function() {
+    inputCompositionActive = false;
+  });
+
   input?.addEventListener('paste', function(event: ClipboardEvent) {
     const items = event.clipboardData && event.clipboardData.items;
     if (!items) return;
@@ -1678,11 +1725,16 @@ try {
     vscode.postMessage({ type: 'setDefaultModel', model: nextModel });
   });
   safeListen(input, 'keydown', function(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      log('[UI] Enter key pressed to send');
-      send();
-    }
+    const keyboardEvent = event as KeyboardEvent;
+    if (!shouldSubmitOnEnter({
+      key: keyboardEvent.key,
+      shiftKey: keyboardEvent.shiftKey,
+      isComposing: keyboardEvent.isComposing || inputCompositionActive,
+      keyCode: keyboardEvent.keyCode
+    })) return;
+    event.preventDefault();
+    log('[UI] Enter key pressed to send');
+    send();
   });
   safeListen(newChatBtn, 'click', function() {
     log('[UI] New chat button (header) clicked → posting newChat');
@@ -2031,6 +2083,10 @@ try {
       case 'workspaceFilesList':
         workspaceFiles = new Set(msg.value || []);
         log('[FILES] Synchronized ' + workspaceFiles.size + ' workspace file path(s)');
+        rerenderDisplayedMessages();
+        if (streamPreviewEl && streamRaw) {
+          streamPreviewEl.innerHTML = fmt(streamRaw);
+        }
         break;
       default:
         log('[MSG←] Unhandled message type: ' + msg.type, 'error');

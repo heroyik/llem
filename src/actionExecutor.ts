@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ActionLoopGuard } from './actionLoopGuard';
 import { getVaultDir } from './config';
 import { openDocument, resolveLlemPath } from './fsUtils';
 import { safeResolveActionPath } from './security';
@@ -42,6 +43,8 @@ interface ActionHandlerContext extends ActionReportContext {
 
 type ActionHandler = (ctx: ActionHandlerContext) => Promise<void>;
 
+const actionLoopGuard = new ActionLoopGuard();
+
 async function resolveActionPath(rootPath: string, requestedPath: string) {
     return resolveLlemPath(rootPath, requestedPath);
 }
@@ -70,7 +73,14 @@ async function approveCommand(command: string): Promise<boolean> {
 const HANDLERS: ActionHandler[] = [
     async (ctx) => {
         for (const action of parseCreateActions(ctx.aiMessage)) {
+            if (actionLoopGuard.shouldBlock({ kind: 'create', path: action.path, body: action.body })) {
+                ctx.fileResult.report.push(`⚠️ Create skipped: ${action.path} — repeated create action was blocked.`);
+                continue;
+            }
             applyFileActionResult(ctx, await executeCreateFileAction(action.path, action.body, rel => resolveActionPath(ctx.rootPath, rel)));
+            if (!ctx.fileResult.report.some(item => item.includes(`❌ Create blocked: ${action.path}`) || item.includes(`❌ Create failed: ${action.path}`))) {
+                actionLoopGuard.remember({ kind: 'create', path: action.path, body: action.body });
+            }
         }
         if (ctx.fileResult.openFile) {
             await openDocument(vscode.Uri.file(ctx.fileResult.openFile));
@@ -79,7 +89,14 @@ const HANDLERS: ActionHandler[] = [
     },
     async (ctx) => {
         for (const action of parseEditActions(ctx.aiMessage)) {
+            if (actionLoopGuard.shouldBlock({ kind: 'edit', path: action.path, body: action.body })) {
+                ctx.fileResult.report.push(`⚠️ Edit skipped: ${action.path} — repeated edit action was blocked.`);
+                continue;
+            }
             applyFileActionResult(ctx, await executeEditFileAction(action.path, action.body, rel => resolveActionPath(ctx.rootPath, rel)));
+            if (!ctx.fileResult.report.some(item => item.includes(`❌ Edit blocked: ${action.path}`) || item.includes(`❌ Edit failed: ${action.path}`))) {
+                actionLoopGuard.remember({ kind: 'edit', path: action.path, body: action.body });
+            }
         }
     },
     async (ctx) => {
@@ -150,7 +167,14 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
             const relPath = action.path;
             const content = action.body;
             if (relPath && content && relPath.includes('.')) {
+                if (actionLoopGuard.shouldBlock({ kind: 'create', path: relPath, body: content })) {
+                    ctx.fileResult.report.push(`⚠️ Create skipped: ${relPath} — repeated create action was blocked.`);
+                    continue;
+                }
                 applyFileActionResult(ctx, await executeCreateFileAction(relPath, content, targetPath => resolveActionPath(ctx.rootPath, targetPath), 'Created (auto-detect)'));
+                if (!ctx.fileResult.report.some(item => item.includes(`❌ Create blocked: ${relPath}`) || item.includes(`❌ Create failed: ${relPath}`))) {
+                    actionLoopGuard.remember({ kind: 'create', path: relPath, body: content });
+                }
             }
         }
         ctx.report.push(...ctx.fileResult.report);
