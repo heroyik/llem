@@ -147,6 +147,7 @@ try {
   document.body.appendChild(imageLightbox);
   const imageLightboxImg = imageLightbox.querySelector('.image-lightbox-img') as HTMLImageElement | null;
   const imageLightboxCaption = imageLightbox.querySelector('.image-lightbox-caption') as HTMLElement | null;
+  const imageLightboxDialog = imageLightbox.querySelector('.image-lightbox-dialog') as HTMLElement | null;
 
   let loader: HTMLElement | null = null;
   let sending = false;
@@ -206,6 +207,19 @@ try {
     imageLightboxCaption.textContent = '';
     document.body.classList.remove('image-lightbox-open');
   }
+
+  imageLightbox.addEventListener('click', function(event: MouseEvent) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('[data-action="close-image-lightbox"]')) {
+      event.preventDefault();
+      closeImageLightbox();
+    }
+  });
+
+  imageLightboxDialog?.addEventListener('click', function(event: MouseEvent) {
+    event.stopPropagation();
+  });
 
   function queueKindLabel(kind: QueueRequestSummary['kind']): string {
     if (kind === 'promptWithFile') return 'Files';
