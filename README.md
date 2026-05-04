@@ -355,6 +355,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.33
+
+- Bumped the VSIX build from `3.3.32` to `3.3.33`.
+- Reduced action-history bloat by keeping only the most recent file context per turn and trimming file/web observation payloads. Improved live output masking, offline vision detection, image lightbox preview, and request startup logging.
+- Packaged `release/llem-3.3.33.vsix`.
+
 ### v3.3.32
 
 - Bumped the VSIX build from `3.3.31` to `3.3.32`.

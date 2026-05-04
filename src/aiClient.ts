@@ -5,7 +5,7 @@ import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 import { logInfo, logStreamEvent, logStructured } from './logger';
 import { completedStreamOutcome, interruptedStreamOutcome, type StreamOutcome } from './streamOutcome';
 
-const ENDPOINT_CACHE_TTL_MS = 15_000;
+const ENDPOINT_CACHE_TTL_MS = 60_000;
 const REASONING_ONLY_ERROR = 'The selected model streamed reasoning without a final answer. Disable thinking for this model or choose one that returns answer content.';
 
 let endpointCache: { baseUrl: string; endpoint: AIEndpoint; expiresAt: number } | undefined;

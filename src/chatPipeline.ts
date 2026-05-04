@@ -89,12 +89,17 @@ export class ChatPipeline {
         const hasFiles = files.length > 0;
         let abortController: AbortController | undefined;
         let repeatedStopReason: string | undefined;
+        const runStart = performance.now();
 
         try {
             const config = getConfig();
+            const endpointStart = performance.now();
             const endpoint = await resolveAIEndpoint(config);
+            const endpointMs = performance.now() - endpointStart;
             const selectedModel = this.selectedModel(options.modelName, config.defaultModel);
+            const catalogStart = performance.now();
             const modelCatalog = await getInstalledModelCatalog(config.ollamaBase).catch(() => []);
+            const catalogMs = performance.now() - catalogStart;
             const installedModel = findInstalledModelInfo(selectedModel, modelCatalog);
             const modelProfile = buildModelProfile({
                 modelName: selectedModel,
@@ -102,7 +107,9 @@ export class ChatPipeline {
                 parameterSize: installedModel?.parameterSize,
                 family: installedModel?.family
             });
+            const attachmentStart = performance.now();
             const attachments = this.prepareAttachments(files, modelProfile);
+            const attachmentPrepMs = performance.now() - attachmentStart;
             const reusableFiles = this.compactFilesForReuse(files);
             const planningOnlyInitialTurn = shouldUseDesignPlanningMode(
                 options.prompt,
@@ -130,6 +137,7 @@ export class ChatPipeline {
             }
             this.host.getDisplayMessages().push({ ...displayMessage, feedback: null });
 
+            const requestBuildStart = performance.now();
             const reqMessages = this.host.buildRequestMessages({
                 internetEnabled: options.internetEnabled,
                 backgroundLabel: DEFAULT_BACKGROUND_LABEL,
@@ -141,9 +149,11 @@ export class ChatPipeline {
                 prunedAttachmentChars: attachments.prunedChars,
                 executionPhase: 'initial'
             });
+            const requestBuildMs = performance.now() - requestBuildStart;
 
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
             PerfLogger.update({ promptSizeEstimateChars: promptChars, finalRequestChars: promptChars });
+            PerfLogger.log(`[PREP] model=${selectedModel} endpoint=${endpointMs.toFixed(1)}ms catalog=${catalogMs.toFixed(1)}ms attachments=${attachmentPrepMs.toFixed(1)}ms request=${requestBuildMs.toFixed(1)}ms total_pre_stream=${(performance.now() - runStart).toFixed(1)}ms`);
 
             // B-3: Ollama API에서 vision capability를 확인하여 이미지 전달 여부 결정
             const visionCheck = await this.modelSupportsVision(selectedModel, endpoint, installedModel);
@@ -186,7 +196,7 @@ export class ChatPipeline {
                 logInfo('[PIPELINE] Initial response repeated — skipping history push to prevent context contamination.');
                 const emptyFinalDisplay: DisplayMessage = { text: currentAiResponse.text, role: 'ai', feedback: null };
                 this.host.getDisplayMessages().push(emptyFinalDisplay);
-                await this.host.saveHistory();
+                this.saveHistoryInBackground('initial_repeated');
                 this.host.postWebviewMessage({
                     type: 'streamEnd',
                     message: emptyFinalDisplay,
@@ -350,7 +360,7 @@ export class ChatPipeline {
             const finalDisplayMessage: DisplayMessage = { text: finalAssistantText, role: 'ai', feedback: null };
             this.host.getDisplayMessages().push(finalDisplayMessage);
             this.trimHistory();
-            await this.host.saveHistory();
+            this.saveHistoryInBackground('finalize');
             this.host.postWebviewMessage({
                 type: 'streamEnd',
                 message: finalDisplayMessage,
@@ -719,6 +729,19 @@ export class ChatPipeline {
 
     private selectedModel(modelName: string, defaultModel: string): string {
         return modelName || defaultModel;
+    }
+
+    private saveHistoryInBackground(reason: string): void {
+        const saveStart = performance.now();
+        void this.host.saveHistory()
+            .then(() => {
+                const elapsed = performance.now() - saveStart;
+                PerfLogger.log(`[SAVE] reason=${reason} completed in ${elapsed.toFixed(1)}ms`);
+            })
+            .catch((error: any) => {
+                const elapsed = performance.now() - saveStart;
+                logInfo(`[SAVE] reason=${reason} failed after ${elapsed.toFixed(1)}ms: ${error instanceof Error ? error.message : String(error)}`);
+            });
     }
 
     private buildLivePreview(text: string): string {

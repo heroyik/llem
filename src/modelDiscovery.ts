@@ -8,7 +8,7 @@ import { getConfig, getLlemSettings, getVaultDir } from './config';
 import { ensureDir } from './fsUtils';
 import type { InstalledModelInfo } from './types';
 
-const MODEL_CATALOG_CACHE_TTL_MS = 15_000;
+const MODEL_CATALOG_CACHE_TTL_MS = 60_000;
 const MODEL_CAPS_CACHE_TTL_MS = 60_000;
 const KNOWN_VISION_FAMILIES = [
     'gemma3',

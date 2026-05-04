@@ -54,9 +54,6 @@ async function resolveActionPath(rootPath: string, requestedPath: string): Promi
 
 function applyFileActionResult(ctx: ActionHandlerContext, result: FileActionResult): void {
     mergeFileActionResult(ctx.fileResult, result);
-    if (result.chatMessage) {
-        ctx.host.appendChatMessage(result.chatMessage);
-    }
 }
 
 async function approveCommand(command: string): Promise<boolean> {
@@ -248,6 +245,10 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
 
     for (const handler of HANDLERS) {
         await handler(ctx);
+    }
+
+    if (ctx.fileResult.chatMessage) {
+        host.appendChatMessage(ctx.fileResult.chatMessage);
     }
 
     ctx.report.push(...ctx.fileResult.report);

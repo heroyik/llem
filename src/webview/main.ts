@@ -133,6 +133,20 @@ try {
   const dropOverlay = document.getElementById('dropOverlay');
   const thinkingBar = document.getElementById('thinkingBar');
   const settingsBtn = document.getElementById('settingsBtn');
+  const imageLightbox = document.createElement('div');
+  imageLightbox.className = 'image-lightbox';
+  imageLightbox.hidden = true;
+  imageLightbox.innerHTML = [
+    '<div class="image-lightbox-backdrop" data-action="close-image-lightbox"></div>',
+    '<div class="image-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Image preview">',
+    '<button class="image-lightbox-close" type="button" aria-label="Close image preview" data-action="close-image-lightbox">×</button>',
+    '<img class="image-lightbox-img" alt="">',
+    '<div class="image-lightbox-caption"></div>',
+    '</div>'
+  ].join('');
+  document.body.appendChild(imageLightbox);
+  const imageLightboxImg = imageLightbox.querySelector('.image-lightbox-img') as HTMLImageElement | null;
+  const imageLightboxCaption = imageLightbox.querySelector('.image-lightbox-caption') as HTMLElement | null;
 
   let loader: HTMLElement | null = null;
   let sending = false;
@@ -174,6 +188,24 @@ try {
     '.py', '.java', '.rs', '.go',
     '.yaml', '.yml', '.xml', '.toml'
   ]);
+
+  function openImageLightbox(src: string, alt: string): void {
+    if (!src || !imageLightboxImg || !imageLightboxCaption) return;
+    imageLightboxImg.src = src;
+    imageLightboxImg.alt = alt || 'Attached image preview';
+    imageLightboxCaption.textContent = alt || 'Attached image';
+    imageLightbox.hidden = false;
+    document.body.classList.add('image-lightbox-open');
+  }
+
+  function closeImageLightbox(): void {
+    if (!imageLightboxImg || !imageLightboxCaption) return;
+    imageLightbox.hidden = true;
+    imageLightboxImg.src = '';
+    imageLightboxImg.alt = '';
+    imageLightboxCaption.textContent = '';
+    document.body.classList.remove('image-lightbox-open');
+  }
 
   function queueKindLabel(kind: QueueRequestSummary['kind']): string {
     if (kind === 'promptWithFile') return 'Files';
@@ -872,6 +904,13 @@ try {
         vscode.postMessage({ type: 'openExternalUrl', url: href });
       }
     }
+
+    const closeImageTrigger = target.closest('[data-action="close-image-lightbox"]');
+    if (closeImageTrigger) {
+      event.preventDefault();
+      closeImageLightbox();
+      return;
+    }
   });
 
   function renderAttachments(files: FileAttachment[]): HTMLElement | null {
@@ -906,6 +945,12 @@ try {
         img.className = 'msg-attachment-img';
         img.src = 'data:' + file.type + ';base64,' + file.data;
         img.alt = file.name || 'attached image';
+        img.title = 'Click to enlarge';
+        img.addEventListener('click', function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          openImageLightbox(img.src, file.name || 'attached image');
+        });
         item.appendChild(img);
       } else {
         const box = document.createElement('div');
@@ -1601,6 +1646,13 @@ try {
         const thumb = document.createElement('img');
         thumb.className = 'attach-thumb';
         thumb.src = 'data:' + file.type + ';base64,' + file.data;
+        thumb.alt = file.name || 'attached image';
+        thumb.title = 'Click to enlarge';
+        thumb.addEventListener('click', function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          openImageLightbox(thumb.src, file.name || 'attached image');
+        });
         chip.appendChild(thumb);
       } else {
         const icon = document.createElement('span');
@@ -2268,6 +2320,13 @@ try {
         break;
       default:
         log('[MSG←] Unhandled message type: ' + msg.type, 'error');
+    }
+  });
+
+  window.addEventListener('keydown', function(event: KeyboardEvent) {
+    if (event.key === 'Escape' && !imageLightbox.hidden) {
+      event.preventDefault();
+      closeImageLightbox();
     }
   });
 

@@ -29,6 +29,19 @@ export interface FindReplaceResult {
 }
 
 const fileMutationGuard = new FileMutationGuard();
+const MAX_CONTEXT_SNIPPET_CHARS = 2500;
+
+function buildContextSnippet(content: string, limit = MAX_CONTEXT_SNIPPET_CHARS): string {
+    const text = String(content || '');
+    if (text.length <= limit) {
+        return text;
+    }
+
+    const head = text.slice(0, Math.floor(limit * 0.6));
+    const tail = text.slice(-Math.floor(limit * 0.25));
+    const omitted = text.length - head.length - tail.length;
+    return `${head}\n\n... [omitted ${omitted} chars] ...\n\n${tail}`;
+}
 
 export function emptyFileActionResult(): FileActionResult {
     return {
@@ -43,7 +56,9 @@ export function mergeFileActionResult(target: FileActionResult, source: FileActi
     target.workspaceModified = target.workspaceModified || source.workspaceModified;
     target.brainModified = target.brainModified || source.brainModified;
     target.openFile ??= source.openFile;
-    target.chatMessage ??= source.chatMessage;
+    if (source.chatMessage) {
+        target.chatMessage = source.chatMessage;
+    }
     return target;
 }
 
@@ -148,7 +163,7 @@ export async function executeEditFileAction(
                 brainModified: false,
                 chatMessage: {
                     role: 'user',
-                    content: `[SYSTEM: Edit failed — <find> text mismatch in ${relPath}.]\n\nCorrect file content is below. RE-ISSUE your <edit_file> using EXACT text matching.\n\n\`\`\`\n${originalContent.slice(0, 10000)}\n\`\`\``
+                    content: `[SYSTEM: Edit failed — <find> text mismatch in ${relPath}.]\n\nCorrect file content is below. RE-ISSUE your <edit_file> using EXACT text matching.\n\n\`\`\`\n${buildContextSnippet(originalContent)}\n\`\`\``
                 }
             };
         }
@@ -243,7 +258,7 @@ export async function executeReadFileAction(
             brainModified: false,
             chatMessage: {
                 role: 'user',
-                content: `[SYSTEM: read_file result]\nFile: ${relPath}\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\``
+                content: `[SYSTEM: read_file result]\nFile: ${relPath}\nChars: ${content.length}\n\`\`\`\n${buildContextSnippet(content)}\n\`\`\``
             }
         };
     } catch (err: any) {
