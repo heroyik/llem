@@ -62,6 +62,45 @@ test('detectImportantSentenceLoop ignores short generic sentences', () => {
   assert.equal(result.detected, false);
 });
 
+test('detectRecentBlockLoop ignores action-tag code generation blocks', () => {
+  const text = [
+    'Phase 2 implementation plan follows.\n\n',
+    '<edit_file path="src/components/BentoCard.tsx">\n<find>\n',
+    'interface BentoCardProps {\n  title: string;\n  description?: string;\n  state?: BentoState;\n}\n',
+    '</find>\n<replace>\n',
+    'interface BentoCardProps {\n  title: string;\n  description?: string;\n  state?: BentoState;\n  className?: string;\n}\n',
+    '</replace>\n</edit_file>\n'
+  ].join('');
+
+  const result = detectRecentBlockLoop(text, {
+    blockSize: 100,
+    minSignificantChars: 30,
+    threshold: 3
+  });
+
+  assert.equal(result.detected, false);
+});
+
+test('detectImportantSentenceLoop ignores code-like lines near action tags', () => {
+  const text = [
+    'We are starting the edit.\n',
+    '<edit_file path="src/components/BentoCard.tsx">\n',
+    'interface BentoCardProps {\n',
+    '  title: string;\n',
+    '  description?: string;\n',
+    '  state?: BentoState;\n',
+    '}\n'
+  ].join('');
+
+  const result = detectImportantSentenceLoop(text, {
+    minSentenceLength: 20,
+    minSignificantChars: 10,
+    threshold: 2
+  });
+
+  assert.equal(result.detected, false);
+});
+
 test('RepetitionWatchdog aborts when a long block repeats across the stream', () => {
   const watchdog = new RepetitionWatchdog();
   const repeated = 'Important status update: the agent keeps reopening the same file, rewriting the same summary, and re-emitting the same corrective paragraph instead of finishing the task.\n';
@@ -136,6 +175,40 @@ test('RepetitionWatchdog ignores markdown fence and list scaffolding', () => {
     '```ts\n', '```ts\n',
     '-\n', '-\n', '-\n',
     '>\n', '>\n'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  assert.equal(detected, false);
+});
+
+test('RepetitionWatchdog ignores action-tag code scaffolding while editing files', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    'Phase 2의 핵심인 "The Motion"을 구현하겠습니다.\n\n',
+    '<edit_file path="src/components/BentoCard.tsx">\n',
+    '<find>\n',
+    'interface BentoCardProps {\n',
+    '  title: string;\n',
+    '  description?: string;\n',
+    '  state?: BentoState;\n',
+    '  className?: string;\n',
+    '}\n',
+    '</find>\n',
+    '<replace>\n',
+    'interface BentoCardProps {\n',
+    '  title: string;\n',
+    '  description?: string;\n',
+    '  state?: BentoState;\n',
+    '  className?: string;\n',
+    '  isExpanded?: boolean;\n',
+    '}\n'
   ];
 
   let detected = false;

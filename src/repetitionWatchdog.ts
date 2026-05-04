@@ -167,6 +167,10 @@ export function detectRecentBlockLoop(
     }
 
     const currentBlock = text.slice(-blockSize);
+    if (isStructuredCodeOrActionText(currentBlock)) {
+        return { detected: false, count: 0, blockSize };
+    }
+
     const significantChars = currentBlock.match(/[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/g);
     if (!significantChars || significantChars.length < minSignificantChars) {
         return { detected: false, count: 0, blockSize };
@@ -207,6 +211,9 @@ export function detectImportantSentenceLoop(
 
     const currentSentence = sentences[sentences.length - 1];
     const normalizedCurrentSentence = normalizeSentence(currentSentence);
+    if (isStructuredCodeOrActionText(currentSentence)) {
+        return { detected: false, count: 0, sentence: currentSentence };
+    }
     if (!isSignificantText(normalizedCurrentSentence, minSignificantChars)) {
         return { detected: false, count: 0, sentence: currentSentence };
     }
@@ -295,4 +302,36 @@ function isLowSignalMarkdownStructureText(text: string): boolean {
 
     const stripped = normalized.replace(/[|:.\-`~#>*+\[\]\sxX0-9]/g, '');
     return stripped.length === 0;
+}
+
+function isStructuredCodeOrActionText(text: string): boolean {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    if (/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized)) {
+        return true;
+    }
+
+    if (/^\s*(?:interface|type|export\s+(?:const|function|class|type|interface)|const|let|var|function|class|return)\b/m.test(normalized)) {
+        return true;
+    }
+
+    const lineCount = normalized.split('\n').length;
+    const codePunctuationCount = (normalized.match(/[{}();<>[\]=]/g) || []).length;
+    const sentencePunctuationCount = (normalized.match(/[.!?。！？]/g) || []).length;
+    const semicolonLineCount = normalized
+        .split('\n')
+        .filter(line => /[;{}]$/.test(line.trim())).length;
+
+    if (lineCount >= 3 && codePunctuationCount >= 8 && sentencePunctuationCount <= 1) {
+        return true;
+    }
+
+    if (semicolonLineCount >= 2 && codePunctuationCount >= 6) {
+        return true;
+    }
+
+    return false;
 }
