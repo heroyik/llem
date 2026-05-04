@@ -152,6 +152,7 @@ try {
   let dropSequence = 0;
   let streamEl: HTMLElement | null = null;
   let streamRaw = '';
+  let streamPreviewRaw = '';
   let streamStatusEl: HTMLElement | null = null;
   let streamStatusTitleEl: HTMLElement | null = null;
   let streamMetaEl: HTMLElement | null = null;
@@ -1138,6 +1139,7 @@ try {
     clearStreamMetaTimer();
     streamEl = null;
     streamRaw = '';
+    streamPreviewRaw = '';
     streamStatusEl = null;
     streamStatusTitleEl = null;
     streamMetaEl = null;
@@ -1194,8 +1196,8 @@ try {
           if (match) actionPath = match[1];
         }
 
-        const cleanText = sanitizeAssistantDisplayText(streamRaw);
-        const textHtml = cleanText ? `<div style="margin-bottom:12px">${fmt(cleanText)}</div>` : '';
+        const previewText = sanitizeAssistantDisplayText(streamPreviewRaw);
+        const textHtml = previewText ? `<div style="margin-bottom:12px">${fmt(previewText)}</div>` : '';
         
         const elapsed = formatElapsed(Date.now() - streamStartedAt);
         const metaHtml = `
@@ -1219,7 +1221,7 @@ try {
         `;
       } else {
         // 일반 텍스트는 산문화해서 표시
-        streamPreviewEl.innerHTML = fmt(sanitizeAssistantDisplayText(streamRaw)) || esc(streamRaw);
+        streamPreviewEl.innerHTML = fmt(sanitizeAssistantDisplayText(streamPreviewRaw)) || esc(streamPreviewRaw);
       }
     }
     updateStreamMeta();
@@ -2064,6 +2066,11 @@ try {
       }
       case 'streamChunk':
         streamRaw += msg.value || '';
+        if (typeof msg.preview === 'string') {
+          streamPreviewRaw = msg.preview;
+        } else {
+          streamPreviewRaw += msg.value || '';
+        }
         if (msg.value) streamChunkCount += 1;
         if (streamStatusEl) streamStatusEl.className = 'stream-status live';
         if (streamStatusTitleEl && streamRaw.length > 0) streamStatusTitleEl.textContent = 'Live output';
@@ -2254,8 +2261,8 @@ try {
             // 완료 상태: 마크다운 렌더링
             streamPreviewEl.innerHTML = fmt(sanitizeAssistantDisplayText(streamRaw));
           } else {
-            // 라이브 상태: raw 텍스트 그대로 (파싱 없음)
-            streamPreviewEl.textContent = streamRaw;
+            // 라이브 상태: 안전한 프리뷰 텍스트만 표시
+            streamPreviewEl.textContent = streamPreviewRaw;
           }
         }
         break;

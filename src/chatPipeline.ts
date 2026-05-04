@@ -593,7 +593,11 @@ export class ChatPipeline {
         let buffer = '';
         const flushBuffer = () => {
             if (buffer) {
-                this.host.postWebviewMessage({ type: 'streamChunk', value: buffer });
+                this.host.postWebviewMessage({
+                    type: 'streamChunk',
+                    value: buffer,
+                    preview: this.buildLivePreview(streamedText)
+                });
                 buffer = '';
             }
         };
@@ -715,6 +719,20 @@ export class ChatPipeline {
 
     private selectedModel(modelName: string, defaultModel: string): string {
         return modelName || defaultModel;
+    }
+
+    private buildLivePreview(text: string): string {
+        if (!text) {
+            return '';
+        }
+
+        return text
+            .replace(/(?:<|call:)\s*create_file\s+path="([^"]+)"[^>]*>[\s\S]*?<\/create_file>/gi, '\n📁 Creating file: $1\n')
+            .replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)"[^>]*>[\s\S]*?<\/edit_file>/gi, '\n✏️ Editing file: $1\n')
+            .replace(/(?:<|call:)\s*create_file\s+path="([^"]+)"[^>]*>[\s\S]*$/gi, '\n📁 Creating file: $1\n')
+            .replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)"[^>]*>[\s\S]*$/gi, '\n✏️ Editing file: $1\n')
+            .replace(/<\/?(?:find|replace)\b[^>]*>/gi, '')
+            .replace(/\n{3,}/g, '\n\n');
     }
 
     /**

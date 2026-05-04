@@ -355,6 +355,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.32
+
+- Bumped the VSIX build from `3.3.31` to `3.3.32`.
+- Masked create_file and edit_file code from live output and now show progress-only streaming states. Improved offline vision-model detection using local Ollama manifests and added vision decision logging.
+- Packaged `release/llem-3.3.32.vsix`.
+
 ### v3.3.31
 
 - Bumped the VSIX build from `3.3.30` to `3.3.31`.
