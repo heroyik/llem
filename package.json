@@ -92,10 +92,6 @@
         {
           "command": "llem.openChat",
           "group": "navigation@99"
-        },
-        {
-          "command": "llem.newChat",
-          "group": "navigation@98"
         }
       ],
       "editor/context": [

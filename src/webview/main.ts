@@ -105,7 +105,6 @@ try {
   const sendBtn = document.getElementById('sendBtn');
   const stopBtn = document.getElementById('stopBtn');
   const modelSel = document.getElementById('modelSel') as HTMLSelectElement | null;
-  const newChatBtn = document.getElementById('newChatBtn');
   const newChatHistoryBtn = document.getElementById('newChatHistoryBtn');
   const deleteModal = document.getElementById('deleteModal');
   const deleteThreadTitle = document.getElementById('deleteThreadTitle');
@@ -1968,10 +1967,6 @@ try {
     event.preventDefault();
     log('[UI] Enter key pressed to send');
     send();
-  });
-  safeListen(newChatBtn, 'click', function() {
-    log('[UI] New chat button (header) clicked → posting newChat');
-    vscode.postMessage({ type: 'newChat' });
   });
   safeListen(newChatHistoryBtn, 'click', function() {
     log('[UI] New chat (from history) button clicked → posting newChat');

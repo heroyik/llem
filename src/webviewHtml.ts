@@ -64,7 +64,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       </button>
       <button class="btn-icon" id="brainBtn" title="Vault tools">⟡</button>
       <button class="btn-icon" id="settingsBtn" title="Tune LLeM">⚙</button>
-      <button class="btn-icon" id="newChatBtn" title="New chat">+</button>
     </div>
   </div>
   <div class="thinking-bar" id="thinkingBar"></div>
