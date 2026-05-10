@@ -1046,7 +1046,7 @@ try {
     const isUser = resolvedRole === 'user';
     const isErr = resolvedRole === 'error';
     const el = document.createElement('div');
-    el.className = 'msg' + (isUser ? ' msg-user' : '') + (isErr ? ' msg-error' : '');
+    el.className = 'msg' + (isUser ? ' msg-user' : '') + (!isUser && !isErr ? ' msg-ai' : '') + (isErr ? ' msg-error' : '');
     const head = document.createElement('div');
     head.className = 'msg-head';
     if (isUser) {
@@ -1269,11 +1269,28 @@ try {
     button.innerHTML = '↻ Regenerate reply';
     button.addEventListener('click', function() {
       button.remove();
+      removeLastAiMessageFromView();
       vscode.postMessage({ type: 'regenerate' });
       showLoader();
       setSending(true);
     });
     target.appendChild(button);
+  }
+
+  function removeLastAiMessageFromView(): void {
+    if (displayMessages.length > 0 && displayMessages[displayMessages.length - 1]?.role === 'ai') {
+      displayMessages.pop();
+    }
+
+    if (!chat) {
+      return;
+    }
+
+    const messages = Array.from(chat.querySelectorAll('.msg-ai'));
+    const lastAiMessage = messages[messages.length - 1];
+    if (lastAiMessage && lastAiMessage.parentNode) {
+      lastAiMessage.parentNode.removeChild(lastAiMessage);
+    }
   }
 
   function renderStreamNow(): void {
@@ -2152,7 +2169,7 @@ try {
         resetStreamRefs();
         streamStartedAt = Date.now();
         streamEl = document.createElement('div');
-        streamEl.className = 'msg';
+        streamEl.className = 'msg msg-ai';
         const head = document.createElement('div');
         head.className = 'msg-head';
         head.innerHTML = '<div class="av av-ai">LL</div><span>LLeM</span><span class="msg-time">' + getTime() + '</span>';

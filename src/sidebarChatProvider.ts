@@ -860,6 +860,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _regenerate(): Promise<void> {
         if (!this._lastPrompt) {
+            this._view?.webview.postMessage({
+                type: 'response',
+                value: '> ⚠️ **[LLeM]** 다시 생성할 이전 요청이 없습니다.'
+            });
             return;
         }
 

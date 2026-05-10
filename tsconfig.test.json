@@ -14,6 +14,7 @@
     "src/bridgePayload.ts",
     "src/bridgeRateLimit.ts",
     "src/aiClient.ts",
+    "src/chatSession.ts",
     "src/chatPipelineHelpers.ts",
     "src/commandPolicy.ts",
     "src/designPlanningMode.ts",
