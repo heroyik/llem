@@ -31,12 +31,12 @@ interface LlemMcpConfig {
     contextMode?: McpContextMode;
 }
 
-const DEFAULT_SOURCES = ['workspace', 'claude-code', 'codex', 'antigravity'];
+export const DEFAULT_MCP_CONFIG_SOURCES = ['workspace'];
 
 export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoadResult {
     const env = options.env ?? process.env;
     const homeDir = options.homeDir ?? os.homedir();
-    const sources = new Set(options.sources && options.sources.length > 0 ? options.sources : DEFAULT_SOURCES);
+    const sources = new Set(options.sources && options.sources.length > 0 ? options.sources : DEFAULT_MCP_CONFIG_SOURCES);
     const warnings: string[] = [];
     const configs: SourceConfig[] = [];
 
@@ -53,11 +53,12 @@ export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoa
     }
 
     if (sources.has('antigravity')) {
-        for (const configuredPath of options.extraPaths ?? []) {
-            const expanded = expandHomeAndEnv(configuredPath, env, homeDir);
-            const loaded = readMcpConfigFile(expanded, 'antigravity', env, warnings);
-            pushConfig(`antigravity:${expanded}`, 20, loaded);
-        }
+        const antigravityPath = path.join(homeDir, '.gemini', 'antigravity', 'mcp_config.json');
+        pushConfig('antigravity:user', 20, readMcpConfigFile(antigravityPath, 'antigravity', env, warnings));
+    }
+
+    if (sources.has('vscode') && options.workspaceRoot) {
+        pushConfig('vscode:.vscode/mcp.json', 25, readJsonMcpServers(path.join(options.workspaceRoot, '.vscode', 'mcp.json'), env, warnings, 'vscode'));
     }
 
     if (sources.has('claude-code')) {

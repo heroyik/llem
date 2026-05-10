@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { DEFAULT_MCP_CONFIG_SOURCES } from './mcpConfig';
 import type { LlemConfig, PerformancePreset } from './types';
 
 export const EXCLUDED_DIRS = new Set([
@@ -36,7 +37,7 @@ export function getConfig(): LlemConfig {
         vaultPath: cfg.get<string>('vaultPath', ''),
         mcpEnabled: cfg.get<boolean>('mcpEnabled', true),
         mcpServers: cfg.get('mcpServers', DEFAULT_MCP_SERVERS),
-        mcpConfigSources: cfg.get<string[]>('mcpConfigSources', ['workspace', 'claude-code', 'codex', 'antigravity']),
+        mcpConfigSources: cfg.get<string[]>('mcpConfigSources', DEFAULT_MCP_CONFIG_SOURCES),
         mcpConfigPaths: cfg.get<string[]>('mcpConfigPaths', [])
     };
 }

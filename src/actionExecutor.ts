@@ -8,6 +8,7 @@ import { PathValidationStatus, SafePathResult, safeResolveActionPath } from './s
 import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
 import { getMcpManager } from './mcpManager';
+import { contextModeCallReport, contextModeListReport } from './mcpContextModeReport';
 import {
     emptyFileActionResult,
     executeCreateFileAction,
@@ -241,6 +242,10 @@ const HANDLERS: ActionHandler[] = [
         if (parseListMcpToolsActions(ctx.aiMessage)) {
             const result = await manager.listTools();
             ctx.report.push(...result.report);
+            const contextModeReport = contextModeListReport(result.tools);
+            if (contextModeReport) {
+                ctx.report.push(contextModeReport);
+            }
             ctx.host.appendChatMessage({
                 role: 'user',
                 content: `[SYSTEM: MCP tools available]\n${JSON.stringify(result.tools, null, 2)}`
@@ -260,6 +265,10 @@ const HANDLERS: ActionHandler[] = [
             ctx.report.push(result.ok
                 ? `✅ MCP tool called: ${action.server}.${action.tool}`
                 : `❌ MCP tool failed: ${action.server}.${action.tool} — ${result.text}`);
+            const contextModeReport = contextModeCallReport(result);
+            if (contextModeReport) {
+                ctx.report.push(contextModeReport);
+            }
             ctx.host.appendChatMessage({
                 role: 'user',
                 content: `[SYSTEM: MCP tool result]\nserver=${action.server}\ntool=${action.tool}\nok=${result.ok}\n${result.text}`

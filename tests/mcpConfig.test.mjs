@@ -47,6 +47,45 @@ test('loadMcpServers reads Claude Code project servers', async () => {
   assert.equal(result.servers[0].source, 'claude-code:local-project');
 });
 
+test('loadMcpServers reads Antigravity Gemini MCP config', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'llem-antigravity-home-'));
+  const antigravityDir = path.join(home, '.gemini', 'antigravity');
+  await mkdir(antigravityDir, { recursive: true });
+  await writeFile(path.join(antigravityDir, 'mcp_config.json'), JSON.stringify({
+    mcpServers: {
+      firebase: {
+        command: 'npx',
+        args: ['-y', 'firebase-tools@latest', 'mcp'],
+        env: {}
+      }
+    }
+  }));
+
+  const result = loadMcpServers({ sources: ['antigravity'], env: {}, homeDir: home });
+  const server = result.servers.find(item => item.name === 'firebase');
+  assert.equal(server.source, 'antigravity:user');
+  assert.equal(server.transport, 'stdio');
+  assert.deepEqual(server.config.args, ['-y', 'firebase-tools@latest', 'mcp']);
+});
+
+test('loadMcpServers reads VS Code workspace MCP config', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'llem-vscode-mcp-'));
+  await mkdir(path.join(workspace, '.vscode'));
+  await writeFile(path.join(workspace, '.vscode', 'mcp.json'), JSON.stringify({
+    mcpServers: {
+      browser: {
+        command: 'npx',
+        args: ['-y', '@playwright/mcp']
+      }
+    }
+  }));
+
+  const result = loadMcpServers({ workspaceRoot: workspace, sources: ['vscode'], env: {}, homeDir: workspace });
+  const server = result.servers.find(item => item.name === 'browser');
+  assert.equal(server.source, 'vscode:.vscode/mcp.json');
+  assert.equal(server.transport, 'stdio');
+});
+
 test('readCodexTomlServers normalizes Codex config fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'llem-codex-'));
   const file = path.join(dir, 'config.toml');

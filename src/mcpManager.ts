@@ -86,6 +86,23 @@ export class McpManager {
         return { tools, report };
     }
 
+    public async listServerTools(serverName: string): Promise<{ tools: McpToolSummary[]; report: string[] }> {
+        const server = this.servers.get(serverName);
+        if (!server) {
+            return { tools: [], report: [`❌ MCP tools failed: ${serverName} — server not registered.`] };
+        }
+        const result = await this.listToolsForServer(server);
+        return {
+            tools: result.tools.map(tool => ({
+                server: server.name,
+                name: String(tool.name),
+                description: tool.description,
+                inputSchema: tool.inputSchema
+            })),
+            report: result.report
+        };
+    }
+
     public async callTool(serverName: string, toolName: string, args: Record<string, unknown>): Promise<McpCallResult> {
         const server = this.servers.get(serverName);
         if (!server) {
@@ -148,6 +165,24 @@ export class McpManager {
         await this.withTimeout(() => client.connect(transport), server.config.startupTimeoutSeconds ?? server.config.timeoutSeconds);
         this.connections.set(server.name, { client });
         return client;
+    }
+
+    private async listToolsForServer(server: McpResolvedServer): Promise<{ tools: any[]; report: string[] }> {
+        if (server.disabled) {
+            return { tools: [], report: [`⚠️ MCP server skipped: ${server.name} is disabled.`] };
+        }
+        if (!server.supported) {
+            return { tools: [], report: [`⚠️ MCP server skipped: ${server.name} uses unsupported ${server.transport} transport.`] };
+        }
+        try {
+            const client = await this.getClient(server);
+            const listed = await this.withTimeout(() => client.listTools(), server.config.startupTimeoutSeconds ?? server.config.timeoutSeconds);
+            const filtered = this.filterTools(server.config, listed.tools || []);
+            this.connections.get(server.name)!.tools = filtered;
+            return { tools: filtered, report: [`✅ MCP tools listed: ${server.name} (${filtered.length})`] };
+        } catch (error) {
+            return { tools: [], report: [`❌ MCP tools failed: ${server.name} — ${summarizeError(error)}`] };
+        }
     }
 
     private filterTools(config: McpServerConfig, tools: any[]): any[] {

@@ -59,6 +59,30 @@ test('McpManager filters tools using Codex allow and deny lists', async () => {
   assert.equal((await manager.callTool('tools', 'close', {})).ok, false);
 });
 
+test('McpManager lists tools for one server without touching others', async () => {
+  let connected = '';
+  const manager = new McpManager({
+    servers: [
+      server('context-mode', { command: 'node' }),
+      server('other', { command: 'node' })
+    ],
+    transportFactory: (target) => ({ name: target.name }),
+    clientFactory: () => ({
+      connect: async (transport) => {
+        connected = transport.name;
+      },
+      listTools: async () => ({
+        tools: [{ name: connected === 'context-mode' ? 'ctx_stats' : 'other_tool' }]
+      }),
+      callTool: async () => ({ content: [{ type: 'text', text: 'ok' }] })
+    })
+  });
+
+  const result = await manager.listServerTools('context-mode');
+  assert.deepEqual(result.tools.map(tool => tool.name), ['ctx_stats']);
+  assert.equal(connected, 'context-mode');
+});
+
 test('McpManager calls tools through the client', async () => {
   const manager = new McpManager({
     servers: [server('local', { command: 'node' })],

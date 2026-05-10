@@ -22,6 +22,8 @@
     "src/fileActions.ts",
     "src/inputComposition.ts",
     "src/mcpConfig.ts",
+    "src/mcpContextModeReport.ts",
+    "src/mcpImportDiscovery.ts",
     "src/mcpManager.ts",
     "src/performanceProfiles.ts",
     "src/promptBudgeting.ts",

@@ -26,6 +26,7 @@ test('package.json exposes MCP settings with expected defaults', async () => {
       timeoutSeconds: 30
     }
   });
-  assert.deepEqual(props['llem.mcpConfigSources'].default, ['workspace', 'claude-code', 'codex', 'antigravity']);
+  assert.deepEqual(props['llem.mcpConfigSources'].items.enum, ['workspace', 'vscode', 'claude-code', 'codex', 'antigravity']);
+  assert.deepEqual(props['llem.mcpConfigSources'].default, ['workspace']);
   assert.deepEqual(props['llem.mcpConfigPaths'].default, []);
 });
