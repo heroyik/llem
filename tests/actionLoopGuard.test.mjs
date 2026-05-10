@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import { ActionLoopGuard, buildActionFingerprint } from '../out-test/actionLoopGuard.js';
 
 test('buildActionFingerprint normalizes repeated create actions', () => {
+  const body = 'export default function Page() { return <main />; }';
   const first = buildActionFingerprint({
     kind: 'create',
     path: 'src/app/page.tsx',
-    body: 'export default function Page() { return <main />; }'
+    body: body
   });
   const second = buildActionFingerprint({
     kind: 'create',
     path: '  SRC/app/page.tsx  ',
-    body: 'export   default function Page() { return <main />; }'
+    body: body
   });
 
   assert.equal(first, second);

@@ -141,11 +141,17 @@ const HANDLERS: ActionHandler[] = [
                     `⚠️ Edit had no effect on ${action.path} — the <find> text may not match the current file content. ` +
                     `Try using <read_file> to get the current content first.`
                 );
+                // 🔧 추가: 다음 시도를 위해 현재 파일 상태를 스냅샷으로 저장
+                fileStateGuard.snapshot(validation.absPath);
             } else if (editEffect === 'loop-detected') {
                 ctx.fileResult.report.push(
-                    `🛑 Edit loop detected on ${action.path} — same file edited 3 times with no change. Blocking further edits on this file.`
+                    `🛑 Edit loop detected on ${action.path} — same file edited 5 times with no change. ` +
+                    `Stopping to prevent infinite retries. ` +
+                    `Please use <read_file> to verify current content and adjust your <find> text accordingly.`
                 );
                 actionLoopGuard.remember({ kind: 'edit', path: action.path, body: action.body });
+                // 🔧 추가: 이 파일에 대한 편집 시도 무시 설정
+                fileStateGuard.clearPath(validation.absPath);
                 break;
             } else if (!ctx.fileResult.report.some(item => item.includes(`❌ Edit blocked: ${action.path}`) || item.includes(`❌ Edit failed: ${action.path}`))) {
                 actionLoopGuard.remember({ kind: 'edit', path: action.path, body: action.body });

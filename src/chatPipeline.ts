@@ -323,8 +323,16 @@ export class ChatPipeline {
                     }
                     
                     // Loop detection: if Turn N starts exactly like Turn N-1, it's stuck.
-                    const isSimilar = currentAiResponse.text.trim().slice(0, 300) === previousAiResponsePrefix;
-                    if (isSimilar && currentAiResponse.text.length > 30) {
+                    const responseStart = currentAiResponse.text.trim().slice(0, 500);
+                    const prevStart = previousAiResponsePrefix.slice(0, 500);
+
+                    // 액션 태그가 많으면 유사도 기준 완화
+                    const hasActionTags = (responseStart.match(/<\/?(?:edit_file|create_file)/gi) || []).length > 2;
+                    const isSimilar = hasActionTags 
+                        ? responseStart.slice(0, 200) === prevStart.slice(0, 200)
+                        : responseStart === prevStart;
+
+                    if (isSimilar && currentAiResponse.text.length > 50) {
                         logInfo('[PIPELINE] Turn-to-turn loop detected. Breaking execution chain.');
                         repeatedStopReason = 'turn_to_turn_loop';
                         this.postSingleLoopStopNotice('repetition_detected');

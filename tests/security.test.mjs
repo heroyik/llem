@@ -26,10 +26,9 @@ test('safeResolveActionPath allows workspace-relative paths', async () => {
 test('safeResolveActionPath blocks path traversal outside allowed roots', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'llem-workspace-'));
   try {
-    await assert.rejects(
-      () => safeResolveActionPath(root, '../outside.txt'),
-      /escapes the workspace/
-    );
+    const result = await safeResolveActionPath(root, '../outside.txt');
+    assert.equal(result.status, 'out-of-scope');
+    assert.match(result.reason, /outside the workspace|outside the allowed root|outside the workspace and vault/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

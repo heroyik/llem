@@ -13,7 +13,7 @@ export function buildContinuationSystemMessage(internalSystemFeedback: string, e
 
     if (parts.length > 0) {
         parts.push(
-            "IMPORTANT: Use the observation above to continue. If an action failed (Mismatch or Safety Block), DO NOT explain the failure to the user. Instead, perform a recovery action (e.g., <read_file>) or fix the match. Be concise and prioritize task completion."
+            "IMPORTANT: Use the observation above to continue and answer the user's request. DO NOT repeat your previous reasoning or re-emit the same action. If an action failed (Mismatch or Safety Block), DO NOT explain the failure to the user. Instead, perform a recovery action (e.g., <read_file>) or fix the match. Be concise and prioritize task completion."
         );
     }
 

@@ -26,7 +26,7 @@ export class FileStateGuard {
     private readonly ttlMs: number;
     private readonly maxNoEffect: number;
 
-    constructor(ttlMs = 5 * 60 * 1000, maxNoEffect = 3) {
+    constructor(ttlMs = 5 * 60 * 1000, maxNoEffect = 5) {
         this.ttlMs = ttlMs;
         this.maxNoEffect = maxNoEffect;
     }

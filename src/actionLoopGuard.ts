@@ -1,3 +1,5 @@
+import * as crypto from 'crypto';
+
 export type GuardedActionKind = 'create' | 'edit';
 
 export interface GuardedAction {
@@ -19,17 +21,22 @@ function normalizeText(value: string): string {
 }
 
 export function buildActionFingerprint(action: GuardedAction): string {
+    const bodyHash = crypto.createHash('md5')
+        .update(action.body)
+        .digest('hex')
+        .slice(0, 8);
+    
     return [
         action.kind,
         normalizeText(action.path),
-        normalizeText(action.body)
+        bodyHash
     ].join('::');
 }
 
 export class ActionLoopGuard {
     private entries = new Map<string, ActionEntry>();
 
-    constructor(private readonly ttlMs = 90_000) {}
+    constructor(private readonly ttlMs = 120_000) {}
 
     public shouldBlock(action: GuardedAction): boolean {
         this.pruneExpired();

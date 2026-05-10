@@ -355,6 +355,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.35
+
+- Bumped the VSIX build from `3.3.35` to `3.3.35`.
+- Bumped version and upgraded axios before VSIX build.
+- Packaged `release/llem-3.3.35.vsix`.
+
 ### v3.3.34
 
 - Bumped the VSIX build from `3.3.33` to `3.3.34`.

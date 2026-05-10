@@ -66,6 +66,11 @@ export class RepetitionWatchdog {
             return true;
         }
 
+        // 2.5. Complete action block loop (same edit/create action emitted repeatedly)
+        if (this.detectRepeatedActionBlockLoop()) {
+            return true;
+        }
+
         // 3. Character Suffix Loop (e.g. long sentences repeating)
         if (this.detectSuffixLoop()) {
             return true;
@@ -125,10 +130,29 @@ export class RepetitionWatchdog {
         return false;
     }
 
+    private detectRepeatedActionBlockLoop(): boolean {
+        const repeated = findRepeatedCompletedActionBlock(this.fullText, 3);
+        if (repeated.detected) {
+            this.abortedReason = `repeated action block loop (kind=${repeated.kind}, count=${repeated.count})`;
+            return true;
+        }
+        return false;
+    }
+
+    private isRepeatedActionTagToken(curr: string, prev: string): boolean {
+        const patterns = /^<\/?(?:edit_file|find|replace|create_file)\b|^<\/edit_file>|^<\/create_file>|>\s*$/;
+        return patterns.test(curr.trim()) && patterns.test(prev.trim());
+    }
+
     private detectSuffixLoop(): boolean {
         const text = this.fullText;
         const len = text.length;
         if (len < this.minTextMatch * 2) return false;
+
+        // 🔧 추가: 현재 스트림이 구조화된 코드/액션이면 suffix 루프 무시
+        if (isStructuredCodeOrActionText(text.slice(-500))) {
+            return false;
+        }
 
         // Heuristic: check last 500 chars for a repeating suffix
         const checkWindow = Math.min(500, len);
@@ -141,6 +165,10 @@ export class RepetitionWatchdog {
             if (isLowSignalMarkdownStructureText(suffix) && isLowSignalMarkdownStructureText(prev)) {
                 continue;
             }
+            // 🔧 추가: 액션 태그 토큰 반복 예외
+            if (this.isRepeatedActionTagToken(suffix, prev)) {
+                continue;
+            }
             if (suffix === prev) {
                 this.abortedReason = `text suffix loop (len=${l})`;
                 return true;
@@ -151,7 +179,17 @@ export class RepetitionWatchdog {
 
     private detectRecentBlockLoop(): boolean {
         const result = detectRecentBlockLoop(this.fullText);
+        
+        // 🔧 추가: 결과는 반환하되, 액션 태그 밀집도가 높으면 false로 오버라이드
         if (result.detected) {
+            const recentText = this.fullText.slice(-500);
+            const actionTagDensity = (recentText.match(/<\/?(?:edit_file|create_file|find|replace)\b/gi) || []).length;
+            
+            // 액션 태그가 충분히 많으면 false positive로 판단
+            if (actionTagDensity >= 5 && result.blockSize <= 150) {
+                return false;
+            }
+            
             this.abortedReason = `recent block loop (len=${result.blockSize}, count=${result.count})`;
             return true;
         }
@@ -210,6 +248,38 @@ export function detectRecentBlockLoop(
     }
 
     return { detected: false, count, blockSize };
+}
+
+function findRepeatedCompletedActionBlock(
+    text: string,
+    threshold: number
+): { detected: boolean; count: number; kind?: string } {
+    const counts = new Map<string, { count: number; kind: string }>();
+    const actionBlockRegex = /<(edit_file|create_file)\b[^>]*>[\s\S]*?<\/\1>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = actionBlockRegex.exec(text)) !== null) {
+        const rawBlock = match[0];
+        const kind = match[1].toLowerCase();
+        const normalizedBlock = rawBlock
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
+        if (normalizedBlock.length < 40) {
+            continue;
+        }
+
+        const current = counts.get(normalizedBlock) ?? { count: 0, kind };
+        current.count += 1;
+        counts.set(normalizedBlock, current);
+
+        if (current.count >= threshold) {
+            return { detected: true, count: current.count, kind: current.kind };
+        }
+    }
+
+    return { detected: false, count: 0 };
 }
 
 export function detectImportantSentenceLoop(
@@ -355,6 +425,12 @@ function isStructuredCodeOrActionText(text: string): boolean {
     }
 
     if (/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized)) {
+        return true;
+    }
+
+    // 🔧 추가: 코드 블록이 많으면 구조화된 텍스트로 간주
+    const codeFenceCount = (normalized.match(/```/g) || []).length;
+    if (codeFenceCount >= 2) {
         return true;
     }
 
