@@ -11,6 +11,56 @@ export interface LlemConfig {
     maxTreeFiles: number;
     timeout: number;
     vaultPath: string;
+    mcpEnabled: boolean;
+    mcpServers: McpServersConfig;
+    mcpConfigSources: string[];
+    mcpConfigPaths: string[];
+}
+
+export interface McpServerConfig {
+    type?: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    disabled?: boolean;
+    enabled?: boolean;
+    timeoutSeconds?: number;
+    startupTimeoutSeconds?: number;
+    toolTimeoutSeconds?: number;
+    source?: string;
+    enabledTools?: string[];
+    disabledTools?: string[];
+    [key: string]: unknown;
+}
+
+export type McpServersConfig = Record<string, McpServerConfig>;
+
+export interface McpResolvedServer {
+    name: string;
+    config: McpServerConfig;
+    source: string;
+    transport: 'stdio' | 'http' | 'sse' | 'unknown';
+    supported: boolean;
+    disabled: boolean;
+    warning?: string;
+}
+
+export interface McpToolSummary {
+    server: string;
+    name: string;
+    description?: string;
+    inputSchema?: unknown;
+}
+
+export interface McpCallResult {
+    ok: boolean;
+    server: string;
+    tool?: string;
+    text: string;
+    raw?: unknown;
 }
 
 export interface ModelContextBudget {

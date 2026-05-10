@@ -111,10 +111,192 @@ Open your VS Code `settings.json` to customize the experience.
 | `llem.vaultPath` | Path to your markdown vault. | `~/.llem-vault` |
 | `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
 | `llem.bridgeToken` | Security token for authenticated bridge callers. | `(empty)` |
+| `llem.mcpEnabled` | Enable MCP server discovery and tool calls. | `true` |
+| `llem.mcpServers` | LLeM-owned MCP server definitions keyed by server name. Includes `context-mode` by default. | `context-mode` via `npx -y context-mode` |
+| `llem.mcpConfigSources` | External MCP sources to import: workspace, Claude Code, Codex, Antigravity. | `["workspace","claude-code","codex","antigravity"]` |
+| `llem.mcpConfigPaths` | Extra JSON/TOML MCP config files to import. | `[]` |
 | `llem.maxHistoryItems` | Maximum number of sessions to keep in history. | `100` |
 
 > [!TIP]
 > If you're using a slower model or long prompts, try bumping up the `llem.requestTimeout`.
+
+### MCP Servers
+
+LLeM can discover and call MCP tools from the chat loop. It includes `context-mode` by default using `npx -y context-mode`, and it can also import MCP server configs you already use in Claude Code, Codex, Antigravity, or project-level MCP files.
+
+Current support:
+
+- `stdio` MCP servers are executed and callable.
+- `http`, `sse`, and Streamable HTTP configs are imported and shown, but calls are reported as unsupported for now.
+- External config files are read-only. LLeM never rewrites your Claude Code, Codex, or Antigravity MCP files.
+- Secrets in `env` and `headers` should stay in environment variables or your existing tool config; avoid committing them to project files.
+
+#### Quick Start
+
+The default MCP setup already contains:
+
+```json
+{
+  "llem.mcpServers": {
+    "context-mode": {
+      "command": "npx",
+      "args": ["-y", "context-mode"],
+      "timeoutSeconds": 30
+    }
+  }
+}
+```
+
+Open the LLeM settings menu from the chat gear, choose **MCP servers**, then select a server to test its connection. In chat, ask for MCP-backed work normally; LLeM will use:
+
+```xml
+<list_mcp_tools/>
+```
+
+then call a discovered tool with:
+
+```xml
+<call_mcp_tool server="context-mode" tool="ctx_stats">{}</call_mcp_tool>
+```
+
+You usually do not need to type these tags yourself. They are the internal action format LLeM gives to the local model.
+
+#### Add Servers In LLeM Settings
+
+Edit VS Code `settings.json` and add servers under `llem.mcpServers`. Server names are the object keys.
+
+```json
+{
+  "llem.mcpServers": {
+    "context-mode": {
+      "command": "npx",
+      "args": ["-y", "context-mode"],
+      "timeoutSeconds": 30
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${WORKSPACE_ROOT:-.}"],
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "cwd": "${WORKSPACE_ROOT:-.}",
+      "timeoutSeconds": 30
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "startupTimeoutSeconds": 20,
+      "toolTimeoutSeconds": 60
+    }
+  }
+}
+```
+
+Supported fields:
+
+| Field | Description |
+| :--- | :--- |
+| `type` | Optional transport type. Omit for command-based `stdio`; use `stdio` explicitly if desired. |
+| `command` | Executable to launch, for example `npx`, `node`, `python`, or an absolute path. |
+| `args` | Array of command arguments. |
+| `env` | Environment variables passed to the MCP server. Supports `${VAR}` and `${VAR:-default}` expansion. |
+| `cwd` | Working directory for the server process. Supports env expansion. |
+| `disabled` | Set `true` to keep a server configured but unavailable. |
+| `timeoutSeconds` | Default timeout for startup and tool calls. |
+| `startupTimeoutSeconds` | Timeout for server startup and tool listing. |
+| `toolTimeoutSeconds` | Timeout for individual tool calls. |
+| `enabledTools` | Optional allow-list of tool names. |
+| `disabledTools` | Optional deny-list of tool names. |
+
+#### Import Existing MCP Configs
+
+LLeM imports from these sources by default:
+
+```json
+{
+  "llem.mcpConfigSources": ["workspace", "claude-code", "codex", "antigravity"]
+}
+```
+
+Import priority is:
+
+1. `llem.mcpServers`
+2. workspace `.mcp.json`
+3. Codex config
+4. Claude Code config
+5. extra Antigravity/raw config paths
+
+When two sources define the same server name, the higher-priority source wins.
+
+#### Workspace And Claude Code
+
+Project-level MCP files use the common `mcpServers` shape:
+
+```json
+{
+  "mcpServers": {
+    "context-mode": {
+      "command": "npx",
+      "args": ["-y", "context-mode"]
+    }
+  }
+}
+```
+
+LLeM reads this from:
+
+- `.mcp.json` in the open workspace root
+- `~/.claude.json` under the current project entry
+- `~/.claude/settings.json` when it contains `mcpServers`
+
+#### Codex Config
+
+Codex servers are read from `$CODEX_HOME/config.toml` when `CODEX_HOME` is set, otherwise from `~/.codex/config.toml`.
+
+```toml
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp"]
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+enabled_tools = ["browser_navigate", "browser_snapshot"]
+disabled_tools = ["browser_install"]
+```
+
+Codex field mapping:
+
+| Codex TOML field | LLeM behavior |
+| :--- | :--- |
+| `enabled = false` | Treated as `disabled: true`. |
+| `startup_timeout_sec` | Mapped to `startupTimeoutSeconds`. |
+| `tool_timeout_sec` | Mapped to `toolTimeoutSeconds`. |
+| `enabled_tools` | Used as a tool allow-list. |
+| `disabled_tools` | Used as a tool deny-list. |
+
+#### Antigravity Or Raw Config Paths
+
+If another tool exposes a raw MCP config file, add it to `llem.mcpConfigPaths`. JSON files with a top-level `mcpServers` object and Codex-style TOML files are supported.
+
+```json
+{
+  "llem.mcpConfigPaths": [
+    "C:/Users/you/AppData/Roaming/Antigravity/mcp.json",
+    "~/shared/mcp/config.toml"
+  ]
+}
+```
+
+#### Troubleshooting
+
+- If a server does not appear, open **LLeM settings → MCP servers** and check its source/status.
+- If a server appears as unsupported, it probably uses `http`, `sse`, or Streamable HTTP. Use a `stdio` launcher for now.
+- If `npx` servers fail on Windows, confirm `node`, `npm`, and `npx` are available in the VS Code process environment.
+- If env expansion produces empty values, define the variable before launching VS Code/Cursor, or use `${VAR:-default}`.
+- If a tool returns too much data, LLeM truncates the result before feeding it back into the model to keep chat context usable.
 
 ### 26B Local Model Tuning
 
@@ -354,6 +536,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.3.36
+
+- Bumped the VSIX build from `3.3.35` to `3.3.36`.
+- Add MCP server import and stdio tool support
+- include context-mode as the default MCP server
+- document MCP setup in README.
+- Packaged `release/llem-3.3.36.vsix`.
 
 ### v3.3.35
 

@@ -15,6 +15,14 @@ export const SECOND_BRAIN_CONTEXT_CACHE_TTL_MS = 60_000;
 export const BRAIN_FILES_CACHE_TTL_MS = 60_000;
 export const MAX_BRAIN_FILES = 1000;
 
+export const DEFAULT_MCP_SERVERS = {
+    'context-mode': {
+        command: 'npx',
+        args: ['-y', 'context-mode'],
+        timeoutSeconds: 30
+    }
+};
+
 export function getConfig(): LlemConfig {
     const cfg = vscode.workspace.getConfiguration('llem');
     return {
@@ -25,7 +33,11 @@ export function getConfig(): LlemConfig {
         performancePreset: cfg.get<PerformancePreset>('performancePreset', 'auto'),
         maxTreeFiles: 200,
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
-        vaultPath: cfg.get<string>('vaultPath', '')
+        vaultPath: cfg.get<string>('vaultPath', ''),
+        mcpEnabled: cfg.get<boolean>('mcpEnabled', true),
+        mcpServers: cfg.get('mcpServers', DEFAULT_MCP_SERVERS),
+        mcpConfigSources: cfg.get<string[]>('mcpConfigSources', ['workspace', 'claude-code', 'codex', 'antigravity']),
+        mcpConfigPaths: cfg.get<string[]>('mcpConfigPaths', [])
     };
 }
 

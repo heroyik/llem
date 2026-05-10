@@ -5,10 +5,12 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   parseCommandActions,
+  parseCallMcpToolActions,
   parseCreateActions,
   parseDeleteActions,
   parseFallbackFileBlocks,
   parseListActions,
+  parseListMcpToolsActions,
   parseReadFileActions,
   parseUrlActions,
   stripWrappingFence
@@ -55,6 +57,13 @@ npm test
 test('parseUrlActions trims requested URLs', () => {
   assert.deepEqual(parseUrlActions('<read_url> https://example.com/a?q=1 </read_url>'), [
     { text: 'https://example.com/a?q=1' }
+  ]);
+});
+
+test('parse MCP actions', () => {
+  assert.equal(parseListMcpToolsActions('<list_mcp_tools/>'), true);
+  assert.deepEqual(parseCallMcpToolActions('<call_mcp_tool server="github" tool="list_issues">{"repo":"llem"}</call_mcp_tool>'), [
+    { server: 'github', tool: 'list_issues', body: '{"repo":"llem"}' }
   ]);
 });
 
