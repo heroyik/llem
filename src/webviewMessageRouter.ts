@@ -7,6 +7,7 @@ export interface WebviewMessageRouterHost {
     sendModels(): Promise<void>;
     showBrainNetwork(): void;
     showTerminal(): void;
+    reviewChanges(): void;
     stopGeneration(): void;
     openExternalUrl(url: string): Promise<void>;
     fetchUris(uris: string[], requestId?: string): Promise<void>;
@@ -95,6 +96,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'showTerminal':
             host.showTerminal();
+            break;
+        case 'reviewChanges':
+            host.reviewChanges();
             break;
         case 'openExternalUrl':
             await host.openExternalUrl(message.url || '');

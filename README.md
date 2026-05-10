@@ -582,6 +582,23 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.4.0
+
+This release focuses on making agentic file edits visible, debuggable, and easier to trust when running local models such as Ollama Gemma-family models.
+
+- **Codex-style file change summaries in chat**: When LLeM creates, edits, or deletes files, the chat now shows a compact change card with one row per file. Each row includes the action, file name, and line-level `+` / `-` counts so you can immediately see what changed without opening the filesystem first.
+- **Whole-turn change totals**: Multi-file edits now include a footer such as `2 files changed +75 -20`, giving a clear overview of the total edit impact for the current agent action.
+- **Clickable changed files**: File rows in the change summary can be clicked to open the affected file directly from the chat UI.
+- **Review Changes shortcut**: The change summary includes a `Review changes` button that opens VS Code's Source Control view, making it faster to inspect the workspace diff after an agent run.
+- **Stronger edit failure visibility**: If the model emits an `<edit_file>` action but none of the `<find>` blocks match the current file, LLeM now reports it as a clear failure: `Edit failed ... replacement 0/N`. This makes silent no-op edits much harder to miss.
+- **Immediate Action Report streaming**: External action results are now posted into the live chat stream as soon as they happen. File edits, failed replacements, safety blocks, MCP activity, and terminal actions no longer wait until later continuation logic to become visible.
+- **Action Report preserved in the final answer**: The final assistant message keeps the action report attached, so the user can scroll back later and still see exactly what LLeM tried, what succeeded, and what failed.
+- **Follow-up recovery guidance for local models**: When an edit fails because the `<find>` text does not match, LLeM now gives the follow-up model turn a stronger system observation telling it to retry with exact current file content instead of explaining the failure away.
+- **Post-mortem logging for file actions**: File create/edit/delete paths now write structured diagnostics for validation blocks, missing files, invalid edit bodies, zero-replacement edits, successful writes, and exceptions. These logs include trace IDs, parsed action counts, file paths, replacement metadata, and previews to help reconstruct what happened after a failed run.
+- **Safer testable logging outside VS Code**: The logger now lazily loads the VS Code API and falls back to diagnostics-file logging during Node-based tests, so action logging can be covered without requiring an extension host.
+- **Regression coverage for edit metadata**: Tests now verify that file action results include structured change metadata for created, edited, and deleted files.
+- **MCP behavior carried forward**: The release keeps HTTP/SSE MCP support, approval-based MCP imports from Antigravity/VS Code/Codex/Claude Code, and on-demand `context-mode` reporting from the previous MCP work.
+
 ### v3.3.39
 
 - Bumped the VSIX build from `3.3.38` to `3.3.39`.

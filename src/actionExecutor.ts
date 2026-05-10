@@ -9,6 +9,7 @@ import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
 import { getMcpManager } from './mcpManager';
 import { contextModeCallReport, contextModeListReport } from './mcpContextModeReport';
+import { logStructured } from './logger';
 import {
     emptyFileActionResult,
     executeCreateFileAction,
@@ -17,6 +18,7 @@ import {
     executeListFilesAction,
     executeReadFileAction,
     mergeFileActionResult,
+    type FileChangeSummary,
     type FileActionResult
 } from './fileActions';
 import {
@@ -51,6 +53,56 @@ type ActionHandler = (ctx: ActionHandlerContext) => Promise<void>;
 const actionLoopGuard = new ActionLoopGuard();
 // 5순위: 파일 수정 전후 해시 비교로 <find> 실패 즉시 감지
 const fileStateGuard = new FileStateGuard();
+
+function buildActionTraceId(): string {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function summarizeAiMessageForActions(aiMessage: string): Record<string, unknown> {
+    return {
+        chars: aiMessage.length,
+        hasCreateTag: /<(?:create_file|file)\b/i.test(aiMessage),
+        hasEditTag: /<(?:edit_file|edit)\b/i.test(aiMessage),
+        hasFindTag: /<find>/i.test(aiMessage),
+        hasReplaceTag: /<replace>/i.test(aiMessage),
+        hasDeleteTag: /<(?:delete_file|delete)\b/i.test(aiMessage),
+        hasReadTag: /<(?:read_file|read)\b/i.test(aiMessage),
+        hasListTag: /<(?:list_files|list_dir|ls)\b/i.test(aiMessage),
+        hasCommandTag: /<(?:run_command|command|bash|terminal)\b/i.test(aiMessage),
+        preview: aiMessage.slice(0, 1200)
+    };
+}
+
+function buildFileChangesReport(changes: FileChangeSummary[]): string | undefined {
+    if (changes.length === 0) {
+        return undefined;
+    }
+
+    const byPath = new Map<string, FileChangeSummary>();
+    for (const change of changes) {
+        const existing = byPath.get(change.path);
+        if (!existing) {
+            byPath.set(change.path, { ...change });
+            continue;
+        }
+
+        existing.additions += change.additions;
+        existing.deletions += change.deletions;
+        if (existing.kind !== change.kind) {
+            existing.kind = 'edited';
+        }
+    }
+
+    const files = Array.from(byPath.values());
+    const summary = {
+        files,
+        totalFiles: files.length,
+        additions: files.reduce((sum, file) => sum + file.additions, 0),
+        deletions: files.reduce((sum, file) => sum + file.deletions, 0)
+    };
+
+    return `@@LLEM_FILE_CHANGES ${JSON.stringify(summary)}`;
+}
 
 async function resolveActionPath(rootPath: string, requestedPath: string): Promise<SafePathResult> {
     return resolveLlemPath(rootPath, requestedPath);
@@ -278,6 +330,7 @@ const HANDLERS: ActionHandler[] = [
 ];
 
 export async function executeActions(aiMessage: string, host: ActionExecutionHost): Promise<string[]> {
+    const traceId = buildActionTraceId();
     let rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!rootPath && vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri.scheme === 'file') {
         rootPath = path.dirname(vscode.window.activeTextEditor.document.uri.fsPath);
@@ -285,8 +338,34 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
 
     if (!rootPath) {
         const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file)/i.test(aiMessage);
+        if (hasActions) {
+            logStructured('action.execute.no_workspace', {
+                traceId,
+                ...summarizeAiMessageForActions(aiMessage)
+            });
+        }
         return hasActions ? ['❌ No workspace is open. Open a folder first so LLeM has somewhere to work.'] : [];
     }
+
+    const parsedCounts = {
+        create: parseCreateActions(aiMessage).length,
+        edit: parseEditActions(aiMessage).length,
+        delete: parseDeleteActions(aiMessage).length,
+        read: parseReadFileActions(aiMessage).length,
+        list: parseListActions(aiMessage).length,
+        command: parseCommandActions(aiMessage).length,
+        url: parseUrlActions(aiMessage).length,
+        mcpCall: parseCallMcpToolActions(aiMessage).length,
+        mcpList: parseListMcpToolsActions(aiMessage),
+        fallbackFileBlocks: parseFallbackFileBlocks(aiMessage).length
+    };
+
+    logStructured('action.execute.start', {
+        traceId,
+        rootPath,
+        parsedCounts,
+        ...summarizeAiMessageForActions(aiMessage)
+    });
 
     const ctx: ActionHandlerContext = {
         aiMessage,
@@ -333,7 +412,20 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         }
     }
 
+    const fileChangesReport = buildFileChangesReport(ctx.fileResult.changes);
+    if (fileChangesReport) {
+        ctx.report.push(fileChangesReport);
+    }
+
     finalizeActionReport(ctx);
+
+    logStructured('action.execute.end', {
+        traceId,
+        reportCount: ctx.report.length,
+        workspaceModified: ctx.workspaceModified,
+        brainModified: ctx.brainModified,
+        reports: ctx.report
+    });
 
     return ctx.report;
 }

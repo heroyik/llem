@@ -453,6 +453,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             sendModels: () => this._sendModels(),
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
+            reviewChanges: () => this._reviewChanges(),
             stopGeneration: () => this._stopGeneration(),
             openExternalUrl: (url) => this._openExternalUrl(url),
             fetchUris: (uris, requestId) => this._fetchUris(uris, requestId),
@@ -874,6 +875,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private _showTerminal(): void {
         getLlemChannel().show();
+    }
+
+    private _reviewChanges(): void {
+        void vscode.commands.executeCommand('workbench.view.scm');
     }
 
     private async _openExternalUrl(url: string): Promise<void> {

@@ -1,10 +1,23 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 
 let outputChannel: vscode.OutputChannel | undefined;
 let diagnosticsDir: string | undefined;
 let diagnosticsFilePath: string | undefined;
+let vscodeApi: typeof vscode | undefined;
+
+function getVscodeApi(): typeof vscode | undefined {
+    if (vscodeApi) {
+        return vscodeApi;
+    }
+    try {
+        vscodeApi = require('vscode') as typeof vscode;
+        return vscodeApi;
+    } catch {
+        return undefined;
+    }
+}
 
 function timestamp(): string {
     return new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -59,7 +72,20 @@ function appendOutput(level: 'INFO' | 'ERROR', message: string): void {
 
 export function getOutputChannel(): vscode.OutputChannel {
     if (!outputChannel) {
-        outputChannel = vscode.window.createOutputChannel('LLeM');
+        const api = getVscodeApi();
+        if (!api) {
+            return {
+                appendLine: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`),
+                show: () => undefined,
+                dispose: () => undefined,
+                name: 'LLeM',
+                append: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`),
+                clear: () => undefined,
+                hide: () => undefined,
+                replace: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`)
+            } as unknown as vscode.OutputChannel;
+        }
+        outputChannel = api.window.createOutputChannel('LLeM');
     }
     return outputChannel;
 }

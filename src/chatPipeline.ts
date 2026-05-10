@@ -237,9 +237,12 @@ export class ChatPipeline {
                 const externalReport = await this.host.executeActions(currentAiResponse.text);
                 if (externalReport.length > 0) {
                     turnExecuted = true;
+                    this.postActionReport(externalReport);
+                    combinedUiFeedback += this.formatActionReport(externalReport);
                     
-                    const successItems = externalReport.filter(r => !r.includes('❌') && !r.includes('⚠️') && !r.includes('🛑'));
-                    const issueItems = externalReport.filter(r => r.includes('❌') || r.includes('⚠️') || r.includes('🛑'));
+                    const visibleReport = externalReport.filter(r => !r.startsWith('@@LLEM_FILE_CHANGES '));
+                    const successItems = visibleReport.filter(r => !r.includes('❌') && !r.includes('⚠️') && !r.includes('🛑'));
+                    const issueItems = visibleReport.filter(r => r.includes('❌') || r.includes('⚠️') || r.includes('🛑'));
 
                     let friendlySummary = `[SYSTEM: Action Summary]\n`;
                     
@@ -253,6 +256,8 @@ export class ChatPipeline {
                         for (const issue of issueItems) {
                             if (issue.includes('not found')) {
                                 friendlySummary += `- **Mismatch**: The AI tried to edit a section that didn't match the file content. I've sent the current file to the AI for a retry.\n`;
+                            } else if (issue.includes('replacement 0/')) {
+                                friendlySummary += `- **Edit Failed**: The edit action was detected, but zero replacements were applied because the <find> text did not match the current file. Use the provided current file content to retry with exact text.\n`;
                             } else if (issue.includes('loop detected')) {
                                 friendlySummary += `- **Safety Block**: Detected a repetitive edit loop. I've paused edits on this file to prevent infinite changes.\n`;
                             } else if (issue.includes('skipped') && issue.includes('repeated')) {
@@ -267,7 +272,7 @@ export class ChatPipeline {
                         }
                     }
 
-                    combinedUiFeedback += friendlySummary;
+                    combinedSystemFeedback += friendlySummary;
                 }
 
                 if (turnExecuted) {

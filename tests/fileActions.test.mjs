@@ -53,6 +53,12 @@ test('executeCreateFileAction writes nested files and reports the opened path', 
 
     assert.equal(result.workspaceModified, true);
     assert.equal(result.openFile, createdPath);
+    assert.deepEqual(result.changes, [{
+      path: 'nested/created.txt',
+      kind: 'created',
+      additions: 1,
+      deletions: 0
+    }]);
     assert.equal(await readFile(createdPath, 'utf8'), 'hello');
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -97,6 +103,12 @@ test('executeEditFileAction applies replacements atomically and blocks directori
 
     assert.equal(edited.workspaceModified, true);
     assert.equal(edited.openFile, filePath);
+    assert.deepEqual(edited.changes, [{
+      path: 'edit-me.txt',
+      kind: 'edited',
+      additions: 1,
+      deletions: 1
+    }]);
     assert.equal(await readFile(filePath, 'utf8'), 'hello new world');
 
     const blocked = await executeEditFileAction(
@@ -127,6 +139,12 @@ test('executeDeleteFileAction deletes files but blocks directories', async () =>
   try {
     const deleted = await executeDeleteFileAction('delete-me.txt', resolvePath);
     assert.equal(deleted.workspaceModified, true);
+    assert.deepEqual(deleted.changes, [{
+      path: 'delete-me.txt',
+      kind: 'deleted',
+      additions: 0,
+      deletions: 1
+    }]);
     await assert.rejects(() => readFile(filePath, 'utf8'));
 
     const blocked = await executeDeleteFileAction('keep-dir', resolvePath);

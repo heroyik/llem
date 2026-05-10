@@ -3,6 +3,7 @@ import * as path from 'path';
 import { writeUtf8FileAtomic } from './atomicWrite';
 import { FileMutationGuard } from './fileMutationGuard';
 import { SafePathResult } from './security';
+import { logStructured } from './logger';
 import type { ChatMessage } from './types';
 
 const EXCLUDED_DIRS = new Set([
@@ -17,15 +18,32 @@ export interface FileActionResult {
     brainModified: boolean;
     openFile?: string;
     chatMessage?: ChatMessage;
+    changes: FileChangeSummary[];
 }
 
 export type ResolveActionPath = (requestedPath: string) => Promise<SafePathResult>;
+
+export interface FileChangeSummary {
+    path: string;
+    kind: 'created' | 'edited' | 'deleted';
+    additions: number;
+    deletions: number;
+}
 
 export interface FindReplaceResult {
     content: string;
     editCount: number;
     missingTargets: number;
     invalid?: string;
+    pairs: FindReplacePairResult[];
+}
+
+export interface FindReplacePairResult {
+    index: number;
+    findChars: number;
+    replaceChars: number;
+    matched: boolean;
+    findPreview: string;
 }
 
 const fileMutationGuard = new FileMutationGuard();
@@ -47,7 +65,8 @@ export function emptyFileActionResult(): FileActionResult {
     return {
         report: [],
         workspaceModified: false,
-        brainModified: false
+        brainModified: false,
+        changes: []
     };
 }
 
@@ -56,6 +75,7 @@ export function mergeFileActionResult(target: FileActionResult, source: FileActi
     target.workspaceModified = target.workspaceModified || source.workspaceModified;
     target.brainModified = target.brainModified || source.brainModified;
     target.openFile ??= source.openFile;
+    target.changes.push(...source.changes);
     if (source.chatMessage) {
         target.chatMessage = source.chatMessage;
     }
@@ -71,10 +91,17 @@ export async function executeCreateFileAction(
     try {
         const contentValidationError = validateCreateFileContent(content);
         if (contentValidationError) {
+            logStructured('file.create.blocked.validation', {
+                relPath,
+                reason: contentValidationError,
+                contentChars: content.length,
+                contentPreview: previewForLog(content)
+            });
             return {
                 report: [`❌ Create blocked: ${relPath} — ${contentValidationError}`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
         const { absPath, isVaultPath } = await resolvePath(relPath);
@@ -82,7 +109,8 @@ export async function executeCreateFileAction(
             return {
                 report: [`⚠️ Create skipped: ${relPath} — another mutation is already in progress for this file.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
         await fs.promises.mkdir(path.dirname(absPath), { recursive: true });
@@ -92,17 +120,35 @@ export async function executeCreateFileAction(
             fileMutationGuard.release(absPath);
         }
 
+        logStructured('file.create.success', {
+            relPath,
+            absPath,
+            contentChars: content.length,
+            isVaultPath
+        });
+
         return {
             report: [`✅ ${label}: ${relPath}`],
             workspaceModified: true,
             brainModified: isVaultPath,
-            openFile: absPath
+            openFile: absPath,
+            changes: [{
+                path: relPath,
+                kind: 'created',
+                additions: countLines(content),
+                deletions: 0
+            }]
         };
     } catch (err: any) {
+        logStructured('file.create.failed', {
+            relPath,
+            error: err instanceof Error ? err.message : String(err)
+        });
         return {
             report: [`❌ Create failed: ${relPath} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 }
@@ -119,48 +165,79 @@ export async function executeEditFileAction(
         return {
             report: [`❌ Edit blocked: ${relPath} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 
     if (!(await pathExists(safePath.absPath))) {
+        logStructured('file.edit.failed.missing_file', {
+            relPath,
+            absPath: safePath.absPath
+        });
         return {
             report: [`❌ Edit failed: ${relPath} — file does not exist.`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 
     try {
         const stat = await fs.promises.stat(safePath.absPath);
         if (!stat.isFile()) {
+            logStructured('file.edit.blocked.not_file', {
+                relPath,
+                absPath: safePath.absPath
+            });
             return {
                 report: [`❌ Edit blocked: ${relPath} — target is not a file.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
 
         const originalContent = await fs.promises.readFile(safePath.absPath, 'utf-8');
         const edited = applyFindReplacePairs(originalContent, body);
         if (edited.invalid) {
+            logStructured('file.edit.blocked.invalid_body', {
+                relPath,
+                absPath: safePath.absPath,
+                reason: edited.invalid,
+                bodyChars: body.length,
+                bodyPreview: previewForLog(body),
+                pairs: edited.pairs
+            });
             return {
                 report: [`❌ Edit blocked: ${relPath} — ${edited.invalid}`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
         const report: string[] = [];
 
         for (let i = 0; i < edited.missingTargets; i += 1) {
-            report.push(`⚠️ ${relPath}: could not find the target text.`);
+            report.push(`❌ Edit failed: ${relPath} — replacement 0/${edited.pairs.length}; the <find> text did not match the current file content.`);
         }
 
         if (edited.editCount === 0) {
+            logStructured('file.edit.no_replacements', {
+                relPath,
+                absPath: safePath.absPath,
+                originalChars: originalContent.length,
+                bodyChars: body.length,
+                missingTargets: edited.missingTargets,
+                pairs: edited.pairs,
+                originalPreview: previewForLog(originalContent),
+                bodyPreview: previewForLog(body)
+            });
             return {
                 report,
                 workspaceModified: false,
                 brainModified: false,
+                changes: [],
                 chatMessage: {
                     role: 'user',
                     content: `[SYSTEM: Edit failed — <find> text mismatch in ${relPath}.]\n\nCorrect file content is below. RE-ISSUE your <edit_file> using EXACT text matching.\n\n\`\`\`\n${buildContextSnippet(originalContent)}\n\`\`\``
@@ -172,7 +249,8 @@ export async function executeEditFileAction(
             return {
                 report: [`⚠️ Edit skipped: ${relPath} — another mutation is already in progress for this file.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
         try {
@@ -181,18 +259,40 @@ export async function executeEditFileAction(
             fileMutationGuard.release(safePath.absPath);
         }
         report.push(`✏️ Edited: ${relPath} (${edited.editCount} replacement${edited.editCount === 1 ? '' : 's'})`);
+        const lineDelta = countLineDelta(originalContent, edited.content);
+
+        logStructured('file.edit.success', {
+            relPath,
+            absPath: safePath.absPath,
+            originalChars: originalContent.length,
+            editedChars: edited.content.length,
+            editCount: edited.editCount,
+            missingTargets: edited.missingTargets,
+            pairs: edited.pairs
+        });
 
         return {
             report,
             workspaceModified: true,
             brainModified: safePath.isVaultPath,
-            openFile: safePath.absPath
+            openFile: safePath.absPath,
+            changes: [{
+                path: relPath,
+                kind: 'edited',
+                additions: lineDelta.additions,
+                deletions: lineDelta.deletions
+            }]
         };
     } catch (err: any) {
+        logStructured('file.edit.failed.exception', {
+            relPath,
+            error: err instanceof Error ? err.message : String(err)
+        });
         return {
             report: [`❌ Edit failed: ${relPath} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 }
@@ -207,7 +307,8 @@ export async function executeDeleteFileAction(
             return {
                 report: [`⚠️ Delete skipped: ${relPath} — file does not exist.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
 
@@ -216,21 +317,30 @@ export async function executeDeleteFileAction(
             return {
                 report: [`❌ Delete blocked: ${relPath} — directory deletion is not allowed from model actions.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
 
+        const originalContent = await fs.promises.readFile(absPath, 'utf-8').catch(() => '');
         await fs.promises.unlink(absPath);
         return {
             report: [`🗑️ Deleted: ${relPath}`],
             workspaceModified: true,
-            brainModified: isVaultPath
+            brainModified: isVaultPath,
+            changes: [{
+                path: relPath,
+                kind: 'deleted',
+                additions: 0,
+                deletions: countLines(originalContent)
+            }]
         };
     } catch (err: any) {
         return {
             report: [`❌ Delete failed: ${relPath} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 }
@@ -245,7 +355,8 @@ export async function executeReadFileAction(
             return {
                 report: [`⚠️ Read failed: ${relPath} — file does not exist.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
 
@@ -256,6 +367,7 @@ export async function executeReadFileAction(
             report: [`📖 Read: ${relPath} (${content.length} chars)\n\`\`\`\n${preview}...\n\`\`\``],
             workspaceModified: false,
             brainModified: false,
+            changes: [],
             chatMessage: {
                 role: 'user',
                 content: `[SYSTEM: read_file result]\nFile: ${relPath}\nChars: ${content.length}\n\`\`\`\n${buildContextSnippet(content)}\n\`\`\``
@@ -265,7 +377,8 @@ export async function executeReadFileAction(
         return {
             report: [`❌ Read failed: ${relPath} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 }
@@ -281,7 +394,8 @@ export async function executeListFilesAction(
             return {
                 report: [`⚠️ List failed: ${relDir} — directory does not exist.`],
                 workspaceModified: false,
-                brainModified: false
+                brainModified: false,
+                changes: []
             };
         }
 
@@ -295,6 +409,7 @@ export async function executeListFilesAction(
             report: [`📂 Listed: ${relDir}/\n\`\`\`\n${listing}\n\`\`\``],
             workspaceModified: false,
             brainModified: false,
+            changes: [],
             chatMessage: {
                 role: 'user',
                 content: `[SYSTEM: list_files result]\nDirectory: ${relDir}/\n${listing}`
@@ -304,7 +419,8 @@ export async function executeListFilesAction(
         return {
             report: [`❌ List failed: ${relDir} — ${err.message}`],
             workspaceModified: false,
-            brainModified: false
+            brainModified: false,
+            changes: []
         };
     }
 }
@@ -316,7 +432,8 @@ export function applyFindReplacePairs(content: string, body: string): FindReplac
             content,
             editCount: 0,
             missingTargets: 0,
-            invalid: bodyValidationError
+            invalid: bodyValidationError,
+            pairs: []
         };
     }
 
@@ -324,23 +441,35 @@ export function applyFindReplacePairs(content: string, body: string): FindReplac
     let result = content;
     let editCount = 0;
     let missingTargets = 0;
+    const pairs: FindReplacePairResult[] = [];
     let match: RegExpExecArray | null;
+    let index = 0;
 
     while ((match = findReplaceRegex.exec(body)) !== null) {
         const findText = match[1];
         const replaceText = match[2];
-        if (result.includes(findText)) {
+        const matched = result.includes(findText);
+        pairs.push({
+            index,
+            findChars: findText.length,
+            replaceChars: replaceText.length,
+            matched,
+            findPreview: previewForLog(findText)
+        });
+        if (matched) {
             result = result.replace(findText, replaceText);
             editCount += 1;
         } else {
             missingTargets += 1;
         }
+        index += 1;
     }
 
     return {
         content: result,
         editCount,
-        missingTargets
+        missingTargets,
+        pairs
     };
 }
 
@@ -383,6 +512,42 @@ function validateCreateFileContent(content: string): string | undefined {
     }
 
     return undefined;
+}
+
+function previewForLog(value: string, limit = 500): string {
+    const text = String(value || '');
+    if (text.length <= limit) {
+        return text;
+    }
+    return `${text.slice(0, limit)}... [truncated ${text.length - limit} chars]`;
+}
+
+function countLines(content: string): number {
+    if (!content) {
+        return 0;
+    }
+    return content.replace(/\r\n/g, '\n').split('\n').length;
+}
+
+function countLineDelta(before: string, after: string): { additions: number; deletions: number } {
+    const beforeLines = before.replace(/\r\n/g, '\n').split('\n');
+    const afterLines = after.replace(/\r\n/g, '\n').split('\n');
+    let prefix = 0;
+    while (prefix < beforeLines.length && prefix < afterLines.length && beforeLines[prefix] === afterLines[prefix]) {
+        prefix += 1;
+    }
+
+    let beforeSuffix = beforeLines.length - 1;
+    let afterSuffix = afterLines.length - 1;
+    while (beforeSuffix >= prefix && afterSuffix >= prefix && beforeLines[beforeSuffix] === afterLines[afterSuffix]) {
+        beforeSuffix -= 1;
+        afterSuffix -= 1;
+    }
+
+    return {
+        additions: Math.max(0, afterSuffix - prefix + 1),
+        deletions: Math.max(0, beforeSuffix - prefix + 1)
+    };
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
