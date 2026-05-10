@@ -126,8 +126,8 @@ LLeM can discover and call MCP tools from the chat loop. It includes `context-mo
 
 Current support:
 
-- `stdio` MCP servers are executed and callable.
-- `http`, `sse`, and Streamable HTTP configs are imported and shown, but calls are reported as unsupported for now.
+- `stdio`, `http`, `sse`, and Streamable HTTP MCP servers are executed and callable.
+- HTTP-based servers use the MCP SDK client transports and forward configured `headers` as request headers.
 - External config files are read-only. LLeM never rewrites your Claude Code, Codex, or Antigravity MCP files.
 - Secrets in `env` and `headers` should stay in environment variables or your existing tool config; avoid committing them to project files.
 
@@ -160,7 +160,7 @@ then call a discovered tool with:
 ```
 
 You usually do not need to type these tags yourself. They are the internal action format LLeM gives to the local model.
-`context-mode` runs before each model request by default. The chat Action Report shows that it ran and includes any reported context or token savings.
+When `context-mode` is called through MCP, the chat Action Report shows that it ran and includes any reported context or token savings.
 
 #### Add Servers In LLeM Settings
 
@@ -338,7 +338,7 @@ If another tool exposes a raw MCP config file, add it to `llem.mcpConfigPaths`. 
 #### Troubleshooting
 
 - If a server does not appear, open **LLeM settings → MCP servers** and check its source/status.
-- If a server appears as unsupported, it probably uses `http`, `sse`, or Streamable HTTP. Use a `stdio` launcher for now.
+- If a server appears as unsupported, check that its transport is one of `stdio`, `http`, `sse`, or Streamable HTTP and that required fields like `command` or `url` are present.
 - If `npx` servers fail on Windows, confirm `node`, `npm`, and `npx` are available in the VS Code process environment.
 - If env expansion produces empty values, define the variable before launching VS Code/Cursor, or use `${VAR:-default}`.
 - If a tool returns too much data, LLeM truncates the result before feeding it back into the model to keep chat context usable.
@@ -582,16 +582,21 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.3.39
+
+- Bumped the VSIX build from `3.3.38` to `3.3.39`.
+- Support HTTP and SSE MCP transports while keeping context-mode as an on-demand MCP tool instead of a forced preflight.
+- Packaged `release/llem-3.3.39.vsix`.
+
 ### v3.3.38
 
-This release makes `context-mode` part of the normal request path instead of leaving it as an optional MCP action the model may or may not call.
+This release improves MCP transport support and keeps `context-mode` visible when it is actually called through MCP.
 
-- `context-mode` now runs before every model request when MCP is enabled. LLeM lists tools from the `context-mode` server, prefers `ctx_stats` when it is available, calls it with an empty argument object, and injects the result into the system context for the model request that follows.
-- The preflight only targets the `context-mode` server. It does not wake every configured MCP server just to prepare a chat turn, which keeps external imports from adding unnecessary startup cost.
-- The chat Action Report now shows visible `context-mode` activity before the assistant response streams. When the MCP result includes savings fields, LLeM summarizes context characters saved, tokens saved, before/after token counts, and compression ratio.
+- HTTP, SSE, and Streamable HTTP MCP servers are now callable through the MCP SDK client transports, so Codex-imported servers such as Figma, Linear, and Notion no longer appear as unsupported solely because they use HTTP.
+- Configured HTTP `headers` are forwarded as request headers for HTTP-based MCP servers.
+- The chat Action Report shows visible `context-mode` activity when a model-driven or manual MCP call runs it. When the MCP result includes savings fields, LLeM summarizes context characters saved, tokens saved, before/after token counts, and compression ratio.
 - `context-mode` result parsing accepts both normal JSON-like MCP payloads and text content that contains embedded JSON, so different server response shapes can still produce useful savings summaries.
-- The same reporting helper is used for model-driven MCP calls, so manual or agent-requested `context-mode` tool calls also show a readable run/savings line in the chat.
-- Regression coverage was added for context-mode savings extraction, per-server MCP tool listing, and the default preflight-friendly MCP flow.
+- Regression coverage was added for context-mode savings extraction, per-server MCP tool listing, supported HTTP/SSE config resolution, and HTTP MCP tool calls.
 
 ### v3.3.37
 

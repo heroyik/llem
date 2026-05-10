@@ -1,5 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { loadMcpServers } from './mcpConfig';
 import type { McpCallResult, McpResolvedServer, McpServerConfig, McpToolSummary } from './types';
 
@@ -36,6 +38,28 @@ export class McpManager {
         this.clientFactory = options.clientFactory ?? (() => new Client({ name: 'llem', version: '1.0.0' }));
         this.transportFactory = options.transportFactory ?? ((server) => {
             const cfg = server.config;
+            if (server.transport === 'http') {
+                if (!cfg.url) {
+                    throw new Error('http MCP server is missing url');
+                }
+                return new StreamableHTTPClientTransport(new URL(cfg.url), {
+                    requestInit: buildHttpRequestInit(cfg)
+                });
+            }
+            if (server.transport === 'sse') {
+                if (!cfg.url) {
+                    throw new Error('sse MCP server is missing url');
+                }
+                return new SSEClientTransport(new URL(cfg.url), {
+                    requestInit: buildHttpRequestInit(cfg),
+                    eventSourceInit: {
+                        fetch: (input: any, init?: any) => fetch(input, mergeRequestInit(buildHttpRequestInit(cfg), init))
+                    } as any
+                });
+            }
+            if (server.transport !== 'stdio') {
+                throw new Error(`MCP transport '${server.transport}' is not supported`);
+            }
             if (!cfg.command) {
                 throw new Error('stdio MCP server is missing command');
             }
@@ -112,7 +136,7 @@ export class McpManager {
             return { ok: false, server: serverName, tool: toolName, text: `MCP server is disabled: ${serverName}` };
         }
         if (!server.supported) {
-            return { ok: false, server: serverName, tool: toolName, text: `MCP transport '${server.transport}' is configured for ${serverName}, but this LLeM build only calls stdio MCP servers.` };
+            return { ok: false, server: serverName, tool: toolName, text: `MCP transport '${server.transport}' is configured for ${serverName}, but this LLeM build cannot call it.` };
         }
         if (!this.isToolAllowed(server.config, toolName)) {
             return { ok: false, server: serverName, tool: toolName, text: `MCP tool is disabled by configuration: ${serverName}.${toolName}` };
@@ -269,4 +293,39 @@ function truncate(value: string, maxChars: number): string {
 
 function summarizeError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function buildHttpRequestInit(config: McpServerConfig): RequestInit | undefined {
+    if (!config.headers || Object.keys(config.headers).length === 0) {
+        return undefined;
+    }
+    return { headers: config.headers };
+}
+
+function mergeRequestInit(base: RequestInit | undefined, override: RequestInit | undefined): RequestInit {
+    return {
+        ...base,
+        ...override,
+        headers: {
+            ...headersToRecord(base?.headers),
+            ...headersToRecord(override?.headers)
+        }
+    };
+}
+
+function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
+    if (!headers) {
+        return {};
+    }
+    if (headers instanceof Headers) {
+        const record: Record<string, string> = {};
+        headers.forEach((value, key) => {
+            record[key] = value;
+        });
+        return record;
+    }
+    if (Array.isArray(headers)) {
+        return Object.fromEntries(headers.map(([key, value]) => [key, value]));
+    }
+    return { ...headers };
 }

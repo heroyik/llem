@@ -97,9 +97,9 @@ export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoa
                 config: normalized,
                 source: cfg.label,
                 transport,
-                supported: transport === 'stdio',
+                supported: transport === 'stdio' || transport === 'http' || transport === 'sse',
                 disabled: normalized.disabled === true || normalized.enabled === false,
-                warning: transport === 'stdio' ? undefined : `MCP transport '${transport}' is configured but not supported yet.`
+                warning: transport === 'unknown' ? `MCP transport '${transport}' is configured but not supported yet.` : undefined
             });
         }
     }

@@ -109,6 +109,23 @@ disabled_tools = ["close"]
   assert.deepEqual(servers.playwright.disabledTools, ['close']);
 });
 
+test('loadMcpServers marks HTTP and SSE transports as supported', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'llem-mcp-http-'));
+  await writeFile(path.join(root, '.mcp.json'), JSON.stringify({
+    mcpServers: {
+      remoteHttp: { type: 'http', url: 'https://example.com/mcp' },
+      remoteSse: { type: 'sse', url: 'https://example.com/sse' },
+      mystery: { type: 'weird' }
+    }
+  }));
+
+  const result = loadMcpServers({ workspaceRoot: root, sources: ['workspace'], env: {}, homeDir: root });
+  const byName = new Map(result.servers.map(server => [server.name, server]));
+  assert.equal(byName.get('remoteHttp').supported, true);
+  assert.equal(byName.get('remoteSse').supported, true);
+  assert.equal(byName.get('mystery').supported, false);
+});
+
 test('LLeM settings override imported servers with the same name', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'llem-mcp-priority-'));
   await writeFile(path.join(root, '.mcp.json'), JSON.stringify({

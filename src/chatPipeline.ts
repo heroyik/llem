@@ -14,7 +14,6 @@ import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfil
 import { shouldUseDesignPlanningMode } from './designPlanningMode';
 import { isLoopStopReason, type StreamOutcome } from './streamOutcome';
 import type { RequestExecutionPhase } from './designPlanningMode';
-import { runContextModeForPrompt } from './contextModeRunner';
 
 export interface ChatPipelineHost {
     buildRequestMessages(options?: {
@@ -138,11 +137,6 @@ export class ChatPipeline {
             }
             this.host.getDisplayMessages().push({ ...displayMessage, feedback: null });
 
-            const contextModeStart = performance.now();
-            const contextModeResult = await runContextModeForPrompt();
-            const contextModeMs = performance.now() - contextModeStart;
-            PerfLogger.log(`[CONTEXT_MODE] preflight completed in ${contextModeMs.toFixed(1)}ms`);
-
             const requestBuildStart = performance.now();
             const reqMessages = this.host.buildRequestMessages({
                 internetEnabled: options.internetEnabled,
@@ -155,7 +149,6 @@ export class ChatPipeline {
                 prunedAttachmentChars: attachments.prunedChars,
                 executionPhase: 'initial'
             });
-            this.injectSystemContext(reqMessages, contextModeResult.systemFeedback);
             const requestBuildMs = performance.now() - requestBuildStart;
 
             const promptChars = reqMessages.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : JSON.stringify(msg.content).length), 0);
@@ -176,10 +169,6 @@ export class ChatPipeline {
             this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
 
             this.host.postWebviewMessage({ type: 'streamStart' });
-
-            if (contextModeResult.report.length > 0) {
-                this.postActionReport(contextModeResult.report);
-            }
 
             for (const notice of attachments.notices) {
                 this.host.postWebviewMessage({ type: 'streamChunk', value: notice });
@@ -752,18 +741,6 @@ export class ChatPipeline {
 
     private formatActionReport(report: string[]): string {
         return `\n\n---\n**Action Report**\n${report.join('\n')}`;
-    }
-
-    private injectSystemContext(messages: ChatMessage[], context: string): void {
-        if (!context.trim()) {
-            return;
-        }
-        const firstSystem = messages.find(message => message.role === 'system' && typeof message.content === 'string');
-        if (firstSystem && typeof firstSystem.content === 'string') {
-            firstSystem.content += `\n\n${context}`;
-            return;
-        }
-        messages.unshift({ role: 'system', content: context });
     }
 
     private selectedModel(modelName: string, defaultModel: string): string {
