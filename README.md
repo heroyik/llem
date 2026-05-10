@@ -122,7 +122,7 @@ Open your VS Code `settings.json` to customize the experience.
 
 ### MCP Servers
 
-LLeM can discover and call MCP tools from the chat loop. It includes `context-mode` by default using `npx -y context-mode`, and it can also import MCP server configs you already use in Claude Code, Codex, Antigravity, or project-level MCP files.
+LLeM can discover and call MCP tools from the chat loop. It includes `context-mode` by default using `npx -y context-mode`, and it can also import MCP server configs you already use in Claude Code, Codex, Antigravity, project-level MCP files, or LLeM-specific `.llem/mcp.json` files.
 
 Current support:
 
@@ -211,6 +211,40 @@ Supported fields:
 | `enabledTools` | Optional allow-list of tool names. |
 | `disabledTools` | Optional deny-list of tool names. |
 
+#### Add Servers In LLeM Config Files
+
+If you prefer project or user config files instead of VS Code settings, create one of these files:
+
+- Workspace config: `.llem/mcp.json` in the open workspace root
+- User config: `%USERPROFILE%/.llem/mcp.json` on Windows, or `~/.llem/mcp.json` on macOS/Linux
+
+These files use the same `mcpServers` object shape as `.mcp.json`, plus an optional `contextMode` value.
+
+```json
+{
+  "contextMode": "auto",
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "startupTimeoutSeconds": 20,
+      "toolTimeoutSeconds": 60
+    }
+  }
+}
+```
+
+`contextMode` controls how aggressively LLeM should treat MCP-backed context as available:
+
+| Value | Behavior |
+| :--- | :--- |
+| `off` | Do not automatically use MCP-backed context. |
+| `auto` | Let LLeM use MCP-backed context when the request calls for it. |
+| `always` | Prefer MCP-backed context whenever it is available. |
+
+Invalid `contextMode` values are ignored and reported as config warnings.
+
 #### Import Existing MCP Configs
 
 LLeM imports from these sources by default:
@@ -221,13 +255,17 @@ LLeM imports from these sources by default:
 }
 ```
 
-Import priority is:
+Import priority, from lowest to highest, is:
 
-1. `llem.mcpServers`
-2. workspace `.mcp.json`
-3. Codex config
-4. Claude Code config
-5. extra Antigravity/raw config paths
+1. Extra raw config paths from `llem.mcpConfigPaths`
+2. Antigravity/raw config paths
+3. Claude Code user and project config
+4. Codex user config
+5. Workspace `.codex/config.toml`
+6. Workspace `.mcp.json`
+7. User `.llem/mcp.json`
+8. Workspace `.llem/mcp.json`
+9. VS Code `llem.mcpServers`
 
 When two sources define the same server name, the higher-priority source wins.
 
@@ -249,6 +287,8 @@ Project-level MCP files use the common `mcpServers` shape:
 LLeM reads this from:
 
 - `.mcp.json` in the open workspace root
+- `.llem/mcp.json` in the open workspace root
+- `~/.llem/mcp.json` for user-level LLeM config
 - `~/.claude.json` under the current project entry
 - `~/.claude/settings.json` when it contains `mcpServers`
 
@@ -536,6 +576,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.3.36
+
+- Bumped the VSIX build from `3.3.36` to `3.3.36`.
+- Generate VSIX package
+- Packaged `release/llem-3.3.36.vsix`.
 
 ### v3.3.36
 

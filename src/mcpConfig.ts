@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import toml from 'smol-toml';
-import type { McpResolvedServer, McpServerConfig, McpServersConfig } from './types';
+import type { McpContextMode, McpResolvedServer, McpServerConfig, McpServersConfig } from './types';
 
 export interface McpConfigLoadOptions {
     workspaceRoot?: string;
@@ -16,12 +16,19 @@ export interface McpConfigLoadOptions {
 export interface McpConfigLoadResult {
     servers: McpResolvedServer[];
     warnings: string[];
+    contextMode?: McpContextMode;
 }
 
 interface SourceConfig {
     label: string;
     priority: number;
     servers: McpServersConfig;
+    contextMode?: McpContextMode;
+}
+
+interface LlemMcpConfig {
+    servers: McpServersConfig;
+    contextMode?: McpContextMode;
 }
 
 const DEFAULT_SOURCES = ['workspace', 'claude-code', 'codex', 'antigravity'];
@@ -33,9 +40,9 @@ export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoa
     const warnings: string[] = [];
     const configs: SourceConfig[] = [];
 
-    const pushConfig = (label: string, priority: number, servers: McpServersConfig | undefined) => {
-        if (servers && Object.keys(servers).length > 0) {
-            configs.push({ label, priority, servers });
+    const pushConfig = (label: string, priority: number, servers: McpServersConfig | undefined, contextMode?: McpContextMode) => {
+        if ((servers && Object.keys(servers).length > 0) || contextMode) {
+            configs.push({ label, priority, servers: servers ?? {}, contextMode });
         }
     };
 
@@ -63,15 +70,24 @@ export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoa
         pushConfig('codex:user', 40, readCodexTomlServers(path.join(codexHome, 'config.toml'), env, warnings));
     }
 
+    const userLlemConfig = readLlemMcpConfigFile(path.join(homeDir, '.llem', 'mcp.json'), env, warnings);
+    pushConfig('llem:user', 55, userLlemConfig.servers, userLlemConfig.contextMode);
+
     if (sources.has('workspace') && options.workspaceRoot) {
         pushConfig('workspace:.mcp.json', 50, readJsonMcpServers(path.join(options.workspaceRoot, '.mcp.json'), env, warnings));
         pushConfig('workspace:.codex/config.toml', 45, readCodexTomlServers(path.join(options.workspaceRoot, '.codex', 'config.toml'), env, warnings));
+        const workspaceLlemConfig = readLlemMcpConfigFile(path.join(options.workspaceRoot, '.llem', 'mcp.json'), env, warnings);
+        pushConfig('workspace:.llem/mcp.json', 60, workspaceLlemConfig.servers, workspaceLlemConfig.contextMode);
     }
 
     pushConfig('llem:settings', 100, normalizeServerMap(options.llemServers ?? {}, 'llem:settings', env));
 
     const byName = new Map<string, McpResolvedServer>();
+    let contextMode: McpContextMode | undefined;
     for (const cfg of configs.sort((a, b) => a.priority - b.priority)) {
+        if (cfg.contextMode) {
+            contextMode = cfg.contextMode;
+        }
         for (const [name, server] of Object.entries(cfg.servers)) {
             const normalized = normalizeServerConfig(server, cfg.label, env);
             const transport = resolveTransport(normalized);
@@ -87,7 +103,7 @@ export function loadMcpServers(options: McpConfigLoadOptions = {}): McpConfigLoa
         }
     }
 
-    return { servers: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)), warnings };
+    return { servers: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)), warnings, contextMode };
 }
 
 export function readCodexTomlServers(filePath: string, env: NodeJS.ProcessEnv = process.env, warnings: string[] = []): McpServersConfig {
@@ -161,6 +177,18 @@ function readMcpConfigFile(filePath: string, source: string, env: NodeJS.Process
     return readJsonMcpServers(filePath, env, warnings, source);
 }
 
+function readLlemMcpConfigFile(filePath: string, env: NodeJS.ProcessEnv, warnings: string[]): LlemMcpConfig {
+    const parsed = readJsonFile(filePath, warnings);
+    if (!parsed) {
+        return { servers: {} };
+    }
+    const servers = isRecord(parsed.mcpServers)
+        ? normalizeServerMap(parsed.mcpServers as McpServersConfig, 'llem:file', env)
+        : {};
+    const contextMode = normalizeContextMode(parsed.contextMode, filePath, warnings);
+    return { servers, contextMode };
+}
+
 function readJsonMcpServers(filePath: string, env: NodeJS.ProcessEnv, warnings: string[], source = 'json'): McpServersConfig {
     const parsed = readJsonFile(filePath, warnings);
     if (!parsed) {
@@ -168,6 +196,17 @@ function readJsonMcpServers(filePath: string, env: NodeJS.ProcessEnv, warnings: 
     }
     const servers = isRecord(parsed.mcpServers) ? parsed.mcpServers : undefined;
     return normalizeServerMap((servers || {}) as McpServersConfig, source, env);
+}
+
+function normalizeContextMode(value: unknown, filePath: string, warnings: string[]): McpContextMode | undefined {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+    if (value === 'off' || value === 'auto' || value === 'always') {
+        return value;
+    }
+    warnings.push(`Ignoring invalid contextMode in ${filePath}: expected off, auto, or always.`);
+    return undefined;
 }
 
 function readClaudeJsonProjectServers(filePath: string, workspaceRoot: string | undefined, env: NodeJS.ProcessEnv, warnings: string[]): McpServersConfig {

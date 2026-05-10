@@ -148,7 +148,7 @@ const HANDLERS: ActionHandler[] = [
                 fileStateGuard.snapshot(validation.absPath);
             } else if (editEffect === 'loop-detected') {
                 ctx.fileResult.report.push(
-                    `🛑 Edit loop detected on ${action.path} — same file edited 5 times with no change. ` +
+                    `🛑 Edit loop detected on ${action.path} — same file edited repeatedly with no change. ` +
                     `Stopping to prevent infinite retries. ` +
                     `Please use <read_file> to verify current content and adjust your <find> text accordingly.`
                 );
