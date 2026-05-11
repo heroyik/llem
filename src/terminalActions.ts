@@ -30,7 +30,7 @@ export async function executeTerminalAction(
             return { report: [`⚠️ Command skipped: ${command}`] };
         }
 
-        // Show the command in the LLeM Console for user awareness
+        // Show the command in the console for user awareness
         const channel = getLlemChannel();
         channel.show(true);
         writeToLlemTerminal(`Executing: ${command}`);

@@ -26,8 +26,8 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         { label: 'Tune generation', description: `Temp: ${host.getTemperature()}, Top-P: ${host.getTopP()}, Top-K: ${host.getTopK()}`, action: 'params' },
         { label: 'Performance profile', description: `Current: ${config.performancePreset}`, action: 'profile' },
         { label: 'MCP servers', description: config.mcpEnabled ? 'View imported servers and test connections' : 'Disabled', action: 'mcp' },
-        { label: 'Edit system prompt', description: 'Shape LLeM’s default vibe and instructions.', action: 'prompt' }
-    ], { placeHolder: 'LLeM settings' });
+        { label: 'Edit system prompt', description: 'Shape the default vibe and instructions.', action: 'prompt' }
+    ], { placeHolder: 'Settings' });
 
     if (!mainPick) return;
 
@@ -99,7 +99,7 @@ async function handleEnginePick(host: SettingsCommandsHost): Promise<void> {
 
     const target = (pick as any).action === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234';
     await getLlemSettings().update('engineUrl', target, vscode.ConfigurationTarget.Global);
-    vscode.window.showInformationMessage(`LLeM is now pointed at ${pick.label}.`);
+    vscode.window.showInformationMessage(`Now pointed at ${pick.label}.`);
     await host.sendModels();
 }
 
@@ -194,5 +194,5 @@ async function handleSystemPromptPick(host: SettingsCommandsHost): Promise<void>
 
     host.setSystemPrompt(val.trim() || SYSTEM_PROMPT);
     host.resetConversationForSystemPromptChange();
-    vscode.window.showInformationMessage('System prompt updated. LLeM started a fresh thread.');
+    vscode.window.showInformationMessage('System prompt updated. Started a fresh thread.');
 }

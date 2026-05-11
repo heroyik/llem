@@ -19,13 +19,7 @@ test('package.json exposes MCP settings with expected defaults', async () => {
   const props = packageJson.contributes.configuration.properties;
 
   assert.equal(props['llem.mcpEnabled'].default, true);
-  assert.deepEqual(props['llem.mcpServers'].default, {
-    'context-mode': {
-      command: 'npx',
-      args: ['-y', 'context-mode'],
-      timeoutSeconds: 30
-    }
-  });
+  assert.deepEqual(props['llem.mcpServers'].default, {});
   assert.deepEqual(props['llem.mcpConfigSources'].items.enum, ['workspace', 'vscode', 'claude-code', 'codex', 'antigravity']);
   assert.deepEqual(props['llem.mcpConfigSources'].default, ['workspace']);
   assert.deepEqual(props['llem.mcpConfigPaths'].default, []);

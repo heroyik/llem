@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
     const output = getOutputChannel();
     context.subscriptions.push(output);
     initLogger(context.globalStorageUri?.fsPath);
-    logInfo('LLeM extension activating...');
+    logInfo('Extension activating...');
     const diagnosticsFile = getDiagnosticsFilePath();
     if (diagnosticsFile) {
         logInfo(`[DIAGNOSTICS] Detailed stream log file: ${diagnosticsFile}`);

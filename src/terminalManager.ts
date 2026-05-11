@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 
-let llemChannel: vscode.OutputChannel | undefined;
+let consoleChannel: vscode.OutputChannel | undefined;
 
 export function getLlemChannel(): vscode.OutputChannel {
-    if (!llemChannel) {
-        llemChannel = vscode.window.createOutputChannel('LLeM Console');
+    if (!consoleChannel) {
+        consoleChannel = vscode.window.createOutputChannel('Console');
     }
-    return llemChannel;
+    return consoleChannel;
 }
 
 export function writeToLlemTerminal(message: string): void {
@@ -14,7 +14,7 @@ export function writeToLlemTerminal(message: string): void {
     const lines = message.split(/\r?\n/);
     for (const line of lines) {
         if (line.trim()) {
-            channel.appendLine(`[LLeM] ${line}`);
+            channel.appendLine(line);
         }
     }
 }

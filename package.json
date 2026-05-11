@@ -1,6 +1,6 @@
 {
   "name": "llem",
-  "displayName": "LLeM",
+  "displayName": "Assistant",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
   "version": "3.4.1",
   "publisher": "nIcK",
@@ -44,7 +44,7 @@
     "commands": [
       {
         "command": "llem.openChat",
-        "title": "LLeM: Open Console",
+        "title": "Open Console",
         "icon": {
           "light": "assets/open-chat-light.svg",
           "dark": "assets/open-chat-dark.svg"
@@ -52,32 +52,28 @@
       },
       {
         "command": "llem.newChat",
-        "title": "LLeM: New Chat",
+        "title": "New Chat",
         "icon": "$(add)"
       },
       {
         "command": "llem.exportChat",
-        "title": "LLeM: Export Thread as Markdown"
+        "title": "Export Thread as Markdown"
       },
       {
         "command": "llem.explainSelection",
-        "title": "LLeM: Break Down Selection"
+        "title": "Break Down Selection"
       },
       {
         "command": "llem.focusChat",
-        "title": "LLeM: Focus Prompt"
+        "title": "Focus Prompt"
       },
       {
         "command": "llem.showVaultMap",
-        "title": "LLeM: Open Vault Map"
+        "title": "Open Vault Map"
       },
       {
         "command": "llem.showDiagnostics",
-        "title": "LLeM: Show Diagnostics"
-      },
-      {
-        "command": "llem.testConsole",
-        "title": "LLeM: Test Console Output"
+        "title": "Show Diagnostics"
       }
     ],
     "keybindings": [
@@ -106,7 +102,7 @@
       "secondarySidebar": [
         {
           "id": "llem",
-          "title": "LLeM",
+          "title": "Assistant",
           "icon": "assets/icon.svg"
         }
       ]
@@ -116,13 +112,13 @@
         {
           "type": "webview",
           "id": "llem.chat",
-          "name": "LLeM",
+          "name": "Assistant",
           "icon": "assets/icon.svg"
         }
       ]
     },
     "configuration": {
-      "title": "LLeM",
+      "title": "Assistant",
       "properties": {
         "llem.engineUrl": {
           "type": "string",
@@ -171,17 +167,8 @@
         },
         "llem.mcpServers": {
           "type": "object",
-          "default": {
-            "context-mode": {
-              "command": "npx",
-              "args": [
-                "-y",
-                "context-mode"
-              ],
-              "timeoutSeconds": 30
-            }
-          },
-          "description": "LLeM MCP server definitions keyed by server name. Includes context-mode by default. Stdio servers support command, args, env, cwd, and timeoutSeconds."
+          "default": {},
+          "description": "MCP server definitions keyed by server name. Stdio servers support command, args, env, cwd, and timeoutSeconds."
         },
         "llem.mcpConfigSources": {
           "type": "array",

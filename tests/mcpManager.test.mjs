@@ -64,7 +64,7 @@ test('McpManager lists tools for one server without touching others', async () =
   let connected = '';
   const manager = new McpManager({
     servers: [
-      server('context-mode', { command: 'node' }),
+      server('docs', { command: 'node' }),
       server('other', { command: 'node' })
     ],
     transportFactory: (target) => ({ name: target.name }),
@@ -73,15 +73,15 @@ test('McpManager lists tools for one server without touching others', async () =
         connected = transport.name;
       },
       listTools: async () => ({
-        tools: [{ name: connected === 'context-mode' ? 'ctx_stats' : 'other_tool' }]
+        tools: [{ name: connected === 'docs' ? 'search_docs' : 'other_tool' }]
       }),
       callTool: async () => ({ content: [{ type: 'text', text: 'ok' }] })
     })
   });
 
-  const result = await manager.listServerTools('context-mode');
-  assert.deepEqual(result.tools.map(tool => tool.name), ['ctx_stats']);
-  assert.equal(connected, 'context-mode');
+  const result = await manager.listServerTools('docs');
+  assert.deepEqual(result.tools.map(tool => tool.name), ['search_docs']);
+  assert.equal(connected, 'docs');
 });
 
 test('McpManager calls tools through the client', async () => {

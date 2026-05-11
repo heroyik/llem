@@ -368,7 +368,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._revealSurface(false);
             return;
         } catch (error) {
-            console.warn('LLeM: secondary sidebar view could not be opened, falling back to editor panel.', error);
+            console.warn('Secondary sidebar view could not be opened, falling back to editor panel.', error);
         }
 
         if (this._panel) {
@@ -567,7 +567,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             logInfo(`[QUEUE] Blocked immediate retry for ${request.kind} (${request.id}) due to ${reason}`);
             this._view?.webview.postMessage({
                 type: 'response',
-                value: `> ⚠️ **[LLeM]** 방금 반복 중단된 요청과 같은 요청이라 잠시 다시 실행하지 않았습니다. 이유: ${reason}`
+                value: `> ⚠️ 방금 반복 중단된 요청과 같은 요청이라 잠시 다시 실행하지 않았습니다. 이유: ${reason}`
             });
             return;
         }
@@ -862,7 +862,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         if (!this._lastPrompt) {
             this._view?.webview.postMessage({
                 type: 'response',
-                value: '> ⚠️ **[LLeM]** 다시 생성할 이전 요청이 없습니다.'
+                value: '> ⚠️ 다시 생성할 이전 요청이 없습니다.'
             });
             return;
         }

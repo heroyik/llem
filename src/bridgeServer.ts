@@ -246,10 +246,10 @@ async function handleBridgeRequest(
         await writeUtf8FileAtomic(filePath, drop.markdown);
         provider.invalidateContextCaches({ brain: true });
 
-        provider.injectSystemMessage(`\`\`\`console\n[LLeM] Vault drop incoming...\n[LLeM] Saved pack: ${drop.title}\n[LLeM] Path: drops/${dateStr}/${safeTitle}.md\n[LLeM] Status: synced into local context\n\`\`\``);
+        provider.injectSystemMessage(`\`\`\`console\nVault drop incoming...\nSaved pack: ${drop.title}\nPath: drops/${dateStr}/${safeTitle}.md\nStatus: synced into local context\n\`\`\``);
 
         setTimeout(() => {
-            provider.sendPromptFromExtension(`[LLeM vault drop] You just absorbed a new knowledge pack called "${drop.title}". Reply with exactly one confident sentence that says you have it in the vault and are ready for questions about it. No extra chatter.`);
+            provider.sendPromptFromExtension(`[vault drop] You just absorbed a new knowledge pack called "${drop.title}". Reply with exactly one confident sentence that says you have it in the vault and are ready for questions about it. No extra chatter.`);
         }, 1500);
 
         tryAutoPushBrain(vaultDir, `Vault drop: ${safeTitle}`, provider);

@@ -151,38 +151,19 @@ test('loadMcpServers reads user and workspace LLeM MCP config files', async () =
   await mkdir(path.join(home, '.llem'));
   await mkdir(path.join(workspace, '.llem'));
   await writeFile(path.join(home, '.llem', 'mcp.json'), JSON.stringify({
-    contextMode: 'auto',
     mcpServers: {
       same: { command: 'node', args: ['user.js'] },
       userOnly: { command: 'node', args: ['user-only.js'] }
     }
   }));
   await writeFile(path.join(workspace, '.llem', 'mcp.json'), JSON.stringify({
-    contextMode: 'always',
     mcpServers: {
       same: { command: 'node', args: ['workspace.js'] }
     }
   }));
 
   const result = loadMcpServers({ workspaceRoot: workspace, sources: ['workspace'], env: {}, homeDir: home });
-  assert.equal(result.contextMode, 'always');
   assert.deepEqual(result.servers.find(server => server.name === 'same').config.args, ['workspace.js']);
   assert.equal(result.servers.find(server => server.name === 'same').source, 'workspace:.llem/mcp.json');
   assert.deepEqual(result.servers.find(server => server.name === 'userOnly').config.args, ['user-only.js']);
-});
-
-test('loadMcpServers warns and ignores invalid LLeM contextMode', async () => {
-  const home = await mkdtemp(path.join(os.tmpdir(), 'llem-invalid-context-'));
-  await mkdir(path.join(home, '.llem'));
-  await writeFile(path.join(home, '.llem', 'mcp.json'), JSON.stringify({
-    contextMode: 'sometimes',
-    mcpServers: {
-      docs: { command: 'node', args: ['docs.js'] }
-    }
-  }));
-
-  const result = loadMcpServers({ sources: [], env: {}, homeDir: home });
-  assert.equal(result.contextMode, undefined);
-  assert.equal(result.servers[0].name, 'docs');
-  assert.equal(result.warnings.some(warning => warning.includes('invalid contextMode')), true);
 });

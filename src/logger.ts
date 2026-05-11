@@ -78,14 +78,14 @@ export function getOutputChannel(): vscode.OutputChannel {
                 appendLine: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`),
                 show: () => undefined,
                 dispose: () => undefined,
-                name: 'LLeM',
+                name: 'Output',
                 append: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`),
                 clear: () => undefined,
                 hide: () => undefined,
                 replace: (message: string) => appendDiagnosticsLine(`${isoTimestamp()} [INFO] ${message}`)
             } as unknown as vscode.OutputChannel;
         }
-        outputChannel = api.window.createOutputChannel('LLeM');
+        outputChannel = api.window.createOutputChannel('Output');
     }
     return outputChannel;
 }

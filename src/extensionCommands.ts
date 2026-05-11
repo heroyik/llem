@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { showBrainNetwork } from './brainNetwork';
 import type { SidebarChatProvider } from './sidebarChatProvider';
-import { logInfo, logError } from './logger';
 
 export function registerExtensionCommands(context: vscode.ExtensionContext, provider: SidebarChatProvider): void {
     context.subscriptions.push(
@@ -49,14 +48,6 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
     context.subscriptions.push(
         vscode.commands.registerCommand('llem.showDiagnostics', () => {
             import('./perfLogger').then(m => m.PerfLogger.showDiagnostics());
-        })
-    );
-    context.subscriptions.push(
-        vscode.commands.registerCommand('llem.testConsole', () => {
-            logInfo('LLeM Test: Standard log entry');
-            logError('LLeM Test: Error log entry', false); // don't force show for test
-            logInfo('LLeM Test: Multiple\nline\nlog\nentry');
-            vscode.window.showInformationMessage('Test logs sent to LLeM Console.');
         })
     );
 }

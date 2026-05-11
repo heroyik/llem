@@ -16,13 +16,7 @@ export const SECOND_BRAIN_CONTEXT_CACHE_TTL_MS = 60_000;
 export const BRAIN_FILES_CACHE_TTL_MS = 60_000;
 export const MAX_BRAIN_FILES = 1000;
 
-export const DEFAULT_MCP_SERVERS = {
-    'context-mode': {
-        command: 'npx',
-        args: ['-y', 'context-mode'],
-        timeoutSeconds: 30
-    }
-};
+export const DEFAULT_MCP_SERVERS = {};
 
 export function getConfig(): LlemConfig {
     const cfg = vscode.workspace.getConfiguration('llem');

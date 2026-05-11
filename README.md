@@ -112,7 +112,7 @@ Open your VS Code `settings.json` to customize the experience.
 | `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
 | `llem.bridgeToken` | Security token for authenticated bridge callers. | `(empty)` |
 | `llem.mcpEnabled` | Enable MCP server discovery and tool calls. | `true` |
-| `llem.mcpServers` | LLeM-owned MCP server definitions keyed by server name. Includes `context-mode` by default. | `context-mode` via `npx -y context-mode` |
+| `llem.mcpServers` | LLeM-owned MCP server definitions keyed by server name. | `{}` |
 | `llem.mcpConfigSources` | MCP sources to import. LLeM asks before enabling external Antigravity, VS Code, Codex, or Claude Code sources. | `["workspace"]` |
 | `llem.mcpConfigPaths` | Extra JSON/TOML MCP config files to import. | `[]` |
 | `llem.maxHistoryItems` | Maximum number of sessions to keep in history. | `100` |
@@ -122,7 +122,7 @@ Open your VS Code `settings.json` to customize the experience.
 
 ### MCP Servers
 
-LLeM can discover and call MCP tools from the chat loop. It includes `context-mode` by default using `npx -y context-mode`, and it can also import MCP server configs you already use in VS Code, Claude Code, Codex, Antigravity, project-level MCP files, or LLeM-specific `.llem/mcp.json` files.
+LLeM can discover and call MCP tools from the chat loop. You can define your own MCP servers in settings, and it can also import MCP server configs you already use in VS Code, Claude Code, Codex, Antigravity, project-level MCP files, or LLeM-specific `.llem/mcp.json` files.
 
 Current support:
 
@@ -133,17 +133,11 @@ Current support:
 
 #### Quick Start
 
-The default MCP setup already contains:
+An empty MCP setup looks like:
 
 ```json
 {
-  "llem.mcpServers": {
-    "context-mode": {
-      "command": "npx",
-      "args": ["-y", "context-mode"],
-      "timeoutSeconds": 30
-    }
-  }
+  "llem.mcpServers": {}
 }
 ```
 
@@ -156,11 +150,10 @@ Open the LLeM settings menu from the chat gear, choose **MCP servers**, then sel
 then call a discovered tool with:
 
 ```xml
-<call_mcp_tool server="context-mode" tool="ctx_stats">{}</call_mcp_tool>
+<call_mcp_tool server="filesystem" tool="read_file">{"path":"README.md"}</call_mcp_tool>
 ```
 
 You usually do not need to type these tags yourself. They are the internal action format LLeM gives to the local model.
-When `context-mode` is called through MCP, the chat Action Report shows that it ran and includes any reported context or token savings.
 
 #### Add Servers In LLeM Settings
 
@@ -169,11 +162,6 @@ Edit VS Code `settings.json` and add servers under `llem.mcpServers`. Server nam
 ```json
 {
   "llem.mcpServers": {
-    "context-mode": {
-      "command": "npx",
-      "args": ["-y", "context-mode"],
-      "timeoutSeconds": 30
-    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "${WORKSPACE_ROOT:-.}"],
@@ -219,11 +207,10 @@ If you prefer project or user config files instead of VS Code settings, create o
 - Workspace config: `.llem/mcp.json` in the open workspace root
 - User config: `%USERPROFILE%/.llem/mcp.json` on Windows, or `~/.llem/mcp.json` on macOS/Linux
 
-These files use the same `mcpServers` object shape as `.mcp.json`, plus an optional `contextMode` value.
+These files use the same `mcpServers` object shape as `.mcp.json`.
 
 ```json
 {
-  "contextMode": "auto",
   "mcpServers": {
     "playwright": {
       "type": "stdio",
@@ -235,16 +222,6 @@ These files use the same `mcpServers` object shape as `.mcp.json`, plus an optio
   }
 }
 ```
-
-`contextMode` controls how aggressively LLeM should treat MCP-backed context as available:
-
-| Value | Behavior |
-| :--- | :--- |
-| `off` | Do not automatically use MCP-backed context. |
-| `auto` | Let LLeM use MCP-backed context when the request calls for it. |
-| `always` | Prefer MCP-backed context whenever it is available. |
-
-Invalid `contextMode` values are ignored and reported as config warnings.
 
 #### Import Existing MCP Configs
 
@@ -278,9 +255,9 @@ Project-level MCP files use the common `mcpServers` shape:
 ```json
 {
   "mcpServers": {
-    "context-mode": {
+    "filesystem": {
       "command": "npx",
-      "args": ["-y", "context-mode"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
     }
   }
 }
@@ -582,6 +559,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.4.1
+
+- Bumped the VSIX build from `3.4.1` to `3.4.1`.
+- Removed LLeM branding from visible UI strings
+- removed context-mode integration
+- restored local TypeScript tooling so typecheck works again
+- Packaged `release/llem-3.4.1.vsix`.
+
 ### v3.4.0
 
 This release focuses on making agentic file edits visible, debuggable, and easier to trust when running local models such as Ollama Gemma-family models.
@@ -598,30 +583,28 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - **Post-mortem logging for file actions**: File create/edit/delete paths now write structured diagnostics for validation blocks, missing files, invalid edit bodies, zero-replacement edits, successful writes, and exceptions. These logs include trace IDs, parsed action counts, file paths, replacement metadata, and previews to help reconstruct what happened after a failed run.
 - **Safer testable logging outside VS Code**: The logger now lazily loads the VS Code API and falls back to diagnostics-file logging during Node-based tests, so action logging can be covered without requiring an extension host.
 - **Regression coverage for edit metadata**: Tests now verify that file action results include structured change metadata for created, edited, and deleted files.
-- **MCP behavior carried forward**: The release keeps HTTP/SSE MCP support, approval-based MCP imports from Antigravity/VS Code/Codex/Claude Code, and on-demand `context-mode` reporting from the previous MCP work.
+- **MCP behavior carried forward**: The release keeps HTTP/SSE MCP support and approval-based MCP imports from Antigravity/VS Code/Codex/Claude Code.
 
 ### v3.3.39
 
 - Bumped the VSIX build from `3.3.38` to `3.3.39`.
-- Support HTTP and SSE MCP transports while keeping context-mode as an on-demand MCP tool instead of a forced preflight.
+- Support HTTP and SSE MCP transports without a forced preflight tool.
 - Packaged `release/llem-3.3.39.vsix`.
 
 ### v3.3.38
 
-This release improves MCP transport support and keeps `context-mode` visible when it is actually called through MCP.
+This release improves MCP transport support for imported and user-defined MCP servers.
 
 - HTTP, SSE, and Streamable HTTP MCP servers are now callable through the MCP SDK client transports, so Codex-imported servers such as Figma, Linear, and Notion no longer appear as unsupported solely because they use HTTP.
 - Configured HTTP `headers` are forwarded as request headers for HTTP-based MCP servers.
-- The chat Action Report shows visible `context-mode` activity when a model-driven or manual MCP call runs it. When the MCP result includes savings fields, LLeM summarizes context characters saved, tokens saved, before/after token counts, and compression ratio.
-- `context-mode` result parsing accepts both normal JSON-like MCP payloads and text content that contains embedded JSON, so different server response shapes can still produce useful savings summaries.
-- Regression coverage was added for context-mode savings extraction, per-server MCP tool listing, supported HTTP/SSE config resolution, and HTTP MCP tool calls.
+- Regression coverage was added for per-server MCP tool listing, supported HTTP/SSE config resolution, and HTTP MCP tool calls.
 
 ### v3.3.37
 
 - LLeM now looks for existing MCP configs from Antigravity, VS Code, Codex, and Claude Code when the extension starts, then asks before enabling those external sources. This keeps imports explicit while still making setup easy.
 - Antigravity import now reads the Gemini Antigravity path directly: `~/.gemini/antigravity/mcp_config.json`.
 - VS Code workspace MCP import was added via `.vscode/mcp.json`, alongside the existing workspace `.mcp.json`, Codex TOML, Claude Code JSON, and LLeM-specific `.llem/mcp.json` sources.
-- The default `llem.mcpConfigSources` value is now `["workspace"]`. External sources are added only after user approval, while LLeM's own default `context-mode` server remains available through `llem.mcpServers`.
+- The default `llem.mcpConfigSources` value is now `["workspace"]`. External sources are added only after user approval.
 - Users can choose `Import`, `Not now`, or `Never ask` when external MCP configs are found. `Never ask` is remembered in extension global state so the same source is not prompted repeatedly.
 - MCP settings docs now describe the import priority, the Antigravity path, the VS Code workspace MCP path, and the approval-based import flow.
 - Tests were added for Antigravity import, VS Code MCP import, external source discovery, skipped configured/dismissed imports, and package schema defaults.
@@ -629,7 +612,6 @@ This release improves MCP transport support and keeps `context-mode` visible whe
 ### v3.3.36
 
 - Added the first full MCP tool path in LLeM: MCP server discovery, stdio server startup, tool listing, tool calling, timeout handling, and allow/deny tool filtering.
-- Added `context-mode` as the built-in default MCP server through `npx -y context-mode`, making context-aware MCP support available without manual server setup.
 - Added MCP settings for enabling/disabling MCP, defining LLeM-owned servers, importing known config sources, and adding extra JSON/TOML config paths.
 - Added MCP UI support in the settings menu so imported servers can be inspected and health-checked from the chat gear.
 - Added README guidance for MCP server setup, source priority, supported transports, JSON/TOML config shapes, and in-chat MCP action tags.

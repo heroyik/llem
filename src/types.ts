@@ -1,7 +1,6 @@
 export type ChatRole = 'system' | 'user' | 'assistant';
 export type PerformancePreset = 'auto' | 'balanced' | 'large-local-26b';
 export type ResolvedPerformancePreset = 'balanced' | 'large-local-26b';
-export type McpContextMode = 'off' | 'auto' | 'always';
 
 export interface LlemConfig {
     bridgeEnabled: boolean;

@@ -8,7 +8,6 @@ import { PathValidationStatus, SafePathResult, safeResolveActionPath } from './s
 import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
 import { getMcpManager } from './mcpManager';
-import { contextModeCallReport, contextModeListReport } from './mcpContextModeReport';
 import { logStructured } from './logger';
 import {
     emptyFileActionResult,
@@ -119,7 +118,7 @@ async function approveCommand(command: string): Promise<boolean> {
     }
 
     const choice = await vscode.window.showWarningMessage(
-        `LLeM wants to run this terminal command:\n\n${trimmed}`,
+        `Run this terminal command?\n\n${trimmed}`,
         { modal: true },
         'Run Command'
     );
@@ -128,7 +127,7 @@ async function approveCommand(command: string): Promise<boolean> {
 
 async function approveFileAction(actionType: string, filePath: string): Promise<boolean> {
     const choice = await vscode.window.showWarningMessage(
-        `LLeM wants to ${actionType} a file outside the workspace:\n\n${filePath}`,
+        `${actionType[0].toUpperCase()}${actionType.slice(1)} a file outside the workspace?\n\n${filePath}`,
         { modal: true },
         'Approve'
     );
@@ -285,7 +284,7 @@ const HANDLERS: ActionHandler[] = [
     async (ctx) => {
         if (!getConfig().mcpEnabled) {
             if (parseListMcpToolsActions(ctx.aiMessage) || parseCallMcpToolActions(ctx.aiMessage).length > 0) {
-                ctx.report.push('⚠️ MCP is disabled in LLeM settings.');
+                ctx.report.push('⚠️ MCP is disabled in settings.');
             }
             return;
         }
@@ -294,10 +293,6 @@ const HANDLERS: ActionHandler[] = [
         if (parseListMcpToolsActions(ctx.aiMessage)) {
             const result = await manager.listTools();
             ctx.report.push(...result.report);
-            const contextModeReport = contextModeListReport(result.tools);
-            if (contextModeReport) {
-                ctx.report.push(contextModeReport);
-            }
             ctx.host.appendChatMessage({
                 role: 'user',
                 content: `[SYSTEM: MCP tools available]\n${JSON.stringify(result.tools, null, 2)}`
@@ -317,10 +312,6 @@ const HANDLERS: ActionHandler[] = [
             ctx.report.push(result.ok
                 ? `✅ MCP tool called: ${action.server}.${action.tool}`
                 : `❌ MCP tool failed: ${action.server}.${action.tool} — ${result.text}`);
-            const contextModeReport = contextModeCallReport(result);
-            if (contextModeReport) {
-                ctx.report.push(contextModeReport);
-            }
             ctx.host.appendChatMessage({
                 role: 'user',
                 content: `[SYSTEM: MCP tool result]\nserver=${action.server}\ntool=${action.tool}\nok=${result.ok}\n${result.text}`

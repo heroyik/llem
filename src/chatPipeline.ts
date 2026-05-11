@@ -209,7 +209,7 @@ export class ChatPipeline {
                     logInfo('[PIPELINE] Initial planning-only response contained action tags. Blocking execution.');
                     this.host.postWebviewMessage({
                         type: 'streamChunk',
-                        value: '\n\n> ⚠️ **[LLeM]** 첫 계획 응답에서 액션 태그가 감지되어 실행을 차단했습니다. 계획만 남기고 구현은 다음 단계로 넘깁니다.\n\n'
+                        value: '\n\n> ⚠️ 첫 계획 응답에서 액션 태그가 감지되어 실행을 차단했습니다. 계획만 남기고 구현은 다음 단계로 넘깁니다.\n\n'
                     });
                 }
                 fullAiMessage = currentAiResponse.text;
@@ -714,8 +714,8 @@ export class ChatPipeline {
 
     private postSingleLoopStopNotice(stopReason?: string): void {
         const label = isLoopStopReason(stopReason as any)
-            ? '[LLeM] Repeating output detected. Stopping this run before it loops again.'
-            : '[LLeM] This run was stopped before continuing.';
+            ? 'Repeating output detected. Stopping this run before it loops again.'
+            : 'This run was stopped before continuing.';
         this.host.postWebviewMessage({
             type: 'streamChunk',
             value: `\n\n> ⚠️ **${label}**\n\n`
