@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { normalizeAIEndpoint } from './aiClient';
 import { getConfig, getLlemSettings } from './config';
-import { loadMcpServers } from './mcpConfig';
-import { getMcpManager } from './mcpManager';
 import { isLargeLocal26BModel } from './performanceProfiles';
 import { SYSTEM_PROMPT } from './prompts';
 
@@ -25,7 +23,6 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         { label: 'Swap model engine', description: 'Current: ' + (normalizeAIEndpoint(config.ollamaBase).isLMStudio ? 'LM Studio' : 'Ollama'), action: 'engine' },
         { label: 'Tune generation', description: `Temp: ${host.getTemperature()}, Top-P: ${host.getTopP()}, Top-K: ${host.getTopK()}`, action: 'params' },
         { label: 'Performance profile', description: `Current: ${config.performancePreset}`, action: 'profile' },
-        { label: 'MCP servers', description: config.mcpEnabled ? 'View imported servers and test connections' : 'Disabled', action: 'mcp' },
         { label: 'Edit system prompt', description: 'Shape the default vibe and instructions.', action: 'prompt' }
     ], { placeHolder: 'Settings' });
 
@@ -37,55 +34,8 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         await handleParameterPick(host);
     } else if (mainPick.action === 'profile') {
         await handlePerformanceProfilePick();
-    } else if (mainPick.action === 'mcp') {
-        await handleMcpPick();
     } else if (mainPick.action === 'prompt') {
         await handleSystemPromptPick(host);
-    }
-}
-
-async function handleMcpPick(): Promise<void> {
-    const config = getConfig();
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const loaded = loadMcpServers({
-        workspaceRoot,
-        llemServers: config.mcpServers,
-        sources: config.mcpConfigSources,
-        extraPaths: config.mcpConfigPaths
-    });
-    const serverItems = loaded.servers.map(server => ({
-        label: server.name,
-        description: `${server.transport}${server.disabled ? ' disabled' : server.supported ? '' : ' unsupported'} · ${server.source}`,
-        detail: server.warning,
-        action: 'server',
-        server: server.name
-    }));
-    const pick = await vscode.window.showQuickPick([
-        { label: 'Open LLeM MCP settings', description: 'Edit settings.json', action: 'settings' },
-        { label: 'Open workspace .mcp.json', description: workspaceRoot ? 'Create or edit project MCP config' : 'No workspace open', action: 'workspace' },
-        ...serverItems
-    ], { placeHolder: loaded.warnings.length > 0 ? loaded.warnings[0] : 'MCP servers' });
-
-    if (!pick) {
-        return;
-    }
-    if (pick.action === 'settings') {
-        await vscode.commands.executeCommand('workbench.action.openSettingsJson');
-        return;
-    }
-    if (pick.action === 'workspace') {
-        if (!workspaceRoot) {
-            vscode.window.showWarningMessage('Open a workspace folder first.');
-            return;
-        }
-        await vscode.workspace.openTextDocument(vscode.Uri.file(vscode.Uri.joinPath(vscode.Uri.file(workspaceRoot), '.mcp.json').fsPath))
-            .then(doc => vscode.window.showTextDocument(doc));
-        return;
-    }
-    if (pick.action === 'server') {
-        const manager = getMcpManager(workspaceRoot);
-        const status = await manager.healthCheck((pick as any).server);
-        vscode.window.showInformationMessage(status);
     }
 }
 

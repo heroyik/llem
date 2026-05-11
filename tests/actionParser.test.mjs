@@ -5,12 +5,10 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   parseCommandActions,
-  parseCallMcpToolActions,
   parseCreateActions,
   parseDeleteActions,
   parseFallbackFileBlocks,
   parseListActions,
-  parseListMcpToolsActions,
   parseReadFileActions,
   parseUrlActions,
   stripWrappingFence
@@ -60,12 +58,6 @@ test('parseUrlActions trims requested URLs', () => {
   ]);
 });
 
-test('parse MCP actions', () => {
-  assert.equal(parseListMcpToolsActions('<list_mcp_tools/>'), true);
-  assert.deepEqual(parseCallMcpToolActions('<call_mcp_tool server="github" tool="list_issues">{"repo":"llem"}</call_mcp_tool>'), [
-    { server: 'github', tool: 'list_issues', body: '{"repo":"llem"}' }
-  ]);
-});
 
 test('parseFallbackFileBlocks extracts file comments from fenced code', () => {
   const actions = parseFallbackFileBlocks(`

@@ -1,7 +1,6 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { DEFAULT_MCP_CONFIG_SOURCES } from './mcpConfig';
 import type { LlemConfig, PerformancePreset } from './types';
 
 export const EXCLUDED_DIRS = new Set([
@@ -16,8 +15,6 @@ export const SECOND_BRAIN_CONTEXT_CACHE_TTL_MS = 60_000;
 export const BRAIN_FILES_CACHE_TTL_MS = 60_000;
 export const MAX_BRAIN_FILES = 1000;
 
-export const DEFAULT_MCP_SERVERS = {};
-
 export function getConfig(): LlemConfig {
     const cfg = vscode.workspace.getConfiguration('llem');
     return {
@@ -28,11 +25,7 @@ export function getConfig(): LlemConfig {
         performancePreset: cfg.get<PerformancePreset>('performancePreset', 'auto'),
         maxTreeFiles: 200,
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
-        vaultPath: cfg.get<string>('vaultPath', ''),
-        mcpEnabled: cfg.get<boolean>('mcpEnabled', true),
-        mcpServers: cfg.get('mcpServers', DEFAULT_MCP_SERVERS),
-        mcpConfigSources: cfg.get<string[]>('mcpConfigSources', DEFAULT_MCP_CONFIG_SOURCES),
-        mcpConfigPaths: cfg.get<string[]>('mcpConfigPaths', [])
+        vaultPath: cfg.get<string>('vaultPath', '')
     };
 }
 

@@ -11,12 +11,6 @@ export interface TextAction {
     text: string;
 }
 
-export interface McpToolAction {
-    server: string;
-    tool: string;
-    body: string;
-}
-
 const PATH_ATTR = String.raw`(?:path|file|name)=['"“]?([^'">“”]+)['"”]?`;
 
 export function stripWrappingFence(value: string): string {
@@ -75,25 +69,6 @@ export function parseCommandActions(message: string): TextAction[] {
 
 export function parseUrlActions(message: string): TextAction[] {
     return parseTextActions(message, /(?:<|call:)\s*(?:read_url|url|fetch_url)>([\s\S]*?)<\/(?:read_url|url|fetch_url)>/gi);
-}
-
-export function parseListMcpToolsActions(message: string): boolean {
-    return /(?:<|call:)\s*list_mcp_tools\s*\/?>(?:<\/list_mcp_tools>)?/i.test(message);
-}
-
-export function parseCallMcpToolActions(message: string): McpToolAction[] {
-    const actions: McpToolAction[] = [];
-    const regex = /(?:<|call:)\s*call_mcp_tool\s+([^>]*)>([\s\S]*?)<\/call_mcp_tool>/gi;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(message)) !== null) {
-        const attrs = match[1];
-        const server = readAttr(attrs, 'server');
-        const tool = readAttr(attrs, 'tool');
-        if (server && tool) {
-            actions.push({ server, tool, body: stripWrappingFence(match[2]) });
-        }
-    }
-    return actions;
 }
 
 export function parseFallbackFileBlocks(message: string): PathAction[] {
@@ -174,10 +149,4 @@ function collectFallbackActions(
 
 function looksLikeWorkspaceFilePath(value: string): boolean {
     return /(?:^|\/)[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+$/.test(value.trim());
-}
-
-function readAttr(attrs: string, name: string): string | undefined {
-    const regex = new RegExp(String.raw`${name}=['"“]?([^'">“”\s]+)['"”]?`, 'i');
-    const match = regex.exec(attrs);
-    return match?.[1]?.trim();
 }

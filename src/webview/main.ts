@@ -636,11 +636,11 @@ try {
     if (!text) return '';
 
     let value = String(text)
-      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)\b[\s\S]*?<\/(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)>/gi, '')
-      .replace(/<(?:delete_file|delete|read_file|read|list_files|list_dir|ls|list_mcp_tools|call:delete_file|call:delete|call:read_file|call:read|call:list_files|call:list_dir|call:ls|call:list_mcp_tools)\b[^>]*\/?>/gi, '')
-      .replace(/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|list_mcp_tools|call_mcp_tool|call:[a-z_]+)\b[^>]*>/gi, '')
+      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[\s\S]*?<\/(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)>/gi, '')
+      .replace(/<(?:delete_file|delete|read_file|read|list_files|list_dir|ls|call:delete_file|call:delete|call:read_file|call:read|call:list_files|call:list_dir|call:ls)\b[^>]*\/?>/gi, '')
+      .replace(/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[^>]*>/gi, '')
       .replace(/<\/?(?:find|replace)\b[^>]*>/gi, '')
-      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)\b[^>]*>[\s\S]*$/gi, '');
+      .replace(/<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call:[a-z_]+)\b[^>]*>[\s\S]*$/gi, '');
 
     value = value
       .split('\n')
@@ -1304,7 +1304,7 @@ try {
     } else {
       streamPreviewEl.className = 'stream-preview stream-preview-live';
       
-      const hasAction = /<(create_file|edit_file|run_command|delete_file|read_file|list_files|list_mcp_tools|call_mcp_tool)/i.test(streamRaw);
+      const hasAction = /<(create_file|edit_file|run_command|delete_file|read_file|list_files)/i.test(streamRaw);
       if (hasAction) {
         // 액션 감지 시 깔끔한 진행 상태 표시
         let actionLabel = 'Processing...';
@@ -1323,12 +1323,6 @@ try {
         } else if (streamRaw.includes('<read_file')) {
           actionLabel = '📖 Reading file';
           const match = streamRaw.match(/path="([^"]+)"/);
-          if (match) actionPath = match[1];
-        } else if (streamRaw.includes('<list_mcp_tools')) {
-          actionLabel = 'Listing MCP tools';
-        } else if (streamRaw.includes('<call_mcp_tool')) {
-          actionLabel = 'Calling MCP tool';
-          const match = streamRaw.match(/tool="([^"]+)"/);
           if (match) actionPath = match[1];
         }
 

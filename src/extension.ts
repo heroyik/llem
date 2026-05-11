@@ -4,7 +4,6 @@ import { getConfig } from './config';
 import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 import { getDiagnosticsFilePath, initLogger, logInfo, getOutputChannel } from './logger';
-import { promptForExternalMcpImports } from './mcpImportPrompt';
 
 
 // ============================================================
@@ -36,7 +35,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     registerExtensionCommands(context, provider);
-    void promptForExternalMcpImports(context);
 }
 
 export function deactivate() {}

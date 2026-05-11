@@ -7,7 +7,6 @@ import { openDocument, resolveLlemPath } from './fsUtils';
 import { PathValidationStatus, SafePathResult, safeResolveActionPath } from './security';
 import { executeTerminalAction } from './terminalActions';
 import { executeReadUrlAction } from './webActions';
-import { getMcpManager } from './mcpManager';
 import { logStructured } from './logger';
 import {
     emptyFileActionResult,
@@ -22,13 +21,11 @@ import {
 } from './fileActions';
 import {
     parseCommandActions,
-    parseCallMcpToolActions,
     parseCreateActions,
     parseDeleteActions,
     parseEditActions,
     parseFallbackFileBlocks,
     parseListActions,
-    parseListMcpToolsActions,
     parseReadFileActions,
     parseUrlActions
 } from './actionParser';
@@ -280,43 +277,6 @@ const HANDLERS: ActionHandler[] = [
                 ctx.host.appendChatMessage(result.chatMessage);
             }
         }
-    },
-    async (ctx) => {
-        if (!getConfig().mcpEnabled) {
-            if (parseListMcpToolsActions(ctx.aiMessage) || parseCallMcpToolActions(ctx.aiMessage).length > 0) {
-                ctx.report.push('⚠️ MCP is disabled in settings.');
-            }
-            return;
-        }
-
-        const manager = getMcpManager(ctx.rootPath);
-        if (parseListMcpToolsActions(ctx.aiMessage)) {
-            const result = await manager.listTools();
-            ctx.report.push(...result.report);
-            ctx.host.appendChatMessage({
-                role: 'user',
-                content: `[SYSTEM: MCP tools available]\n${JSON.stringify(result.tools, null, 2)}`
-            });
-        }
-
-        for (const action of parseCallMcpToolActions(ctx.aiMessage)) {
-            let args: Record<string, unknown>;
-            try {
-                args = action.body.trim() ? JSON.parse(action.body) : {};
-            } catch (error) {
-                ctx.report.push(`❌ MCP tool call failed: ${action.server}.${action.tool} — invalid JSON arguments.`);
-                continue;
-            }
-
-            const result = await manager.callTool(action.server, action.tool, args);
-            ctx.report.push(result.ok
-                ? `✅ MCP tool called: ${action.server}.${action.tool}`
-                : `❌ MCP tool failed: ${action.server}.${action.tool} — ${result.text}`);
-            ctx.host.appendChatMessage({
-                role: 'user',
-                content: `[SYSTEM: MCP tool result]\nserver=${action.server}\ntool=${action.tool}\nok=${result.ok}\n${result.text}`
-            });
-        }
     }
 ];
 
@@ -346,8 +306,6 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         list: parseListActions(aiMessage).length,
         command: parseCommandActions(aiMessage).length,
         url: parseUrlActions(aiMessage).length,
-        mcpCall: parseCallMcpToolActions(aiMessage).length,
-        mcpList: parseListMcpToolsActions(aiMessage),
         fallbackFileBlocks: parseFallbackFileBlocks(aiMessage).length
     };
 
