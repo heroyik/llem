@@ -370,6 +370,7 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 ### v3.4.3
 
 - Bumped the VSIX build from `3.4.2` to `3.4.3`.
+- Renamed the VS Code tab and view labels from Assistant to LLeM.
 - Refreshed the compiled extension and webview bundles for the release.
 - Packaged `release/llem-3.4.3.vsix`.
 
