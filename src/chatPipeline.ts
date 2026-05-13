@@ -4,7 +4,7 @@ import { sanitizeAssistantOutput } from './assistantOutputSanitizer';
 import { getConfig } from './config';
 import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
-import { resolveAIEndpoint, streamCompletion } from './aiClient';
+import { getEngineDisplayName, resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
 import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
@@ -143,7 +143,7 @@ export class ChatPipeline {
                 backgroundLabel: DEFAULT_BACKGROUND_LABEL,
                 modelProfile,
                 activeModelName: selectedModel,
-                activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
+                activeEngineName: getEngineDisplayName(config.ollamaBase),
                 attachmentNames: attachments.textAttachmentNames,
                 attachmentChars: attachments.includedChars,
                 prunedAttachmentChars: attachments.prunedChars,
@@ -307,7 +307,7 @@ export class ChatPipeline {
                         backgroundLabel: DEFAULT_BACKGROUND_LABEL,
                         modelProfile,
                         activeModelName: selectedModel,
-                        activeEngineName: endpoint.isLMStudio ? 'LM Studio' : 'Ollama',
+                        activeEngineName: getEngineDisplayName(config.ollamaBase),
                         attachmentNames: attachments.textAttachmentNames,
                         attachmentChars: attachments.includedChars,
                         prunedAttachmentChars: attachments.prunedChars,
@@ -941,20 +941,21 @@ function isAbortError(error: any): boolean {
 }
 
 function formatPromptWithFileError(error: any, ollamaBase: string): string {
-    const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
-    const targetName = isLM ? 'LM Studio' : 'Ollama';
+    const targetName = getEngineDisplayName(ollamaBase);
+    const isOpenAICompatible = targetName !== 'Ollama';
+    const defaultPort = targetName === 'Rapid-MLX' ? '8000' : isOpenAICompatible ? '1234' : '11434';
 
     if (error?.name === 'ReasoningOnlyStreamError') {
         return `⚠️ ${error.message}\n\n**Try this:** switch to a non-thinking model, or make sure ${targetName} is asked to return only final answer content.`;
     }
     if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
-        return `⚠️ Could not reach ${targetName}.\n\n**Try this:**\n1. Open ${targetName} and make sure the local server is running.\n2. Check the engine URL in Settings. Default is http://127.0.0.1:${isLM ? '1234' : '11434'}.`;
+        return `⚠️ Could not reach ${targetName}.\n\n**Try this:**\n1. Open ${targetName} and make sure the local server is running.\n2. Check the engine URL in Settings. Default is http://127.0.0.1:${defaultPort}.`;
     }
     if (error.response?.status === 400) {
-        return `⚠️ Model request failed (400).\n\n**Usually this means:** the model name is off, or the prompt blew past the context window.\n**Try this:** pick the right model from the dropdown.\n${isLM ? '• In LM Studio, make sure the model is actually loaded first.' : '• In Ollama, run `ollama list` and make sure the model exists.'}`;
+        return `⚠️ Model request failed (400).\n\n**Usually this means:** the model name is off, or the prompt blew past the context window.\n**Try this:** pick the right model from the dropdown.\n${isOpenAICompatible ? `• In ${targetName}, make sure the model is loaded and the /v1 server is running.` : '• In Ollama, run `ollama list` and make sure the model exists.'}`;
     }
     if (error.response?.status === 404) {
-        return `⚠️ Model not found (404).\n\nThe selected model is not available in ${targetName} right now.\n${isLM ? 'Load it in LM Studio first, then try again.' : 'Pull it first with `ollama pull <model-name>`.'}`;
+        return `⚠️ Model not found (404).\n\nThe selected model is not available in ${targetName} right now.\n${isOpenAICompatible ? `Load it in ${targetName} first, then try again.` : 'Pull it first with `ollama pull <model-name>`.'}`;
     }
     if (error.response?.status === 413) {
         return '⚠️ Context limit hit (413).\n\nTry turning vault mode off for a moment, or spin up a fresh thread with `+`.';
@@ -966,8 +967,7 @@ function formatPromptWithFileError(error: any, ollamaBase: string): string {
 }
 
 function formatPromptError(error: any, ollamaBase: string): string {
-    const isLM = ollamaBase.includes('1234') || ollamaBase.includes('v1');
-    const targetName = isLM ? 'LM Studio' : 'Ollama';
+    const targetName = getEngineDisplayName(ollamaBase);
 
     if (error?.name === 'ReasoningOnlyStreamError') {
         return `⚠️ ${error.message}\n\nSwitch to a non-thinking model, or make sure ${targetName} returns final answer content instead of reasoning trace only.`;

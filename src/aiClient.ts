@@ -29,13 +29,41 @@ export function stripTrailingSlash(value: string): string {
     return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
-function isLMStudioBase(baseUrl: string): boolean {
-    return baseUrl.includes('1234') || baseUrl.includes('/v1') || baseUrl.endsWith('v1');
+function hasPort(baseUrl: string, port: string): boolean {
+    try {
+        return new URL(baseUrl).port === port;
+    } catch {
+        return baseUrl.includes(`:${port}`);
+    }
+}
+
+function isOpenAICompatibleBase(baseUrl: string): boolean {
+    return hasPort(baseUrl, '1234')
+        || hasPort(baseUrl, '8000')
+        || baseUrl.includes('/v1')
+        || baseUrl.endsWith('v1')
+        || baseUrl.toLowerCase().includes('rapid-mlx');
+}
+
+export function getEngineDisplayName(baseUrl: string): string {
+    if (hasPort(baseUrl, '1234')) {
+        return 'LM Studio';
+    }
+    if (hasPort(baseUrl, '8000') || baseUrl.toLowerCase().includes('rapid-mlx')) {
+        return 'Rapid-MLX';
+    }
+    if (baseUrl.includes('/v1') || baseUrl.endsWith('v1')) {
+        return 'OpenAI-compatible local engine';
+    }
+    return 'Ollama';
 }
 
 export function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
     let base = stripTrailingSlash(baseUrl);
-    const isLMStudio = isLMStudioBase(base);
+    const isLMStudio = isOpenAICompatibleBase(base);
+    if (base.endsWith('/chat/completions')) {
+        base = stripTrailingSlash(base.slice(0, -'/chat/completions'.length));
+    }
     if (isLMStudio && !base.endsWith('/v1')) {
         base += '/v1';
     }

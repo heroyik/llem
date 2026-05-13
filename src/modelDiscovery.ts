@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { normalizeAIEndpoint, stripTrailingSlash } from './aiClient';
+import { getEngineDisplayName, normalizeAIEndpoint, stripTrailingSlash } from './aiClient';
 import { getConfig, getLlemSettings, getVaultDir } from './config';
 import { ensureDir } from './fsUtils';
 import type { InstalledModelInfo } from './types';
@@ -194,12 +194,22 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
         let engineUrl = '';
         let discoveredModels: string[] = [];
 
-        // Check LM Studio
+        // Check OpenAI-compatible engines that expose /v1/models.
         try {
-            const lmRes = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 2000 });
-            if (lmRes.data?.data?.length > 0) {
-                engineUrl = 'http://127.0.0.1:1234';
-                discoveredModels = lmRes.data.data.map((m: any) => m.id);
+            const openAICompatibleCandidates = [
+                'http://127.0.0.1:8000',
+                'http://127.0.0.1:1234'
+            ];
+            for (const candidate of openAICompatibleCandidates) {
+                try {
+                    const modelsUrl = normalizeAIEndpoint(candidate).apiUrl.replace('/chat/completions', '/models');
+                    const res = await axios.get(modelsUrl, { timeout: 2000 });
+                    if (res.data?.data?.length > 0) {
+                        engineUrl = candidate;
+                        discoveredModels = res.data.data.map((m: any) => m.id);
+                        break;
+                    }
+                } catch {}
             }
         } catch {}
 
@@ -239,10 +249,10 @@ export async function runFirstRunSetup(ctx: vscode.ExtensionContext): Promise<vo
         ctx.globalState.update('setupComplete', true);
 
         if (engineUrl) {
-            const name = engineUrl.includes('1234') ? 'LM Studio' : 'Ollama';
+            const name = getEngineDisplayName(engineUrl);
             vscode.window.showInformationMessage(`LLeM found ${name} and hooked in. You're good to roll.`);
         } else {
-            vscode.window.showInformationMessage('LLeM is on deck. Fire up LM Studio or Ollama and it will hook in automatically.');
+            vscode.window.showInformationMessage('LLeM is on deck. Fire up Rapid-MLX, LM Studio, or Ollama and it will hook in automatically.');
         }
     } catch {
         ctx.globalState.update('setupComplete', true);

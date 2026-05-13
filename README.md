@@ -52,7 +52,7 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 
 ## ✨ Features
 
-- **🛡️ Local-First Workflow**: Connects directly to local engines like **Ollama** or **LM Studio**. No cloud, no API costs.
+- **🛡️ Local-First Workflow**: Connects directly to local engines like **Rapid-MLX**, **LM Studio**, or **Ollama**. No cloud, no API costs.
 - **🚀 Live Streaming**: Real-time output rendered inside a custom VS Code chat panel with full Markdown and code block support.
 - **🛠️ Agentic Actions**: Trigger file creations, non-destructive edits, and terminal commands directly from the AI's response.
 - **🗂️ Persistent History**: Conversations are automatically saved to `~/.llem-history`, supporting session recovery, renaming, and bulk deletion.
@@ -69,6 +69,20 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 To get started, you'll need a local model runtime running on your machine.
 
 ### 1. Choose Your Engine
+
+#### **Rapid-MLX**
+
+Typical URL: `http://127.0.0.1:8000`
+
+Rapid-MLX is supported as an OpenAI-compatible local engine. LLeM talks to its `/v1/chat/completions` streaming endpoint and reads installed models from `/v1/models`.
+
+```bash
+# Install and serve a model on the default Rapid-MLX port
+pip install vllm-mlx
+rapid-mlx serve qwen3.5-4b --port 8000
+```
+
+Then point `llem.engineUrl` at `http://127.0.0.1:8000` or pick **Rapid-MLX** from **Settings -> Swap model engine**.
 
 #### **Ollama**
 
@@ -95,6 +109,9 @@ Typical URL: `http://127.0.0.1:1234`
 1. Download and load your favorite model.
 2. Enable the **Local Server**.
 3. Confirm the server is active.
+4. Point `llem.engineUrl` at `http://127.0.0.1:1234` or pick **LM Studio** from **Settings -> Swap model engine**.
+
+LLeM treats LM Studio as an OpenAI-compatible local engine and automatically normalizes the request path to `/v1/chat/completions`.
 
 ---
 
@@ -104,7 +121,7 @@ Open your VS Code `settings.json` to customize the experience.
 
 | Setting | Description | Default |
 | :--- | :--- | :--- |
-| `llem.engineUrl` | Local/remote model endpoint URL. | `http://127.0.0.1:11434` |
+| `llem.engineUrl` | Local/remote model endpoint URL. Supports Rapid-MLX (`:8000`), LM Studio (`:1234`), OpenAI-compatible `/v1` servers, and Ollama (`:11434`). | `http://127.0.0.1:11434` |
 | `llem.defaultModel` | The default model slug used for requests. | `gemma4:e4b` |
 | `llem.performancePreset` | Prompt and generation budget profile. Use `auto`, `balanced`, or `large-local-26b`. | `auto` |
 | `llem.requestTimeout` | Request timeout in seconds. | `300` |
@@ -132,7 +149,8 @@ Open your VS Code `settings.json` to customize the experience.
 
 For bigger local models such as `gemma6:26b` or other 24B+ Gemma-family builds:
 
-- prefer **Ollama** for the current optimized path,
+- prefer **Rapid-MLX** or **LM Studio** when you want an OpenAI-compatible local server,
+- prefer **Ollama** when you want the native Ollama `/api/chat` path and local manifest-based capability hints,
 - switch `llem.performancePreset` to `large-local-26b` if you want tighter prompt budgets immediately,
 - keep `llem.performancePreset` on `auto` if you want LLeM to detect 26B-class models by name or metadata,
 - raise `llem.requestTimeout` to around `600` seconds on slower or memory-constrained machines,
@@ -203,7 +221,7 @@ In practice, this makes it much easier to see whether the bottleneck is model lo
 
 - **Context Limits**: Large file attachments might hit the context window limit of your local model.
 - **Large-Model Warmup**: The first request to a 24B+ local model can still feel slow even after prompt trimming, especially right after loading the model into memory.
-- **Server Check**: Make sure your local engine (Ollama/LM Studio) is actually running before you start chatting.
+- **Server Check**: Make sure your local engine (Rapid-MLX/LM Studio/Ollama) is actually running before you start chatting.
 
 ---
 
@@ -366,6 +384,22 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.5.0
+
+**v3.5.0** expands LLeM's local engine support beyond the original Ollama/LM Studio flow and makes OpenAI-compatible MLX runtimes a first-class path.
+
+- Bumped the extension version from `3.4.3` to `3.5.0`.
+- Added **Rapid-MLX** support as a local OpenAI-compatible backend.
+- Added automatic first-run discovery for Rapid-MLX at `http://127.0.0.1:8000`.
+- Added `/v1/models` model discovery for Rapid-MLX and other OpenAI-compatible local engines.
+- Normalized Rapid-MLX requests to `/v1/chat/completions`, matching the same streaming chat shape used by LM Studio.
+- Kept **LM Studio** support explicit at `http://127.0.0.1:1234`, including `/v1/chat/completions` and `/v1/models`.
+- Kept **Ollama** support on the native `http://127.0.0.1:11434` path with `/api/chat`, `/api/tags`, and Ollama metadata/capability checks.
+- Updated the Settings menu so **Rapid-MLX**, **LM Studio**, and **Ollama** can all be selected from **Swap model engine**.
+- Updated active runtime labels so prompts and diagnostics report `Rapid-MLX`, `LM Studio`, `Ollama`, or a generic OpenAI-compatible local engine instead of mislabeling every `/v1` endpoint as LM Studio.
+- Improved connection and model-not-found guidance so errors point users toward the selected engine's expected local port and startup flow.
+- Refreshed README setup guidance with Rapid-MLX install/serve examples, LM Studio selection notes, and the complete local engine compatibility list.
 
 ### v3.4.3
 

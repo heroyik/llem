@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { normalizeAIEndpoint } from './aiClient';
+import { getEngineDisplayName } from './aiClient';
 import { getConfig, getLlemSettings } from './config';
 import { isLargeLocal26BModel } from './performanceProfiles';
 import { SYSTEM_PROMPT } from './prompts';
@@ -20,7 +20,7 @@ export interface SettingsCommandsHost {
 export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<void> {
     const config = getConfig();
     const mainPick = await vscode.window.showQuickPick([
-        { label: 'Swap model engine', description: 'Current: ' + (normalizeAIEndpoint(config.ollamaBase).isLMStudio ? 'LM Studio' : 'Ollama'), action: 'engine' },
+        { label: 'Swap model engine', description: 'Current: ' + getEngineDisplayName(config.ollamaBase), action: 'engine' },
         { label: 'Tune generation', description: `Temp: ${host.getTemperature()}, Top-P: ${host.getTopP()}, Top-K: ${host.getTopK()}`, action: 'params' },
         { label: 'Performance profile', description: `Current: ${config.performancePreset}`, action: 'profile' },
         { label: 'Edit system prompt', description: 'Shape the default vibe and instructions.', action: 'prompt' }
@@ -41,13 +41,19 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
 
 async function handleEnginePick(host: SettingsCommandsHost): Promise<void> {
     const pick = await vscode.window.showQuickPick([
+        { label: 'Rapid-MLX', description: 'http://127.0.0.1:8000', action: 'rapid-mlx' },
         { label: 'Ollama', description: '', action: 'ollama' },
-        { label: 'LM Studio', description: '', action: 'lmstudio' },
+        { label: 'LM Studio', description: 'http://127.0.0.1:1234', action: 'lmstudio' },
     ], { placeHolder: 'Pick the local engine' });
 
     if (!pick) return;
 
-    const target = (pick as any).action === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234';
+    const targets: Record<string, string> = {
+        'rapid-mlx': 'http://127.0.0.1:8000',
+        ollama: 'http://127.0.0.1:11434',
+        lmstudio: 'http://127.0.0.1:1234'
+    };
+    const target = targets[(pick as any).action] ?? 'http://127.0.0.1:11434';
     await getLlemSettings().update('engineUrl', target, vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage(`Now pointed at ${pick.label}.`);
     await host.sendModels();
