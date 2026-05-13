@@ -714,9 +714,9 @@ try {
       navigator.clipboard.writeText(message.text || '').then(function() {
         copyBtn.classList.add('active');
         setTimeout(function() { copyBtn.classList.remove('active'); }, 1000);
+      }).catch(function() {
+        copyBtn.classList.remove('active');
       });
-      // Automatically paste into input and show edit banner
-      enterEditMode(messageIndex, message);
     });
     actionBar.appendChild(copyBtn);
 

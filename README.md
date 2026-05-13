@@ -399,6 +399,7 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 - Updated the Settings menu so **Rapid-MLX**, **LM Studio**, and **Ollama** can all be selected from **Swap model engine**.
 - Updated active runtime labels so prompts and diagnostics report `Rapid-MLX`, `LM Studio`, `Ollama`, or a generic OpenAI-compatible local engine instead of mislabeling every `/v1` endpoint as LM Studio.
 - Improved connection and model-not-found guidance so errors point users toward the selected engine's expected local port and startup flow.
+- Fixed the first action icon under chat results so it copies the message to the clipboard without pasting it into the composer or opening the edit-branch banner.
 - Refreshed README setup guidance with Rapid-MLX install/serve examples, LM Studio selection notes, and the complete local engine compatibility list.
 
 ### v3.4.3
