@@ -25,7 +25,9 @@ import {
     parseDeleteActions,
     parseEditActions,
     parseFallbackFileBlocks,
+    parseCallMcpToolActions,
     parseListActions,
+    parseListMcpToolsActions,
     parseReadFileActions,
     parseUrlActions
 } from './actionParser';
@@ -36,6 +38,8 @@ export interface ActionExecutionHost {
     appendChatMessage(message: ChatMessage): void;
     injectSystemMessage(message: string): void;
     invalidateContextCaches(scope?: { workspace?: boolean; brain?: boolean }): void;
+    listMcpTools?(): Promise<{ tools: any[]; report: string[] }>;
+    callMcpTool?(server: string, tool: string, args: Record<string, unknown>): Promise<{ ok: boolean; content?: unknown; error?: string }>;
 }
 
 interface ActionHandlerContext extends ActionReportContext {
@@ -65,6 +69,7 @@ function summarizeAiMessageForActions(aiMessage: string): Record<string, unknown
         hasReadTag: /<(?:read_file|read)\b/i.test(aiMessage),
         hasListTag: /<(?:list_files|list_dir|ls)\b/i.test(aiMessage),
         hasCommandTag: /<(?:run_command|command|bash|terminal)\b/i.test(aiMessage),
+        hasMcpTag: /<(?:list_mcp_tools|call_mcp_tool)\b/i.test(aiMessage),
         preview: aiMessage.slice(0, 1200)
     };
 }
@@ -277,6 +282,45 @@ const HANDLERS: ActionHandler[] = [
                 ctx.host.appendChatMessage(result.chatMessage);
             }
         }
+    },
+    async (ctx) => {
+        for (const _action of parseListMcpToolsActions(ctx.aiMessage)) {
+            if (!ctx.host.listMcpTools) {
+                ctx.report.push('❌ MCP tools are not available in this LLeM host.');
+                continue;
+            }
+            const result = await ctx.host.listMcpTools();
+            ctx.report.push(...result.report);
+            ctx.host.appendChatMessage({
+                role: 'user',
+                content: `[SYSTEM: MCP tools]\n${JSON.stringify(result.tools, null, 2)}`
+            });
+        }
+    },
+    async (ctx) => {
+        for (const action of parseCallMcpToolActions(ctx.aiMessage)) {
+            if (!ctx.host.callMcpTool) {
+                ctx.report.push('❌ MCP tool calls are not available in this LLeM host.');
+                continue;
+            }
+            let args: Record<string, unknown>;
+            try {
+                args = action.body.trim() ? JSON.parse(action.body) : {};
+            } catch (err) {
+                ctx.report.push(`❌ MCP tool call skipped: invalid JSON args for ${action.server}.${action.tool}.`);
+                continue;
+            }
+            const result = await ctx.host.callMcpTool(action.server, action.tool, args);
+            if (result.ok) {
+                ctx.report.push(`🔌 MCP tool called: ${action.server}.${action.tool}`);
+                ctx.host.appendChatMessage({
+                    role: 'user',
+                    content: `[SYSTEM: MCP tool result]\nServer: ${action.server}\nTool: ${action.tool}\n\`\`\`json\n${JSON.stringify(result.content, null, 2)}\n\`\`\``
+                });
+            } else {
+                ctx.report.push(`❌ MCP tool failed: ${action.server}.${action.tool} — ${result.error || 'unknown error'}`);
+            }
+        }
     }
 ];
 
@@ -288,7 +332,7 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
     }
 
     if (!rootPath) {
-        const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file)/i.test(aiMessage);
+        const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file|list_mcp_tools|call_mcp_tool)/i.test(aiMessage);
         if (hasActions) {
             logStructured('action.execute.no_workspace', {
                 traceId,
@@ -306,6 +350,8 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         list: parseListActions(aiMessage).length,
         command: parseCommandActions(aiMessage).length,
         url: parseUrlActions(aiMessage).length,
+        listMcpTools: parseListMcpToolsActions(aiMessage).length,
+        callMcpTool: parseCallMcpToolActions(aiMessage).length,
         fallbackFileBlocks: parseFallbackFileBlocks(aiMessage).length
     };
 

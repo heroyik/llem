@@ -22,6 +22,7 @@
     "src/fileMutationGuard.ts",
     "src/fileActions.ts",
     "src/inputComposition.ts",
+    "src/mcpSyncDiff.ts",
     "src/performanceProfiles.ts",
     "src/promptBudgeting.ts",
     "src/queueState.ts",

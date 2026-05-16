@@ -4,6 +4,7 @@ import { getConfig } from './config';
 import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 import { getDiagnosticsFilePath, initLogger, logInfo, getOutputChannel } from './logger';
+import { getCodexMcpSyncSummary } from './mcpCodexSync';
 
 
 // ============================================================
@@ -21,6 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     const provider = new SidebarChatProvider(context.extensionUri, context);
+    context.subscriptions.push({ dispose: () => provider.dispose() });
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(LLEM_VIEW_ID, provider, {
@@ -35,6 +37,17 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     registerExtensionCommands(context, provider);
+
+    void getCodexMcpSyncSummary().then(summary => {
+        if (!summary) {
+            return;
+        }
+        void vscode.window.showInformationMessage(`Codex MCP settings changed: ${summary}`, 'Review Sync').then(pick => {
+            if (pick === 'Review Sync') {
+                void provider.syncCodexMcpServers();
+            }
+        });
+    });
 }
 
 export function deactivate() {}

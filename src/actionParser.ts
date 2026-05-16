@@ -11,6 +11,12 @@ export interface TextAction {
     text: string;
 }
 
+export interface McpToolAction {
+    server: string;
+    tool: string;
+    body: string;
+}
+
 const PATH_ATTR = String.raw`(?:path|file|name)=['"“]?([^'">“”]+)['"”]?`;
 
 export function stripWrappingFence(value: string): string {
@@ -69,6 +75,20 @@ export function parseCommandActions(message: string): TextAction[] {
 
 export function parseUrlActions(message: string): TextAction[] {
     return parseTextActions(message, /(?:<|call:)\s*(?:read_url|url|fetch_url)>([\s\S]*?)<\/(?:read_url|url|fetch_url)>/gi);
+}
+
+export function parseListMcpToolsActions(message: string): TextAction[] {
+    return [...String(message || '').matchAll(/(?:<|call:)\s*list_mcp_tools\s*\/?>(?:<\/list_mcp_tools>)?/gi)].map(() => ({ text: '' }));
+}
+
+export function parseCallMcpToolActions(message: string): McpToolAction[] {
+    const regex = /(?:<|call:)\s*call_mcp_tool\s+[^>]*server=['"“]?([^'">“”\s]+)['"”]?[^>]*tool=['"“]?([^'">“”\s]+)['"”]?[^>]*>([\s\S]*?)<\/call_mcp_tool>/gi;
+    const actions: McpToolAction[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(message)) !== null) {
+        actions.push({ server: match[1].trim(), tool: match[2].trim(), body: stripWrappingFence(match[3]) });
+    }
+    return actions;
 }
 
 export function parseFallbackFileBlocks(message: string): PathAction[] {

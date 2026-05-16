@@ -8,7 +8,9 @@ const {
   parseCreateActions,
   parseDeleteActions,
   parseFallbackFileBlocks,
+  parseCallMcpToolActions,
   parseListActions,
+  parseListMcpToolsActions,
   parseReadFileActions,
   parseUrlActions,
   stripWrappingFence
@@ -55,6 +57,13 @@ npm test
 test('parseUrlActions trims requested URLs', () => {
   assert.deepEqual(parseUrlActions('<read_url> https://example.com/a?q=1 </read_url>'), [
     { text: 'https://example.com/a?q=1' }
+  ]);
+});
+
+test('parse MCP action tags', () => {
+  assert.equal(parseListMcpToolsActions('<list_mcp_tools/>').length, 1);
+  assert.deepEqual(parseCallMcpToolActions('<call_mcp_tool server="github" tool="list_issues">{"state":"open"}</call_mcp_tool>'), [
+    { server: 'github', tool: 'list_issues', body: '{"state":"open"}' }
   ]);
 });
 

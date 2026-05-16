@@ -128,18 +128,43 @@ Open your VS Code `settings.json` to customize the experience.
 | `llem.vaultPath` | Path to your markdown vault. | `~/.llem-vault` |
 | `llem.bridgeEnabled` | Enable the local HTTP bridge on port 4825. | `false` |
 | `llem.bridgeToken` | Security token for authenticated bridge callers. | `(empty)` |
+| `llem.mcpEnabled` | Enable MCP server discovery and tool calls. | `true` |
+| `llem.mcpServers` | MCP servers registered directly in LLeM. | `{}` |
+| `llem.mcpSyncedServers` | Read-only snapshots synced from Codex or imports. | `{}` |
+| `llem.mcpConfigPaths` | Extra MCP JSON/TOML config paths to import. | `[]` |
+| `llem.mcpToolTimeoutSeconds` | Timeout for MCP startup, listing, and calls. | `60` |
 | `llem.maxHistoryItems` | Maximum number of sessions to keep in history. | `100` |
 
 > [!TIP]
 > If you're using a slower model or long prompts, try bumping up the `llem.requestTimeout`.
 
+### MCP Servers
 
-| Codex TOML field | LLeM behavior |
-| :--- | :--- |
-| `enabled = false` | Treated as `disabled: true`. |
-| `startup_timeout_sec` | Mapped to `startupTimeoutSeconds`. |
-| `tool_timeout_sec` | Mapped to `toolTimeoutSeconds`. |
-| `enabled_tools` | Used as a tool allow-list. |
+LLeM can register and run MCP servers with Codex-style action tags:
+
+```xml
+<list_mcp_tools/>
+<call_mcp_tool server="context7" tool="resolve-library-id">{"libraryName":"react"}</call_mcp_tool>
+```
+
+Direct LLeM config lives in `llem.mcpServers`:
+
+```json
+"llem.mcpServers": {
+  "context7": {
+    "command": "npx",
+    "args": ["-y", "@upstash/context7-mcp"],
+    "env": {},
+    "enabled": true
+  }
+}
+```
+
+LLeM also syncs Codex MCP settings from `$CODEX_HOME/config.toml`, `~/.codex/config.toml`, and `<workspace>/.codex/config.toml`. Before applying a sync it shows a diff with Added, Removed, and Changed servers; environment values are masked and only changed keys are shown. User-owned `llem.mcpServers` are never deleted or modified by Codex sync.
+
+Use **Settings -> MCP servers -> Import MCP from GitHub URL** to paste an MCP repository URL. LLeM reads README/package/config examples, previews the inferred server command, and imports it only after approval.
+
+v1 runs `stdio` MCP servers only. HTTP/SSE/remote entries can be imported and listed, but tool calls report them as unsupported.
 #### Troubleshooting
 
 - If terminal commands fail on Windows, confirm `node`, `npm`, and `npx` are available in the VS Code process environment.
@@ -384,6 +409,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.5.2
+
+- Bumped the VSIX build from `3.5.0` to `3.5.2`.
+- Added MCP server discovery and stdio tool-call support
+- Added Codex MCP config sync with diff preview and masked environment changes
+- Added GitHub MCP server import flow
+- Packaged `release/llem-3.5.2.vsix`.
 
 ### v3.5.0
 

@@ -11,6 +11,79 @@ export interface LlemConfig {
     maxTreeFiles: number;
     timeout: number;
     vaultPath: string;
+    mcpEnabled: boolean;
+    mcpToolTimeoutSeconds: number;
+}
+
+export type McpTransport = 'stdio' | 'unsupported';
+export type McpSourceKind = 'llem' | 'workspace' | 'codex' | 'github' | 'custom';
+
+export interface McpServerConfig {
+    type?: string;
+    transport?: McpTransport | string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    timeout?: number;
+    enabled?: boolean;
+    url?: string;
+}
+
+export interface McpConfigSource {
+    sourceKind: McpSourceKind;
+    sourcePath?: string;
+    sourceServerName?: string;
+    syncedAt?: string;
+}
+
+export interface ResolvedMcpServerConfig extends McpServerConfig, McpConfigSource {
+    name: string;
+    transport: McpTransport;
+    args: string[];
+    env: Record<string, string>;
+    enabled: boolean;
+    shadowedByLocal?: boolean;
+}
+
+export interface McpConfigSnapshot {
+    servers: Record<string, ResolvedMcpServerConfig>;
+    errors: string[];
+}
+
+export interface McpChangedServerDiff {
+    name: string;
+    before: ResolvedMcpServerConfig;
+    after: ResolvedMcpServerConfig;
+    changedFields: string[];
+    envDiff: {
+        addedKeys: string[];
+        removedKeys: string[];
+        changedKeys: string[];
+    };
+    shadowedByLocal?: boolean;
+}
+
+export interface McpSyncDiff {
+    added: ResolvedMcpServerConfig[];
+    removed: ResolvedMcpServerConfig[];
+    changed: McpChangedServerDiff[];
+    unchanged: ResolvedMcpServerConfig[];
+}
+
+export interface McpToolSummary {
+    server: string;
+    name: string;
+    description?: string;
+    inputSchema?: unknown;
+}
+
+export interface McpCallResult {
+    ok: boolean;
+    server: string;
+    tool: string;
+    content?: unknown;
+    error?: string;
 }
 
 export interface ModelContextBudget {

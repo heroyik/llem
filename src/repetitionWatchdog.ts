@@ -424,7 +424,7 @@ function isStructuredCodeOrActionText(text: string): boolean {
         return false;
     }
 
-    if (/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized)) {
+    if (/<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|list_mcp_tools|call_mcp_tool|find|replace)\b/i.test(normalized)) {
         return true;
     }
 
@@ -463,7 +463,7 @@ function isCodeOrActionToken(token: string): boolean {
     }
 
     return (
-        /^<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|find|replace)\b/i.test(normalized) ||
+        /^<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|list_mcp_tools|call_mcp_tool|find|replace)\b/i.test(normalized) ||
         /^<\/?(?:div|span|section|article|header|footer|main|motion)\b/i.test(normalized) ||
         /^(?:className|interface|type|export|const|let|var|function|return)$/.test(normalized) ||
         /^(?:edit|file|find|replace|create|delete|read|list|run|command|path)$/.test(normalized) ||

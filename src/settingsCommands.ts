@@ -15,6 +15,10 @@ export interface SettingsCommandsHost {
     setTemperature(value: number): void;
     setTopK(value: number): void;
     setTopP(value: number): void;
+    listMcpServers?(): Promise<void>;
+    reloadMcpServers?(): Promise<void>;
+    syncCodexMcpServers?(): Promise<void>;
+    importMcpFromGitHub?(): Promise<void>;
 }
 
 export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<void> {
@@ -23,6 +27,7 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         { label: 'Swap model engine', description: 'Current: ' + getEngineDisplayName(config.ollamaBase), action: 'engine' },
         { label: 'Tune generation', description: `Temp: ${host.getTemperature()}, Top-P: ${host.getTopP()}, Top-K: ${host.getTopK()}`, action: 'params' },
         { label: 'Performance profile', description: `Current: ${config.performancePreset}`, action: 'profile' },
+        { label: 'MCP servers', description: 'List, reload, sync Codex, or import from GitHub.', action: 'mcp' },
         { label: 'Edit system prompt', description: 'Shape the default vibe and instructions.', action: 'prompt' }
     ], { placeHolder: 'Settings' });
 
@@ -34,8 +39,31 @@ export async function handleSettingsMenu(host: SettingsCommandsHost): Promise<vo
         await handleParameterPick(host);
     } else if (mainPick.action === 'profile') {
         await handlePerformanceProfilePick();
+    } else if (mainPick.action === 'mcp') {
+        await handleMcpPick(host);
     } else if (mainPick.action === 'prompt') {
         await handleSystemPromptPick(host);
+    }
+}
+
+async function handleMcpPick(host: SettingsCommandsHost): Promise<void> {
+    const pick = await vscode.window.showQuickPick([
+        { label: 'List MCP servers', action: 'list' },
+        { label: 'Sync Codex MCP settings', action: 'sync' },
+        { label: 'Import MCP from GitHub URL', action: 'github' },
+        { label: 'Reload MCP runtime', action: 'reload' }
+    ], { placeHolder: 'MCP servers' });
+    if (!pick) {
+        return;
+    }
+    if (pick.action === 'list') {
+        await host.listMcpServers?.();
+    } else if (pick.action === 'sync') {
+        await host.syncCodexMcpServers?.();
+    } else if (pick.action === 'github') {
+        await host.importMcpFromGitHub?.();
+    } else if (pick.action === 'reload') {
+        await host.reloadMcpServers?.();
     }
 }
 

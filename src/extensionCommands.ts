@@ -50,4 +50,19 @@ export function registerExtensionCommands(context: vscode.ExtensionContext, prov
             import('./perfLogger').then(m => m.PerfLogger.showDiagnostics());
         })
     );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('llem.reloadMcpServers', async () => {
+            await provider.reloadMcpServers();
+        }),
+        vscode.commands.registerCommand('llem.listMcpServers', async () => {
+            await provider.listMcpServers();
+        }),
+        vscode.commands.registerCommand('llem.syncCodexMcpServers', async () => {
+            await provider.syncCodexMcpServers();
+        }),
+        vscode.commands.registerCommand('llem.importMcpFromGitHub', async () => {
+            await provider.importMcpFromGitHub();
+        })
+    );
 }

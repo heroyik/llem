@@ -2,7 +2,7 @@
   "name": "llem",
   "displayName": "LLeM",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
-  "version": "3.5.0",
+  "version": "3.5.2",
   "publisher": "nIcK",
   "author": "nIck(heroyik@gmail.com)",
   "repository": {
@@ -74,6 +74,22 @@
       {
         "command": "llem.showDiagnostics",
         "title": "Show Diagnostics"
+      },
+      {
+        "command": "llem.reloadMcpServers",
+        "title": "Reload MCP Servers"
+      },
+      {
+        "command": "llem.listMcpServers",
+        "title": "List MCP Servers"
+      },
+      {
+        "command": "llem.syncCodexMcpServers",
+        "title": "Sync Codex MCP Servers"
+      },
+      {
+        "command": "llem.importMcpFromGitHub",
+        "title": "Import MCP Server from GitHub"
       }
     ],
     "keybindings": [
@@ -159,6 +175,41 @@
           "type": "string",
           "default": "",
           "description": "Optional bearer token for the local HTTP bridge. When set, requests must include Authorization: Bearer <token> or X-LLeM-Token."
+        },
+        "llem.mcpEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP server discovery and tool calls."
+        },
+        "llem.mcpServers": {
+          "type": "object",
+          "default": {},
+          "description": "MCP servers registered directly in LLeM."
+        },
+        "llem.mcpSyncedServers": {
+          "type": "object",
+          "default": {},
+          "description": "Read-only snapshots synced from external MCP configs such as Codex."
+        },
+        "llem.mcpConfigSources": {
+          "type": "array",
+          "default": [
+            "llem",
+            "workspace",
+            "codex-global",
+            "codex-project"
+          ],
+          "description": "MCP configuration sources to resolve."
+        },
+        "llem.mcpConfigPaths": {
+          "type": "array",
+          "default": [],
+          "description": "Additional MCP JSON/TOML config paths to import."
+        },
+        "llem.mcpToolTimeoutSeconds": {
+          "type": "number",
+          "default": 60,
+          "description": "Timeout for MCP server startup, tool listing, and tool calls."
         }
       }
     }
@@ -188,6 +239,7 @@
     "typescript": "^5.1.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.16.0",
     "katex": "^0.16.45",
     "markdown-it": "^14.1.1",

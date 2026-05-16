@@ -31,6 +31,9 @@ import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFile
 import { ResponsePreferenceManager } from './responsePreferenceManager';
 import type { MessageFeedback } from './responsePreferenceManager';
 import { RequestRetryGuard } from './requestRetryGuard';
+import { McpManager } from './mcpManager';
+import { syncCodexMcpServers } from './mcpCodexSync';
+import { importMcpFromGitHubUrl } from './mcpGithubImport';
 import {
     cancelPendingRequest,
     clearPendingRequests,
@@ -169,6 +172,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private readonly _chatPipeline: ChatPipeline;
     private readonly _responsePreferenceManager: ResponsePreferenceManager;
     private readonly _requestRetryGuard = new RequestRetryGuard();
+    private readonly _mcpManager = new McpManager();
     private _setupStarted = false;
     private readonly _largeModelWarningsShown = new Set<string>();
 
@@ -849,7 +853,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             setTopP: (value) => {
                 this._topP = value;
                 this._ctx.globalState.update('aiTopP', value);
-            }
+            },
+            listMcpServers: () => this.listMcpServers(),
+            reloadMcpServers: () => this.reloadMcpServers(),
+            syncCodexMcpServers: () => this.syncCodexMcpServers(),
+            importMcpFromGitHub: () => this.importMcpFromGitHub()
         };
     }
 
@@ -1111,8 +1119,44 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return executeActions(aiMessage, {
             appendChatMessage: (message) => this._chatSession.chatHistory.push(message),
             injectSystemMessage: (message) => this.injectSystemMessage(message),
-            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope)
+            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
+            listMcpTools: () => this._mcpManager.listTools(),
+            callMcpTool: (server, tool, args) => this._mcpManager.callTool(server, tool, args)
         });
+    }
+
+    public getMcpManager(): McpManager {
+        return this._mcpManager;
+    }
+
+    public async listMcpServers(): Promise<void> {
+        const servers = await this._mcpManager.listServers();
+        const doc = await vscode.workspace.openTextDocument({
+            language: 'markdown',
+            content: [
+                '# LLeM MCP Servers',
+                '',
+                ...servers.map(server => `- ${server.name}: ${server.enabled ? server.transport : 'disabled'}${server.command ? ` \`${[server.command, ...server.args].join(' ')}\`` : ''}${server.sourcePath ? ` (${server.sourceKind}: ${server.sourcePath})` : ` (${server.sourceKind})`}`)
+            ].join('\n')
+        });
+        await vscode.window.showTextDocument(doc, { preview: true });
+    }
+
+    public async reloadMcpServers(): Promise<void> {
+        await this._mcpManager.reload();
+        vscode.window.showInformationMessage('MCP runtime reloaded.');
+    }
+
+    public async syncCodexMcpServers(): Promise<void> {
+        const message = await syncCodexMcpServers();
+        vscode.window.showInformationMessage(message);
+        await this._mcpManager.reload();
+    }
+
+    public async importMcpFromGitHub(): Promise<void> {
+        const message = await importMcpFromGitHubUrl();
+        vscode.window.showInformationMessage(message);
+        await this._mcpManager.reload();
     }
 
     private async saveHistory() {
@@ -1240,5 +1284,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             logError('[WEBVIEW] Failed to fetch workspace files: ' + (err instanceof Error ? err.message : String(err)));
         }
+    }
+
+    public dispose(): void {
+        void this._mcpManager.dispose();
     }
 }

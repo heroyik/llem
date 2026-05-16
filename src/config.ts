@@ -25,7 +25,9 @@ export function getConfig(): LlemConfig {
         performancePreset: cfg.get<PerformancePreset>('performancePreset', 'auto'),
         maxTreeFiles: 200,
         timeout: cfg.get<number>('requestTimeout', 300) * 1000,
-        vaultPath: cfg.get<string>('vaultPath', '')
+        vaultPath: cfg.get<string>('vaultPath', ''),
+        mcpEnabled: cfg.get<boolean>('mcpEnabled', true),
+        mcpToolTimeoutSeconds: cfg.get<number>('mcpToolTimeoutSeconds', 60)
     };
 }
 
