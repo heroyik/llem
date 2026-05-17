@@ -51,9 +51,21 @@ export function getVaultDir(): string {
 }
 
 export function getLlemHomeDir(): string {
-    return path.join(os.homedir(), '.llem');
+    return path.join(getUserHomeDir(), '.llem');
 }
 
 export function getPrologDir(): string {
     return path.join(getLlemHomeDir(), 'prolog');
+}
+
+export function getPrologDirs(): string[] {
+    return [getPrologDir()];
+}
+
+function getUserHomeDir(): string {
+    const envHome = process.env.HOME?.trim();
+    if (envHome) {
+        return expandHome(envHome);
+    }
+    return os.homedir();
 }

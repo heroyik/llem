@@ -10,9 +10,10 @@ import {
     WORKSPACE_CONTEXT_CACHE_TTL_MS,
     getVaultDir,
     getConfig,
-    getPrologDir,
+    getPrologDirs,
 } from './config';
 import { buildDesignPlanningDirective, shouldUseDesignPlanningMode, type RequestExecutionPhase } from './designPlanningMode';
+import { buildExecutionModeDirective, type ExecutionMode } from './executionMode';
 import { PerfLogger } from './perfLogger';
 import { collectRelevantTerms, pruneHistoryMessages, truncateText } from './promptBudgeting';
 import type { BrainFilesCache, ChatMessage, ModelProfile, TextContextCache } from './types';
@@ -48,26 +49,18 @@ function getActiveEditorContext(): { name?: string; content: string } {
 }
 
 function getPrologContext(): string {
-    const prologDir = getPrologDir();
-    if (!fs.existsSync(prologDir)) {
-        try {
-            fs.mkdirSync(prologDir, { recursive: true });
-        } catch {
-            return '';
-        }
-    }
-
-    let entries: fs.Dirent[];
-    try {
-        entries = fs.readdirSync(prologDir, { withFileTypes: true });
-    } catch {
+    const prologDirs = getPrologDirs();
+    if (prologDirs.length === 0) {
         return '';
     }
 
-    const markdownFiles = entries
-        .filter(entry => entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name))
-        .map(entry => entry.name)
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    try {
+        fs.mkdirSync(prologDirs[0], { recursive: true });
+    } catch {
+        // Continue with any readable existing prolog directory.
+    }
+
+    const markdownFiles = collectPrologMarkdownFiles(prologDirs);
 
     if (markdownFiles.length === 0) {
         return '';
@@ -75,10 +68,9 @@ function getPrologContext(): string {
 
     const sections: string[] = [];
     let totalChars = 0;
-    for (const filename of markdownFiles) {
-        const filePath = path.join(prologDir, filename);
+    for (const file of markdownFiles) {
         try {
-            const raw = fs.readFileSync(filePath, 'utf8');
+            const raw = fs.readFileSync(file.path, 'utf8');
             const remaining = MAX_PROLOG_CONTEXT_SIZE - totalChars;
             if (remaining <= 0) {
                 break;
@@ -87,7 +79,7 @@ function getPrologContext(): string {
                 ? `${raw.slice(0, Math.max(0, remaining - 90))}\n\n[Prolog file truncated to protect context window.]`
                 : raw;
             totalChars += content.length;
-            sections.push(`### ${filename}\n\n${content.trim()}`);
+            sections.push(`### ${file.name}\nSource: ${file.dir}\n\n${content.trim()}`);
         } catch {
             // Skip unreadable prolog files.
         }
@@ -97,7 +89,43 @@ function getPrologContext(): string {
         return '';
     }
 
-    return `\n\n[MANDATORY PROLOG INSTRUCTIONS]\nSource: ${prologDir}\nFiles are applied in 0-9, A-Z filename order before every prompt. Follow these instructions before all other user-workflow guidance.\n\n${sections.join('\n\n---\n\n')}`;
+    return `\n\n[MANDATORY PROLOG INSTRUCTIONS]\nSources: ${prologDirs.join('; ')}\nMarkdown files from $HOME/.llem/prolog are applied first in 0-9, A-Z filename order before every prompt. Follow these instructions before all other user-workflow guidance.\n\n${sections.join('\n\n---\n\n')}`;
+}
+
+function collectPrologMarkdownFiles(prologDirs: string[]): Array<{ name: string; path: string; dir: string }> {
+    const byResolvedPath = new Map<string, { name: string; path: string; dir: string }>();
+    for (const prologDir of prologDirs) {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(prologDir, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isFile() || !/\.(?:md|markdown)$/i.test(entry.name)) {
+                continue;
+            }
+            const filePath = path.resolve(prologDir, entry.name);
+            const key = process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+            if (!byResolvedPath.has(key)) {
+                byResolvedPath.set(key, {
+                    name: entry.name,
+                    path: filePath,
+                    dir: prologDir
+                });
+            }
+        }
+    }
+
+    return Array.from(byResolvedPath.values())
+        .sort((a, b) => {
+            const dirOrder = prologDirs.indexOf(a.dir) - prologDirs.indexOf(b.dir);
+            if (dirOrder !== 0) {
+                return dirOrder;
+            }
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
 }
 
 export interface RequestMessageBuildOptions {
@@ -114,6 +142,7 @@ export interface RequestMessageBuildOptions {
     attachmentChars?: number;
     prunedAttachmentChars?: number;
     executionPhase?: RequestExecutionPhase;
+    executionMode?: ExecutionMode;
 }
 
 export class ContextBuilder {
@@ -249,6 +278,7 @@ export class ContextBuilder {
         const designPlanningDirective = shouldUseDesignPlanningMode(latestUserPrompt, options.attachmentNames || [])
             ? buildDesignPlanningDirective(options.executionPhase ?? 'initial')
             : '';
+        const executionModeDirective = buildExecutionModeDirective(options.executionMode ?? 'default');
         const activeRuntimeDirective = options.activeModelName
             ? `\n\n[ACTIVE RUNTIME]\nThis request is being answered by the real local engine "${options.activeEngineName || 'Local Engine'}" using the loaded model "${options.activeModelName}". If the user asks which model is being used right now, answer with this active runtime model exactly. Do NOT infer the answer from source files, config defaults, or examples in the workspace unless the user explicitly asks about code or settings values.`
             : '';
@@ -264,7 +294,7 @@ export class ContextBuilder {
             : vaultContext;
 
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-            const buildSystemContent = () => `${options.systemPrompt}${prologContext}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            const buildSystemContent = () => `${options.systemPrompt}${prologContext}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${executionModeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
             let systemContent = buildSystemContent();
             if (contextBudget) {
                 const minimumHistoryBudget = 4_000;

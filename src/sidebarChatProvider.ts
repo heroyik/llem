@@ -34,6 +34,7 @@ import { RequestRetryGuard } from './requestRetryGuard';
 import { McpManager } from './mcp/mcpManager';
 import { syncCodexMcpServers } from './mcp/mcpCodexSync';
 import { importMcpFromGitHubUrl } from './mcp/mcpGithubImport';
+import { executionModeLabel, normalizeExecutionMode, type ExecutionMode } from './executionMode';
 import {
     cancelPendingRequest,
     clearPendingRequests,
@@ -161,6 +162,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _lastModel?: string;
     private _lastFiles?: AttachedFile[];
     private _lastInternetEnabled?: boolean;
+    private _executionMode: ExecutionMode;
 
     private _temperature: number;
     private _topP: number;
@@ -182,6 +184,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._topP = ctx.globalState.get<number>('aiTopP', 0.9);
         this._topK = ctx.globalState.get<number>('aiTopK', 40);
         this._systemPrompt = ctx.globalState.get<string>('aiSystemPrompt', SYSTEM_PROMPT);
+        this._executionMode = normalizeExecutionMode(ctx.globalState.get<string>('executionMode', 'default'));
         this._historyManager = new HistoryManager(ctx);
         this._chatSession = new ChatSession(ctx, () => this._systemPrompt);
         this._responsePreferenceManager = new ResponsePreferenceManager(ctx);
@@ -190,6 +193,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             executeActions: (aiMessage) => this._executeActions(aiMessage),
             getChatHistory: () => this._chatSession.chatHistory,
             getDisplayMessages: () => this._chatSession.displayMessages,
+            getExecutionMode: () => this._executionMode,
             getTemperature: () => this._temperature,
             getTopK: () => this._topK,
             getTopP: () => this._topP,
@@ -546,6 +550,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         if (kind === 'regenerate') {
             await this._regenerate();
+            return;
+        }
+
+        const promptText = String(input.prompt || '').trim();
+        const modeMatch = /^\/(?:mode\s+)?(default|plan|agent)$/i.exec(promptText);
+        if (kind === 'prompt' && modeMatch) {
+            await this.setExecutionMode(normalizeExecutionMode(modeMatch[1].toLowerCase()));
+            return;
+        }
+        if (kind === 'prompt' && /^\/(?:approve|run-plan)$/i.test(promptText)) {
+            await this.setExecutionMode('agent');
             return;
         }
 
@@ -1085,7 +1100,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             attachmentNames: options.attachmentNames,
             attachmentChars: options.attachmentChars,
             prunedAttachmentChars: options.prunedAttachmentChars,
-            executionPhase: options.executionPhase
+            executionPhase: options.executionPhase,
+            executionMode: this._executionMode
         });
     }
 
@@ -1121,8 +1137,23 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             injectSystemMessage: (message) => this.injectSystemMessage(message),
             invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
             listMcpTools: () => this._mcpManager.listTools(),
-            callMcpTool: (server, tool, args) => this._mcpManager.callTool(server, tool, args)
+            callMcpTool: (server, tool, args) => this._mcpManager.callTool(server, tool, args),
+            getExecutionMode: () => this._executionMode
         });
+    }
+
+    public getExecutionMode(): ExecutionMode {
+        return this._executionMode;
+    }
+
+    public async setExecutionMode(mode: ExecutionMode): Promise<void> {
+        const nextMode = normalizeExecutionMode(mode);
+        this._executionMode = nextMode;
+        await this._ctx.globalState.update('executionMode', nextMode);
+        const label = executionModeLabel(nextMode);
+        this.injectSystemMessage(`Mode changed: ${label}.`);
+        this._view?.webview.postMessage({ type: 'response', value: `> ${label} enabled.` });
+        vscode.window.showInformationMessage(`LLeM ${label} enabled.`);
     }
 
     public getMcpManager(): McpManager {

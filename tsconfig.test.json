@@ -19,6 +19,7 @@
     "src/commandPolicy.ts",
     "src/designPlanningMode.ts",
     "src/editableFiles.ts",
+    "src/executionMode.ts",
     "src/fileMutationGuard.ts",
     "src/fileActions.ts",
     "src/inputComposition.ts",

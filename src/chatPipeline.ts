@@ -14,6 +14,7 @@ import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfil
 import { shouldUseDesignPlanningMode } from './designPlanningMode';
 import { isLoopStopReason, type StreamOutcome } from './streamOutcome';
 import type { RequestExecutionPhase } from './designPlanningMode';
+import type { ExecutionMode } from './executionMode';
 
 export interface ChatPipelineHost {
     buildRequestMessages(options?: {
@@ -26,10 +27,12 @@ export interface ChatPipelineHost {
         attachmentChars?: number;
         prunedAttachmentChars?: number;
         executionPhase?: RequestExecutionPhase;
+        executionMode?: ExecutionMode;
     }): ChatMessage[];
     executeActions(aiMessage: string): Promise<string[]>;
     getChatHistory(): ChatMessage[];
     getDisplayMessages(): DisplayMessage[];
+    getExecutionMode?(): ExecutionMode;
     getTemperature(): number;
     getTopK(): number;
     getTopP(): number;
@@ -147,7 +150,8 @@ export class ChatPipeline {
                 attachmentNames: attachments.textAttachmentNames,
                 attachmentChars: attachments.includedChars,
                 prunedAttachmentChars: attachments.prunedChars,
-                executionPhase: 'initial'
+                executionPhase: 'initial',
+                executionMode: this.host.getExecutionMode?.()
             });
             const requestBuildMs = performance.now() - requestBuildStart;
 
@@ -311,7 +315,8 @@ export class ChatPipeline {
                         attachmentNames: attachments.textAttachmentNames,
                         attachmentChars: attachments.includedChars,
                         prunedAttachmentChars: attachments.prunedChars,
-                        executionPhase: 'followup'
+                        executionPhase: 'followup',
+                        executionMode: this.host.getExecutionMode?.()
                     });
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
                     if (currentAiResponse.repeated) {

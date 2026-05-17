@@ -32,6 +32,7 @@ import {
     parseUrlActions
 } from './actionParser';
 import { finalizeActionReport, type ActionReportContext } from './actionReport';
+import { summarizeBlockedPlanActions, type ExecutionMode } from './executionMode';
 import type { ChatMessage } from './types';
 
 export interface ActionExecutionHost {
@@ -40,11 +41,13 @@ export interface ActionExecutionHost {
     invalidateContextCaches(scope?: { workspace?: boolean; brain?: boolean }): void;
     listMcpTools?(): Promise<{ tools: any[]; report: string[] }>;
     callMcpTool?(server: string, tool: string, args: Record<string, unknown>): Promise<{ ok: boolean; content?: unknown; error?: string }>;
+    getExecutionMode?(): ExecutionMode;
 }
 
 interface ActionHandlerContext extends ActionReportContext {
     aiMessage: string;
     rootPath: string;
+    executionMode: ExecutionMode;
     fileResult: FileActionResult;
 }
 
@@ -138,6 +141,9 @@ async function approveFileAction(actionType: string, filePath: string): Promise<
 
 const HANDLERS: ActionHandler[] = [
     async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
         for (const action of parseCreateActions(ctx.aiMessage)) {
             const validation = await resolveActionPath(ctx.rootPath, action.path);
             if (validation.status === 'forbidden') {
@@ -167,6 +173,9 @@ const HANDLERS: ActionHandler[] = [
         }
     },
     async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
         for (const action of parseEditActions(ctx.aiMessage)) {
             const validation = await resolveActionPath(ctx.rootPath, action.path);
             if (validation.status === 'forbidden') {
@@ -216,6 +225,9 @@ const HANDLERS: ActionHandler[] = [
         }
     },
     async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
         for (const action of parseDeleteActions(ctx.aiMessage)) {
             const validation = await resolveActionPath(ctx.rootPath, action.path);
             if (validation.status === 'forbidden') {
@@ -267,6 +279,9 @@ const HANDLERS: ActionHandler[] = [
         }
     },
     async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
         for (const action of parseCommandActions(ctx.aiMessage)) {
             const result = await executeTerminalAction(action.text, ctx.rootPath, {
                 approveCommand
@@ -298,6 +313,9 @@ const HANDLERS: ActionHandler[] = [
         }
     },
     async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
         for (const action of parseCallMcpToolActions(ctx.aiMessage)) {
             if (!ctx.host.callMcpTool) {
                 ctx.report.push('❌ MCP tool calls are not available in this LLeM host.');
@@ -326,6 +344,7 @@ const HANDLERS: ActionHandler[] = [
 
 export async function executeActions(aiMessage: string, host: ActionExecutionHost): Promise<string[]> {
     const traceId = buildActionTraceId();
+    const executionMode = host.getExecutionMode?.() ?? 'default';
     let rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!rootPath && vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri.scheme === 'file') {
         rootPath = path.dirname(vscode.window.activeTextEditor.document.uri.fsPath);
@@ -355,22 +374,43 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         fallbackFileBlocks: parseFallbackFileBlocks(aiMessage).length
     };
 
+    if (executionMode === 'plan') {
+        const blockedPlanActions = summarizeBlockedPlanActions(parsedCounts);
+        if (blockedPlanActions.length > 0) {
+            logStructured('action.execute.plan_block', {
+                traceId,
+                rootPath,
+                parsedCounts,
+                blockedPlanActions
+            });
+        }
+    }
+
     logStructured('action.execute.start', {
         traceId,
         rootPath,
         parsedCounts,
+        executionMode,
         ...summarizeAiMessageForActions(aiMessage)
     });
 
     const ctx: ActionHandlerContext = {
         aiMessage,
         rootPath,
+        executionMode,
         host,
         report: [],
         workspaceModified: false,
         brainModified: false,
         fileResult: emptyFileActionResult()
     };
+
+    if (executionMode === 'plan') {
+        const blockedPlanActions = summarizeBlockedPlanActions(parsedCounts);
+        if (blockedPlanActions.length > 0) {
+            ctx.report.push(`🛑 Plan Mode blocked execution: ${blockedPlanActions.join(', ')}. Approve the plan or switch to Agent Mode to implement it.`);
+        }
+    }
 
     for (const handler of HANDLERS) {
         await handler(ctx);
@@ -385,7 +425,13 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
     ctx.brainModified = ctx.brainModified || ctx.fileResult.brainModified;
 
     if (ctx.report.length === 0) {
+        if (executionMode === 'plan' && parseFallbackFileBlocks(aiMessage).length > 0) {
+            ctx.report.push('🛑 Plan Mode blocked inferred file creation. Approve the plan or switch to Agent Mode to implement it.');
+        }
         for (const action of parseFallbackFileBlocks(aiMessage)) {
+            if (executionMode === 'plan') {
+                continue;
+            }
             const relPath = action.path;
             const content = action.body;
             if (relPath && content && relPath.includes('.')) {

@@ -415,6 +415,13 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.9
+
+- Bumped the VSIX build from `3.5.8` to `3.5.9`.
+- Added execution modes and Windows HOME prolog loading
+- removed profile fallback from prolog discovery
+- Packaged `release/llem-3.5.9.vsix`.
+
 ### v3.5.8
 
 - Bumped the VSIX build from `3.5.7` to `3.5.8`.
