@@ -21,3 +21,14 @@ test('resolveEditableWorkspacePath matches nested relative paths and basenames',
   assert.equal(resolveEditableWorkspacePath('Hero.tsx', workspaceFiles), 'src/components/Hero.tsx');
   assert.equal(resolveEditableWorkspacePath('page.tsx', workspaceFiles), 'src/app/page.tsx');
 });
+
+test('resolveEditableWorkspacePath does not expand partial directory paths', () => {
+  const workspaceFiles = [
+    'src/mcp/antigravity_config.ts',
+    'src/mcpConfig.ts'
+  ];
+
+  assert.equal(resolveEditableWorkspacePath('mcp/antigravity_config.ts', workspaceFiles), undefined);
+  assert.equal(resolveEditableWorkspacePath('src/antigravity_config.ts', workspaceFiles), undefined);
+  assert.equal(resolveEditableWorkspacePath('src/mcp/antigravity_config.ts', workspaceFiles), 'src/mcp/antigravity_config.ts');
+});

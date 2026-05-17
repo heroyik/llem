@@ -55,13 +55,6 @@ export function resolveEditableWorkspacePath(filePath: string, workspaceFiles: I
         return normalized;
     }
 
-    const suffixMatches = candidates.filter(candidate =>
-        candidate === normalized || candidate.endsWith(`/${normalized}`)
-    );
-    if (suffixMatches.length === 1) {
-        return suffixMatches[0];
-    }
-
     if (!normalized.includes('/')) {
         const baseNameMatches = candidates.filter(candidate => {
             const segments = candidate.split('/');
