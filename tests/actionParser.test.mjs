@@ -11,6 +11,7 @@ const {
   parseCallMcpToolActions,
   parseListActions,
   parseListMcpToolsActions,
+  parseMcpSlashCommandActions,
   parseReadFileActions,
   parseUrlActions,
   stripWrappingFence
@@ -65,6 +66,16 @@ test('parse MCP action tags', () => {
   assert.deepEqual(parseCallMcpToolActions('<call_mcp_tool server="github" tool="list_issues">{"state":"open"}</call_mcp_tool>'), [
     { server: 'github', tool: 'list_issues', body: '{"state":"open"}' }
   ]);
+});
+
+test('parse MCP slash commands from line starts', () => {
+  assert.deepEqual(parseMcpSlashCommandActions('/ctx_stats'), [
+    { command: 'ctx_stats', body: '' }
+  ]);
+  assert.deepEqual(parseMcpSlashCommandActions('before\n  /ctx_query {"q":"notes"}\nafter'), [
+    { command: 'ctx_query', body: '{"q":"notes"}' }
+  ]);
+  assert.deepEqual(parseMcpSlashCommandActions('not a /ctx_stats command'), []);
 });
 
 

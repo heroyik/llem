@@ -38,6 +38,7 @@ export interface ActionModeSummary {
     delete: number;
     command: number;
     callMcpTool: number;
+    mcpSlashCommand?: number;
     fallbackFileBlocks: number;
 }
 
@@ -57,6 +58,9 @@ export function summarizeBlockedPlanActions(summary: ActionModeSummary): string[
     }
     if (summary.callMcpTool > 0) {
         blocked.push(`${summary.callMcpTool} MCP tool call(s)`);
+    }
+    if ((summary.mcpSlashCommand || 0) > 0) {
+        blocked.push(`${summary.mcpSlashCommand} MCP slash command(s)`);
     }
     if (summary.fallbackFileBlocks > 0) {
         blocked.push(`${summary.fallbackFileBlocks} inferred file block(s)`);

@@ -415,6 +415,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.10
+
+- Bumped the VSIX build from `3.5.9` to `3.5.10`.
+- MCP slash commands such as /ctx_stats now execute directly and placeholder MCP server names are resolved from available tools.
+- Packaged `release/llem-3.5.10.vsix`.
+
 ### v3.5.9
 
 - Bumped the VSIX build from `3.5.8` to `3.5.9`.

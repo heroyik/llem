@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getLlemSettings, getVaultDir, getConfig } from './config';
 import { executeActions } from './actionExecutor';
+import { parseMcpSlashCommandActions } from './actionParser';
 import { SYSTEM_PROMPT } from './prompts';
 import { getChatWebviewHtml } from './webviewHtml';
 import { ContextBuilder } from './contextBuilder';
@@ -563,6 +564,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             await this.setExecutionMode('agent');
             return;
         }
+        if ((kind === 'prompt' || kind === 'promptWithFile') && await this._tryRunMcpSlashPrompt(promptText)) {
+            return;
+        }
 
         if (kind === 'editMessage' && (!Number.isInteger(input.messageIndex) || (input.messageIndex ?? -1) < 0)) {
             return;
@@ -577,6 +581,35 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             messageIndex: input.messageIndex
         });
         await this._enqueueRequest(request);
+    }
+
+    private async _tryRunMcpSlashPrompt(promptText: string): Promise<boolean> {
+        const actions = parseMcpSlashCommandActions(promptText);
+        if (actions.length === 0) {
+            return false;
+        }
+
+        const commandLines = promptText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean);
+        if (commandLines.some(line => !/^\/[A-Za-z][A-Za-z0-9_-]*(?:\s|$)/.test(line))) {
+            return false;
+        }
+
+        this._chatSession.chatHistory.push({ role: 'user', content: promptText });
+        this._chatSession.displayMessages.push({ role: 'user', text: promptText, feedback: null });
+        const report = await this._executeActions(promptText);
+        const responseText = report.length > 0 ? report.map(item => `> ${item}`).join('\n') : '> MCP slash command completed.';
+        this._chatSession.chatHistory.push({ role: 'assistant', content: responseText });
+        this._chatSession.displayMessages.push({ role: 'ai', text: responseText, feedback: null });
+        this._view?.webview.postMessage({
+            type: 'response',
+            message: { role: 'ai', text: responseText, feedback: null },
+            messageIndex: this._chatSession.displayMessages.length - 1
+        });
+        await this.saveHistory();
+        return true;
     }
 
     private async _enqueueRequest(request: QueuedRequest): Promise<void> {

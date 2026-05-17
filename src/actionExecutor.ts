@@ -28,12 +28,19 @@ import {
     parseCallMcpToolActions,
     parseListActions,
     parseListMcpToolsActions,
+    parseMcpSlashCommandActions,
     parseReadFileActions,
     parseUrlActions
 } from './actionParser';
 import { finalizeActionReport, type ActionReportContext } from './actionReport';
 import { summarizeBlockedPlanActions, type ExecutionMode } from './executionMode';
 import type { ChatMessage } from './types';
+
+interface ResolvedMcpToolTarget {
+    server: string;
+    tool: string;
+    report: string[];
+}
 
 export interface ActionExecutionHost {
     appendChatMessage(message: ChatMessage): void;
@@ -72,7 +79,7 @@ function summarizeAiMessageForActions(aiMessage: string): Record<string, unknown
         hasReadTag: /<(?:read_file|read)\b/i.test(aiMessage),
         hasListTag: /<(?:list_files|list_dir|ls)\b/i.test(aiMessage),
         hasCommandTag: /<(?:run_command|command|bash|terminal)\b/i.test(aiMessage),
-        hasMcpTag: /<(?:list_mcp_tools|call_mcp_tool)\b/i.test(aiMessage),
+        hasMcpTag: /<(?:list_mcp_tools|call_mcp_tool)\b|(?:^|\n)[ \t]*\/[A-Za-z][A-Za-z0-9_-]*/i.test(aiMessage),
         preview: aiMessage.slice(0, 1200)
     };
 }
@@ -114,6 +121,43 @@ async function resolveActionPath(rootPath: string, requestedPath: string): Promi
 
 function applyFileActionResult(ctx: ActionHandlerContext, result: FileActionResult): void {
     mergeFileActionResult(ctx.fileResult, result);
+}
+
+async function resolveMcpToolTarget(
+    ctx: ActionHandlerContext,
+    requestedServer: string,
+    requestedTool: string
+): Promise<ResolvedMcpToolTarget | undefined> {
+    const server = requestedServer.trim();
+    const tool = requestedTool.trim();
+    if (server && !/^serverName$/i.test(server)) {
+        return { server, tool, report: [] };
+    }
+    if (!ctx.host.listMcpTools) {
+        return { server, tool, report: [] };
+    }
+
+    const listed = await ctx.host.listMcpTools();
+    const matches = listed.tools.filter(item => String(item.name || '') === tool);
+    if (matches.length === 1) {
+        return {
+            server: String(matches[0].server),
+            tool,
+            report: [...listed.report, `🔌 MCP placeholder server resolved: ${server || 'missing'}.${tool} → ${matches[0].server}.${tool}`]
+        };
+    }
+    if (matches.length > 1) {
+        return {
+            server,
+            tool,
+            report: [...listed.report, `❌ MCP tool call skipped: ${tool} exists on multiple servers (${matches.map(item => item.server).join(', ')}). Use an explicit server.`]
+        };
+    }
+    return {
+        server,
+        tool,
+        report: [...listed.report, `❌ MCP tool call skipped: ${server || 'missing'}.${tool} could not be resolved to an available MCP tool.`]
+    };
 }
 
 async function approveCommand(command: string): Promise<boolean> {
@@ -328,15 +372,68 @@ const HANDLERS: ActionHandler[] = [
                 ctx.report.push(`❌ MCP tool call skipped: invalid JSON args for ${action.server}.${action.tool}.`);
                 continue;
             }
-            const result = await ctx.host.callMcpTool(action.server, action.tool, args);
+            const target = await resolveMcpToolTarget(ctx, action.server, action.tool);
+            if (!target || target.report.some(item => item.startsWith('❌'))) {
+                ctx.report.push(...(target?.report || []));
+                continue;
+            }
+            ctx.report.push(...target.report);
+            const result = await ctx.host.callMcpTool(target.server, target.tool, args);
             if (result.ok) {
-                ctx.report.push(`🔌 MCP tool called: ${action.server}.${action.tool}`);
+                ctx.report.push(`🔌 MCP tool called: ${target.server}.${target.tool}`);
                 ctx.host.appendChatMessage({
                     role: 'user',
-                    content: `[SYSTEM: MCP tool result]\nServer: ${action.server}\nTool: ${action.tool}\n\`\`\`json\n${JSON.stringify(result.content, null, 2)}\n\`\`\``
+                    content: `[SYSTEM: MCP tool result]\nServer: ${target.server}\nTool: ${target.tool}\n\`\`\`json\n${JSON.stringify(result.content, null, 2)}\n\`\`\``
                 });
             } else {
-                ctx.report.push(`❌ MCP tool failed: ${action.server}.${action.tool} — ${result.error || 'unknown error'}`);
+                ctx.report.push(`❌ MCP tool failed: ${target.server}.${target.tool} — ${result.error || 'unknown error'}`);
+            }
+        }
+    },
+    async (ctx) => {
+        if (ctx.executionMode === 'plan') {
+            return;
+        }
+        const actions = parseMcpSlashCommandActions(ctx.aiMessage);
+        if (actions.length === 0) {
+            return;
+        }
+        if (!ctx.host.listMcpTools || !ctx.host.callMcpTool) {
+            ctx.report.push('❌ MCP slash commands are not available in this LLeM host.');
+            return;
+        }
+
+        const listed = await ctx.host.listMcpTools();
+        ctx.report.push(...listed.report);
+        for (const action of actions) {
+            const matches = listed.tools.filter(tool => String(tool.name || '') === action.command);
+            if (matches.length === 0) {
+                ctx.report.push(`❌ MCP slash command not found: /${action.command}`);
+                continue;
+            }
+            if (matches.length > 1) {
+                ctx.report.push(`❌ MCP slash command is ambiguous: /${action.command} exists on ${matches.map(tool => tool.server).join(', ')}.`);
+                continue;
+            }
+
+            let args: Record<string, unknown>;
+            try {
+                args = action.body ? JSON.parse(action.body) : {};
+            } catch {
+                ctx.report.push(`❌ MCP slash command skipped: invalid JSON args for /${action.command}.`);
+                continue;
+            }
+
+            const tool = matches[0];
+            const result = await ctx.host.callMcpTool(String(tool.server), action.command, args);
+            if (result.ok) {
+                ctx.report.push(`🔌 MCP slash command called: /${action.command} (${tool.server}.${action.command})`);
+                ctx.host.appendChatMessage({
+                    role: 'user',
+                    content: `[SYSTEM: MCP slash command result]\nCommand: /${action.command}\nServer: ${tool.server}\nTool: ${action.command}\n\`\`\`json\n${JSON.stringify(result.content, null, 2)}\n\`\`\``
+                });
+            } else {
+                ctx.report.push(`❌ MCP slash command failed: /${action.command} — ${result.error || 'unknown error'}`);
             }
         }
     }
@@ -351,7 +448,8 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
     }
 
     if (!rootPath) {
-        const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file|list_mcp_tools|call_mcp_tool)/i.test(aiMessage);
+        const hasActions = /<(?:create_file|edit_file|run_command|delete_file|read_file|list_files|file|list_mcp_tools|call_mcp_tool)/i.test(aiMessage) ||
+            parseMcpSlashCommandActions(aiMessage).length > 0;
         if (hasActions) {
             logStructured('action.execute.no_workspace', {
                 traceId,
@@ -371,6 +469,7 @@ export async function executeActions(aiMessage: string, host: ActionExecutionHos
         url: parseUrlActions(aiMessage).length,
         listMcpTools: parseListMcpToolsActions(aiMessage).length,
         callMcpTool: parseCallMcpToolActions(aiMessage).length,
+        mcpSlashCommand: parseMcpSlashCommandActions(aiMessage).length,
         fallbackFileBlocks: parseFallbackFileBlocks(aiMessage).length
     };
 

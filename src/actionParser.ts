@@ -17,6 +17,11 @@ export interface McpToolAction {
     body: string;
 }
 
+export interface McpSlashCommandAction {
+    command: string;
+    body: string;
+}
+
 const PATH_ATTR = String.raw`(?:path|file|name)=['"“]?([^'">“”]+)['"”]?`;
 
 export function stripWrappingFence(value: string): string {
@@ -88,6 +93,21 @@ export function parseCallMcpToolActions(message: string): McpToolAction[] {
     while ((match = regex.exec(message)) !== null) {
         actions.push({ server: match[1].trim(), tool: match[2].trim(), body: stripWrappingFence(match[3]) });
     }
+    return actions;
+}
+
+export function parseMcpSlashCommandActions(message: string): McpSlashCommandAction[] {
+    const actions: McpSlashCommandAction[] = [];
+    const regex = /(?:^|\n)[ \t]*\/([A-Za-z][A-Za-z0-9_-]*)(?:[ \t]+([^\n]*))?/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(String(message || ''))) !== null) {
+        actions.push({
+            command: match[1].trim(),
+            body: String(match[2] || '').trim()
+        });
+    }
+
     return actions;
 }
 
