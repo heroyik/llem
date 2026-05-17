@@ -89,16 +89,6 @@ body::before {
   z-index: 10;
   flex-shrink: 0;
 }
-.header::after {
-  content: '';
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
-  opacity: 0.65;
-}
 .header-left, .header-right {
   display: flex;
   align-items: center;

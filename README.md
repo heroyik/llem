@@ -416,6 +416,7 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 - Moved synced MCP snapshots from VS Code settings into ~/.llem/llem-mcp-synced.json
 - Documented the home-profile MCP sync storage path in README
 - Added neon highlighting for the active running queue prompt
+- Removed the header neon underline below the LLeM tagline
 - Packaged `release/llem-3.5.3.vsix`.
 
 ### v3.5.2
