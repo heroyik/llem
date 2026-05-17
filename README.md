@@ -415,6 +415,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.7
+
+- Bumped the VSIX build from `3.5.6` to `3.5.7`.
+- Moved MCP runtime modules into src/mcp for clearer source organization
+- Packaged `release/llem-3.5.7.vsix`.
+
 ### v3.5.6
 
 - Bumped the VSIX build from `3.5.5` to `3.5.6`.
