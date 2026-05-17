@@ -415,6 +415,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.11
+
+- Bumped the VSIX build from `3.5.10` to `3.5.11`.
+- Show MCP slash command results directly in chat responses.
+- Packaged `release/llem-3.5.11.vsix`.
+
 ### v3.5.10
 
 - Bumped the VSIX build from `3.5.9` to `3.5.10`.

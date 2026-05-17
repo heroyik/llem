@@ -53,6 +53,38 @@ import {
 type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
 const MAX_DROPPED_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function renderMcpSlashResultMessage(content: string): string | undefined {
+    if (!content.startsWith('[SYSTEM: MCP slash command result]')) {
+        return undefined;
+    }
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (!jsonMatch) {
+        return undefined;
+    }
+    try {
+        const parsed = JSON.parse(jsonMatch[1]);
+        if (Array.isArray(parsed)) {
+            const textParts = parsed
+                .map(item => item && typeof item === 'object' && 'text' in item ? String((item as { text?: unknown }).text ?? '') : '')
+                .filter(Boolean);
+            if (textParts.length > 0) {
+                return textParts.join('\n\n');
+            }
+        }
+        return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
+    } catch {
+        return undefined;
+    }
+}
+
+function collectMcpSlashResultMessages(messages: ChatMessage[], startIndex: number): string[] {
+    return messages
+        .slice(startIndex)
+        .filter(message => message.role === 'user')
+        .map(message => renderMcpSlashResultMessage(message.content))
+        .filter((message): message is string => !!message);
+}
 const MAX_DROPPED_TEXT_BYTES = 512 * 1024;
 const IMAGE_ATTACHMENT_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
 const AUDIO_ATTACHMENT_EXTENSIONS = new Set(['mp3', 'wav', 'ogg']);
@@ -599,8 +631,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         this._chatSession.chatHistory.push({ role: 'user', content: promptText });
         this._chatSession.displayMessages.push({ role: 'user', text: promptText, feedback: null });
+        const resultStartIndex = this._chatSession.chatHistory.length;
         const report = await this._executeActions(promptText);
-        const responseText = report.length > 0 ? report.map(item => `> ${item}`).join('\n') : '> MCP slash command completed.';
+        const resultMessages = collectMcpSlashResultMessages(this._chatSession.chatHistory, resultStartIndex);
+        const responseText = resultMessages.length > 0
+            ? resultMessages.join('\n\n')
+            : report.length > 0 ? report.map(item => `> ${item}`).join('\n') : '> MCP slash command completed.';
         this._chatSession.chatHistory.push({ role: 'assistant', content: responseText });
         this._chatSession.displayMessages.push({ role: 'ai', text: responseText, feedback: null });
         this._view?.webview.postMessage({
