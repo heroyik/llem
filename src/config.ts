@@ -10,6 +10,7 @@ export const EXCLUDED_DIRS = new Set([
 ]);
 
 export const MAX_CONTEXT_SIZE = 12_000;
+export const MAX_PROLOG_CONTEXT_SIZE = 12_000;
 export const WORKSPACE_CONTEXT_CACHE_TTL_MS = 30_000;
 export const SECOND_BRAIN_CONTEXT_CACHE_TTL_MS = 60_000;
 export const BRAIN_FILES_CACHE_TTL_MS = 60_000;
@@ -47,4 +48,12 @@ export function getVaultDir(): string {
         return expandHome(vaultPath.trim());
     }
     return path.join(os.homedir(), '.llem-vault');
+}
+
+export function getLlemHomeDir(): string {
+    return path.join(os.homedir(), '.llem');
+}
+
+export function getPrologDir(): string {
+    return path.join(getLlemHomeDir(), 'prolog');
 }

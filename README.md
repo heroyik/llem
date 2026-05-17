@@ -165,6 +165,11 @@ LLeM also syncs Codex MCP settings from `$CODEX_HOME/config.toml`, `~/.codex/con
 Use **Settings -> MCP servers -> Import MCP from GitHub URL** to paste an MCP repository URL. LLeM reads README/package/config examples, previews the inferred server command, and imports it only after approval.
 
 v1 runs `stdio` MCP servers only. HTTP/SSE/remote entries can be imported and listed, but tool calls report them as unsupported.
+
+### Prompt Prolog
+
+LLeM reads markdown files from `~/.llem/prolog` before every prompt. Files are loaded in 0-9, A-Z filename order and injected directly after the built-in system prompt as mandatory prolog instructions. Use this for durable local routing rules, house style, or workflow constraints that should apply to every request.
+
 #### Troubleshooting
 
 - If terminal commands fail on Windows, confirm `node`, `npm`, and `npx` are available in the VS Code process environment.
@@ -409,6 +414,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.5.5
+
+- Bumped the VSIX build from `3.5.4` to `3.5.5`.
+- Added ~/.llem/prolog markdown prolog loading before every prompt
+- Applied prolog files in numeric and alphabetical filename order
+- Documented prompt prolog behavior in README
+- Packaged `release/llem-3.5.5.vsix`.
 
 ### v3.5.4
 

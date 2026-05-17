@@ -5,10 +5,12 @@ import {
     BRAIN_FILES_CACHE_TTL_MS,
     EXCLUDED_DIRS,
     MAX_CONTEXT_SIZE,
+    MAX_PROLOG_CONTEXT_SIZE,
     SECOND_BRAIN_CONTEXT_CACHE_TTL_MS,
     WORKSPACE_CONTEXT_CACHE_TTL_MS,
     getVaultDir,
     getConfig,
+    getPrologDir,
 } from './config';
 import { buildDesignPlanningDirective, shouldUseDesignPlanningMode, type RequestExecutionPhase } from './designPlanningMode';
 import { PerfLogger } from './perfLogger';
@@ -43,6 +45,59 @@ function getActiveEditorContext(): { name?: string; content: string } {
         name,
         content: `\n\n[Currently open file: ${name}]\n\`\`\`\n${clipped}\n\`\`\``
     };
+}
+
+function getPrologContext(): string {
+    const prologDir = getPrologDir();
+    if (!fs.existsSync(prologDir)) {
+        try {
+            fs.mkdirSync(prologDir, { recursive: true });
+        } catch {
+            return '';
+        }
+    }
+
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(prologDir, { withFileTypes: true });
+    } catch {
+        return '';
+    }
+
+    const markdownFiles = entries
+        .filter(entry => entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name))
+        .map(entry => entry.name)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    if (markdownFiles.length === 0) {
+        return '';
+    }
+
+    const sections: string[] = [];
+    let totalChars = 0;
+    for (const filename of markdownFiles) {
+        const filePath = path.join(prologDir, filename);
+        try {
+            const raw = fs.readFileSync(filePath, 'utf8');
+            const remaining = MAX_PROLOG_CONTEXT_SIZE - totalChars;
+            if (remaining <= 0) {
+                break;
+            }
+            const content = raw.length > remaining
+                ? `${raw.slice(0, Math.max(0, remaining - 90))}\n\n[Prolog file truncated to protect context window.]`
+                : raw;
+            totalChars += content.length;
+            sections.push(`### ${filename}\n\n${content.trim()}`);
+        } catch {
+            // Skip unreadable prolog files.
+        }
+    }
+
+    if (sections.length === 0) {
+        return '';
+    }
+
+    return `\n\n[MANDATORY PROLOG INSTRUCTIONS]\nSource: ${prologDir}\nFiles are applied in 0-9, A-Z filename order before every prompt. Follow these instructions before all other user-workflow guidance.\n\n${sections.join('\n\n---\n\n')}`;
 }
 
 export interface RequestMessageBuildOptions {
@@ -185,6 +240,7 @@ export class ContextBuilder {
         const reqMessages = [...options.chatHistory];
         const activeEditor = getActiveEditorContext();
         const workspaceContext = this.getWorkspaceContext();
+        const prologContext = getPrologContext();
         const vaultContext = options.brainEnabled ? this.getSecondBrainContext() : '';
         const internetDirective = getInternetDirective(options.internetEnabled);
         const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
@@ -208,7 +264,7 @@ export class ContextBuilder {
             : vaultContext;
 
         if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-            const buildSystemContent = () => `${options.systemPrompt}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            const buildSystemContent = () => `${options.systemPrompt}${prologContext}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
             let systemContent = buildSystemContent();
             if (contextBudget) {
                 const minimumHistoryBudget = 4_000;
