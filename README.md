@@ -410,6 +410,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.4
+
+- Bumped the VSIX build from `3.5.3` to `3.5.4`.
+- Recognized codex as an MCP config source alias so synced Codex servers appear in LLeM server lists
+- Packaged `release/llem-3.5.4.vsix`.
+
 ### v3.5.3
 
 - Bumped the VSIX build from `3.5.2` to `3.5.3`.

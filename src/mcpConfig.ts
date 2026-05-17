@@ -53,7 +53,7 @@ export async function resolveMcpConfig(): Promise<McpConfigSnapshot> {
     const workspaceRoot = getWorkspaceRoot();
     const sources = new Set(getLlemSettings().get<string[]>('mcpConfigSources', ['llem', 'workspace', 'codex-global', 'codex-project']));
 
-    if (sources.has('codex-global') || sources.has('codex-project')) {
+    if (sources.has('codex') || sources.has('codex-global') || sources.has('codex-project')) {
         mergeServers(servers, await readStoredSyncedServers(errors));
     }
 
