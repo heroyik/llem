@@ -452,50 +452,42 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ### v3.5.12
 
-- Bumped the VSIX build from `3.5.11` to `3.5.12`.
 - Support context-mode utility command aliases and render MCP text results directly.
 - Packaged `release/llem-3.5.12.vsix`.
 
 ### v3.5.11
 
-- Bumped the VSIX build from `3.5.10` to `3.5.11`.
 - Show MCP slash command results directly in chat responses.
 - Packaged `release/llem-3.5.11.vsix`.
 
 ### v3.5.10
 
-- Bumped the VSIX build from `3.5.9` to `3.5.10`.
 - MCP slash commands such as /ctx_stats now execute directly and placeholder MCP server names are resolved from available tools.
 - Packaged `release/llem-3.5.10.vsix`.
 
 ### v3.5.9
 
-- Bumped the VSIX build from `3.5.8` to `3.5.9`.
 - Added execution modes and Windows HOME prolog loading
 - removed profile fallback from prolog discovery
 - Packaged `release/llem-3.5.9.vsix`.
 
 ### v3.5.8
 
-- Bumped the VSIX build from `3.5.7` to `3.5.8`.
 - Moved the active neon animation from the header tagline to the Running now queue card
 - Packaged `release/llem-3.5.8.vsix`.
 
 ### v3.5.7
 
-- Bumped the VSIX build from `3.5.6` to `3.5.7`.
 - Moved MCP runtime modules into src/mcp for clearer source organization
 - Packaged `release/llem-3.5.7.vsix`.
 
 ### v3.5.6
 
-- Bumped the VSIX build from `3.5.5` to `3.5.6`.
 - Prevent partial file paths from expanding into nested MCP folders
 - Packaged `release/llem-3.5.6.vsix`.
 
 ### v3.5.5
 
-- Bumped the VSIX build from `3.5.4` to `3.5.5`.
 - Added ~/.llem/prolog markdown prolog loading before every prompt
 - Applied prolog files in numeric and alphabetical filename order
 - Documented prompt prolog behavior in README
@@ -503,13 +495,11 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ### v3.5.4
 
-- Bumped the VSIX build from `3.5.3` to `3.5.4`.
 - Recognized codex as an MCP config source alias so synced Codex servers appear in LLeM server lists
 - Packaged `release/llem-3.5.4.vsix`.
 
 ### v3.5.3
 
-- Bumped the VSIX build from `3.5.2` to `3.5.3`.
 - Moved synced MCP snapshots from VS Code settings into ~/.llem/llem-mcp-synced.json
 - Documented the home-profile MCP sync storage path in README
 - Added neon highlighting for the active running queue prompt
@@ -518,7 +508,6 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ### v3.5.2
 
-- Bumped the VSIX build from `3.5.0` to `3.5.2`.
 - Added MCP server discovery and stdio tool-call support
 - Added Codex MCP config sync with diff preview and masked environment changes
 - Added GitHub MCP server import flow
@@ -543,14 +532,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ### v3.4.3
 
-- Bumped the VSIX build from `3.4.2` to `3.4.3`.
 - Renamed the VS Code tab and view labels from Assistant to LLeM.
 - Refreshed the compiled extension and webview bundles for the release.
 - Packaged `release/llem-3.4.3.vsix`.
 
 ### v3.4.2
 
-- Bumped the VSIX build from `3.4.1` to `3.4.2`.
 - Removed MCP and context-mode integration from runtime, prompts, and docs
 - cleaned vault handling guidance and saved context-mode rules into the local vault
 - refreshed package contents after the MCP removal
@@ -558,7 +545,6 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ### v3.4.1
 
-- Bumped the VSIX build from `3.4.1` to `3.4.1`.
 - Removed LLeM branding from visible UI strings
 - removed context-mode integration
 - restored local TypeScript tooling so typecheck works again
@@ -583,67 +569,56 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.35
 
-- Bumped the VSIX build from `3.3.35` to `3.3.35`.
 - Bumped version and upgraded axios before VSIX build.
 - Packaged `release/llem-3.3.35.vsix`.
 
 ### v3.3.34
 
-- Bumped the VSIX build from `3.3.33` to `3.3.34`.
 - Fixed image lightbox close behavior so the top-right close button and backdrop dismiss reliably. Reduced action-history bloat by keeping only the most recent file context per turn and trimming file/web observation payloads.
 - Packaged `release/llem-3.3.34.vsix`.
 
 ### v3.3.33
 
-- Bumped the VSIX build from `3.3.32` to `3.3.33`.
 - Reduced action-history bloat by keeping only the most recent file context per turn and trimming file/web observation payloads. Improved live output masking, offline vision detection, image lightbox preview, and request startup logging.
 - Packaged `release/llem-3.3.33.vsix`.
 
 ### v3.3.32
 
-- Bumped the VSIX build from `3.3.31` to `3.3.32`.
 - Masked create_file and edit_file code from live output and now show progress-only streaming states. Improved offline vision-model detection using local Ollama manifests and added vision decision logging.
 - Packaged `release/llem-3.3.32.vsix`.
 
 ### v3.3.31
 
-- Bumped the VSIX build from `3.3.30` to `3.3.31`.
 - Improved offline vision-model detection using local Ollama manifests. Fixed capability checks to use the active engine endpoint and added vision decision logging.
 - Packaged `release/llem-3.3.31.vsix`.
 
 ### v3.3.30
 
-- Bumped the VSIX build from `3.3.29` to `3.3.30`.
 - Implemented Intelligent Repetition Guard with tiered backoff (3s, 10s, 30s), non-blocking queue scheduling, and automated retry orchestration with UI cooldown feedback.
 - Packaged `release/llem-3.3.30.vsix`.
 
 ### v3.3.29
 
-- Bumped the VSIX build from `3.3.28` to `3.3.29`.
 - Implemented File System Access Transparency with user-approved out-of-workspace operations and high-fidelity UI feedback.
 - Packaged `release/llem-3.3.29.vsix`.
 
 ### v3.3.28
 
-- Bumped the VSIX build from `3.3.27` to `3.3.28`.
 - Action transparency and loop prevention improvements
 - Packaged `release/llem-3.3.28.vsix`.
 
 ### v3.3.27
 
-- Bumped the VSIX build from `3.3.26` to `3.3.27`.
 - Added live stream metadata (duration, chunks, chars) to action progress UI
 - Packaged `release/llem-3.3.27.vsix`.
 
 ### v3.3.24
 
-- Bumped the VSIX build from `3.3.23` to `3.3.24`.
 - Implemented AI self-correction loop and Codex-style action progress visualization
 - Packaged `release/llem-3.3.24.vsix`.
 
 ### v3.3.22
 
-- Bumped the VSIX build from `3.3.21` to `3.3.22`.
 - **B-1 fix**: Repeated/watchdog-aborted responses are no longer pushed to the chat history. Previously, the aborted assistant message would linger in history and seed the next turn with a contaminated context, causing cascading repetition loops. Now the pipeline returns immediately without writing the bad response to history.
 - **B-2 fix**: Consecutive `assistant → assistant` or `user → user` message pushes during agentic action loops are now de-duplicated. If a `continuation` user message arrives when the last history entry is already a `user` entry, the content is merged rather than creating a second entry.
 - **B-3 fix**: Images are no longer forwarded to text-only models (gemma, llama, mistral, etc.). The model name is inspected for known vision indicators (`llava`, `vision`, `:vl`, `bakllava`, `moondream`, etc.) and a clear in-chat notice is shown when an image is skipped.
@@ -653,7 +628,6 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.21
 
-- Bumped the VSIX build from `3.3.20` to `3.3.21`.
 - Live stream output now shows raw AI text without any HTML/Markdown parsing during generation — `<edit_file>`, `<find>`, `<replace>` action tags are visible as-is while streaming.
 - Final reply (after stream completes) continues to render as full Markdown with code highlighting, file badges, and action summaries.
 - Removed `sanitizeAssistantDisplayText()` call from the live `renderStreamNow()` path so the raw model output is never silently stripped mid-stream.
@@ -661,32 +635,27 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.20
 
-- Bumped the VSIX build from `3.3.19` to `3.3.20`.
 - Hardened assistant output sanitization to prevent leaked action tags and scratchpad text in streamed replies
 - Packaged `release/llem-3.3.20.vsix`.
 
 ### v3.3.19
 
-- Bumped the VSIX build from `3.3.18` to `3.3.19`.
 - Fixed RepetitionWatchdog false positives that could truncate edit-file streams during repeated action-tag/code sequences. Added regression coverage for repeated closing-tag action streams.
 - Packaged `release/llem-3.3.19.vsix`.
 
 ### v3.3.18
 
-- Bumped the VSIX build from `3.3.17` to `3.3.18`.
 - Repackaged the current workspace state through the formal VSIX release flow.
 - Packaged `release/llem-3.3.18.vsix`.
 
 ### v3.3.17
 
-- Bumped the VSIX build from `3.3.16` to `3.3.17`.
 - Fixed RepetitionWatchdog false positives on markdown structure tokens so tables, fences, headers, list markers, blockquotes, and task markers no longer abort valid replies
 - added regression tests for markdown-safe watchdog behavior
 - Packaged `release/llem-3.3.17.vsix`.
 
 ### v3.3.16
 
-- Bumped the VSIX build from `3.3.16` to `3.3.16`.
 - Added structured repetition abort handling, retry and action loop guards, safer file mutation validation, restored clickable editable files, and added default-browser opening for chat URL links
 - Packaged `release/llem-3.3.16.vsix`.
 
@@ -711,14 +680,12 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.15
 
-- Bumped the VSIX build from `3.3.14` to `3.3.15`.
 - Fixed Korean IME Enter handling to prevent duplicate trailing messages
 - added regression tests for composition-safe prompt submission
 - Packaged `release/llem-3.3.15.vsix`.
 
 ### v3.3.14
 
-- Bumped the VSIX build from `3.3.14` to `3.3.14`.
 - Added queued request pause/resume and reordering
 - Added direct editing for queued items
 - Expanded queue tests and stabilized package test suite
@@ -726,91 +693,76 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.12
 
-- Bumped the VSIX build from `3.3.11` to `3.3.12`.
 - Fix stop button UI and edit banner visibility
 - Packaged `release/llem-3.3.12.vsix`.
 
 ### v3.3.11
 
-- Bumped the VSIX build from `3.3.10` to `3.3.11`.
 - Fix main-view layout causing input to overflow
 - Packaged `release/llem-3.3.11.vsix`.
 
 ### v3.3.10
 
-- Bumped the VSIX build from `3.3.9` to `3.3.10`.
 - Fix terminal executing logged messages
 - Packaged `release/llem-3.3.10.vsix`.
 
 ### v3.3.9
 
-- Bumped the VSIX build from `3.3.8` to `3.3.9`.
 - Fix immediate deletion of history items in UI
 - Packaged `release/llem-3.3.9.vsix`.
 
 ### v3.3.8
 
-- Bumped the VSIX build from `3.3.7` to `3.3.8`.
 - Fix edit banner visibility on initial chat load
 - Packaged `release/llem-3.3.8.vsix`.
 
 ### v3.3.7
 
-- Bumped the VSIX build from `3.3.7` to `3.3.7`.
 - Fix edit banner visibility on initial chat load
 - Packaged `release/llem-3.3.7.vsix`.
 
 ### v3.3.7
 
-- Bumped the VSIX build from `3.3.6` to `3.3.7`.
 - Fix terminal rendering, layout stability, and improve hardware summary quality
 - Packaged `release/llem-3.3.7.vsix`.
 
 ### v3.3.6
 
-- Bumped the VSIX build from `3.3.5` to `3.3.6`.
 - Implemented sequence-aware RepetitionWatchdog and improved action parsing to prevent infinite loops.
 - Packaged `release/llem-3.3.6.vsix`.
 
 ### v3.2.9
 
-- Bumped the VSIX build from `3.2.8` to `3.2.9`.
 - Fixed model output streaming issues with buffering and enhanced token extraction for reasoning fields.
 - Packaged `release/llem-3.2.9.vsix`.
 
 ### v3.2.7
 
-- Bumped the VSIX build from `3.2.6` to `3.2.7`.
 - Fixed AI response truncation, improved action tag stripping with smart quote support, and tuned model performance profiles for 26B models.
 - Packaged `release/llem-3.2.7.vsix`.
 
 ### v3.2.5
 
-- Bumped the VSIX build from `3.2.4` to `3.2.5`.
 - Enabled unlimited response length by setting predict token limits to -1. Added handling for unlimited output in both Ollama and LM Studio engines.
 - Packaged `release/llem-3.2.5.vsix`.
 
 ### v3.2.3
 
-- Bumped the VSIX build from `3.2.2` to `3.2.3`.
 - Increased token prediction limits to 4096+ to prevent response truncation. Fixed LM Studio max_tokens mapping.
 - Packaged `release/llem-3.2.3.vsix`.
 
 ### v3.2.1
 
-- Bumped the VSIX build from `3.2.0` to `3.2.1`.
 - Implemented repetition penalty for large models to prevent hallucination loops, fixed model selection persistence in settings.json, and added overwrite protection for user settings.
 - Packaged `release/llem-3.2.1.vsix`.
 
 ### v3.1.9
 
-- Bumped the VSIX build from `3.1.8` to `3.1.9`.
 - Revert to standard settings.json persistence and fix model selection overwrite issue
 - Packaged `release/llem-3.1.9.vsix`.
 
 ### v3.1.8
 
-- Bumped the VSIX build from `3.1.7` to `3.1.8`.
 - Added Codex-style message actions for user and assistant replies
 - restored copy and edit flows for existing user messages
 - added edit-in-new-branch composer state
@@ -818,35 +770,30 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.1.7
 
-- Bumped the VSIX build from `3.1.6` to `3.1.7`.
 - Made the model dropdown persist the real active default model and pass runtime engine/model metadata into each request
 - Removed the earlier-message editing banner and edit entrypoint from the chat UI so message composer stays in normal send mode
 - Packaged `release/llem-3.1.7.vsix`.
 
 ### v3.1.6
 
-- Bumped the VSIX build from `3.1.5` to `3.1.6`.
 - Added file-based diagnostics for stream debugging with per-request raw chunk capture and parsed token traces
 - Logged final assistant text cleanup so empty replies can be traced from transport through final rendering
 - Packaged `release/llem-3.1.6.vsix`.
 
 ### v3.1.5
 
-- Bumped the VSIX build from `3.1.4` to `3.1.5`.
 - Improved stream parsing for object-shaped output chunks
 - Fixed empty reply state when the model returned text in newer OpenAI-compatible stream formats
 - Packaged `release/llem-3.1.5.vsix`.
 
 ### v3.1.4
 
-- Bumped the VSIX build from `3.1.3` to `3.1.4`.
 - Fixed recurring empty replies by broadening stream parsing for additional LM Studio and Ollama response shapes
 - Added raw stream preview logging when parsed output ends up empty so future payload mismatches are diagnosable instantly
 - Packaged `release/llem-3.1.4.vsix`.
 
 ### v3.1.3
 
-- Bumped the VSIX build from `3.1.2` to `3.1.3`.
 - Added model-aware performance presets for 26B-class local Ollama runs
 - Added prompt budgeting and richer diagnostics for large local Gemma-family models
 - Expanded the README with detailed performance profile guidance, 26B tuning notes, and diagnostics tips
@@ -854,7 +801,6 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.1.2
 
-- Bumped the VSIX build from `3.1.1` to `3.1.2`.
 - Fixed empty-reply turns by hardening stream parsing for Ollama and LM Studio
 - Flushed trailing stream buffers so the final token is not lost when a stream ends without a newline
 - Saved assistant replies consistently into chat history so follow-up turns keep the right conversation context

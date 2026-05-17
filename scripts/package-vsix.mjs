@@ -236,7 +236,6 @@ function updateReadme(oldVersion, newVersion, notes) {
   const releaseNotes = [
     `### v${newVersion}`,
     '',
-    `- Bumped the VSIX build from \`${oldVersion}\` to \`${newVersion}\`.`,
     ...releaseNotesBody.map((note) => `- ${note}`),
     `- Packaged \`release/${artifactBaseName}-${newVersion}.vsix\`.`,
     '',
