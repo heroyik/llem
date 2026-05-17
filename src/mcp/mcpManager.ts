@@ -1,8 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { getConfig } from './config';
+import { getConfig } from '../config';
 import { resolveMcpConfig } from './mcpConfig';
-import type { McpCallResult, McpToolSummary, ResolvedMcpServerConfig } from './types';
+import type { McpCallResult, McpToolSummary, ResolvedMcpServerConfig } from '../types';
 
 interface Connection {
     client: Client;
@@ -140,4 +140,3 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
         }
     }
 }
-

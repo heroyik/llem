@@ -24,11 +24,11 @@ test('resolveEditableWorkspacePath matches nested relative paths and basenames',
 
 test('resolveEditableWorkspacePath does not expand partial directory paths', () => {
   const workspaceFiles = [
-    'src/mcp/antigravity_config.ts',
-    'src/mcpConfig.ts'
+    'src/mcp/mcpConfig.ts',
+    'src/config.ts'
   ];
 
-  assert.equal(resolveEditableWorkspacePath('mcp/antigravity_config.ts', workspaceFiles), undefined);
-  assert.equal(resolveEditableWorkspacePath('src/antigravity_config.ts', workspaceFiles), undefined);
-  assert.equal(resolveEditableWorkspacePath('src/mcp/antigravity_config.ts', workspaceFiles), 'src/mcp/antigravity_config.ts');
+  assert.equal(resolveEditableWorkspacePath('mcp/mcpConfig.ts', workspaceFiles), undefined);
+  assert.equal(resolveEditableWorkspacePath('src/mcpConfig.ts', workspaceFiles), undefined);
+  assert.equal(resolveEditableWorkspacePath('src/mcp/mcpConfig.ts', workspaceFiles), 'src/mcp/mcpConfig.ts');
 });

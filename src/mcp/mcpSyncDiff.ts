@@ -1,4 +1,4 @@
-import type { McpChangedServerDiff, McpSyncDiff, ResolvedMcpServerConfig } from './types';
+import type { McpChangedServerDiff, McpSyncDiff, ResolvedMcpServerConfig } from '../types';
 
 const COMPARED_FIELDS = ['transport', 'command', 'args', 'env', 'enabled', 'cwd', 'timeout'] as const;
 
@@ -133,4 +133,3 @@ function sortValue(value: unknown): unknown {
     }
     return value;
 }
-

@@ -31,9 +31,9 @@ import { isEditableFilePath, resolveEditableWorkspacePath } from './editableFile
 import { ResponsePreferenceManager } from './responsePreferenceManager';
 import type { MessageFeedback } from './responsePreferenceManager';
 import { RequestRetryGuard } from './requestRetryGuard';
-import { McpManager } from './mcpManager';
-import { syncCodexMcpServers } from './mcpCodexSync';
-import { importMcpFromGitHubUrl } from './mcpGithubImport';
+import { McpManager } from './mcp/mcpManager';
+import { syncCodexMcpServers } from './mcp/mcpCodexSync';
+import { importMcpFromGitHubUrl } from './mcp/mcpGithubImport';
 import {
     cancelPendingRequest,
     clearPendingRequests,

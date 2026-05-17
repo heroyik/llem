@@ -1,9 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getLlemSettings } from './config';
+import { getLlemSettings } from '../config';
 import { normalizeMcpServer, toSettingsObject } from './mcpConfig';
-import { safeFetchWebText } from './security';
-import type { ResolvedMcpServerConfig } from './types';
+import { safeFetchWebText } from '../security';
+import type { ResolvedMcpServerConfig } from '../types';
 
 interface GitHubRepoRef {
     owner: string;
@@ -186,4 +186,3 @@ function formatCandidatePreview(candidate: McpImportCandidate): string {
     const command = [candidate.server.command, ...candidate.server.args].filter(Boolean).join(' ');
     return `Import MCP server "${candidate.name}"?\n\n${command}\n\nSource: ${candidate.server.sourcePath}`;
 }
-

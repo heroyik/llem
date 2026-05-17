@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { readCodexConfigs, readSettingsServers, readStoredSyncedServers } from './mcpConfig';
 import { writeSyncedMcpServers } from './mcpStorage';
 import { buildMcpSyncDiff, hasMcpSyncDiff, renderMcpSyncDiffMarkdown, summarizeMcpSyncDiff } from './mcpSyncDiff';
-import type { ResolvedMcpServerConfig } from './types';
+import type { ResolvedMcpServerConfig } from '../types';
 
 export async function syncCodexMcpServers(options: { promptForApproval?: boolean } = { promptForApproval: true }): Promise<string> {
     const errors: string[] = [];

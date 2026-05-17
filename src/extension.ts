@@ -4,8 +4,8 @@ import { getConfig } from './config';
 import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 import { getDiagnosticsFilePath, initLogger, logInfo, getOutputChannel } from './logger';
-import { getCodexMcpSyncSummary } from './mcpCodexSync';
-import { initMcpStorage } from './mcpStorage';
+import { getCodexMcpSyncSummary } from './mcp/mcpCodexSync';
+import { initMcpStorage } from './mcp/mcpStorage';
 
 
 // ============================================================

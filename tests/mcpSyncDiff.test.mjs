@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { buildMcpSyncDiff, renderMcpSyncDiffMarkdown, summarizeMcpSyncDiff } = require('../out-test/mcpSyncDiff.js');
+const { buildMcpSyncDiff, renderMcpSyncDiffMarkdown, summarizeMcpSyncDiff } = require('../out-test/mcp/mcpSyncDiff.js');
 
 function server(name, overrides = {}) {
   return {
@@ -56,4 +56,3 @@ test('renderMcpSyncDiffMarkdown masks env values and marks local shadows', () =>
   assert.match(markdown, /github/);
   assert.doesNotMatch(markdown, /new-value/);
 });
-

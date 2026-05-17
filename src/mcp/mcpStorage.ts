@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { ResolvedMcpServerConfig } from './types';
+import type { ResolvedMcpServerConfig } from '../types';
 
 const SYNCED_MCP_FILE = 'llem-mcp-synced.json';
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.llem');

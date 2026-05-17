@@ -3,9 +3,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { parse as parseToml } from 'smol-toml';
-import { expandHome, getLlemSettings } from './config';
+import { expandHome, getLlemSettings } from '../config';
 import { readSyncedMcpServers } from './mcpStorage';
-import type { McpConfigSnapshot, McpServerConfig, McpSourceKind, ResolvedMcpServerConfig } from './types';
+import type { McpConfigSnapshot, McpServerConfig, McpSourceKind, ResolvedMcpServerConfig } from '../types';
 
 export function getWorkspaceRoot(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
