@@ -136,9 +136,9 @@ body::before {
 }
 .subbrand {
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
 }
 .brand-stack {
   display: flex;
@@ -220,20 +220,16 @@ select {
   overflow: hidden;
   flex-shrink: 0;
   z-index: 10;
+  background: transparent;
 }
 .thinking-bar.active::after {
   content: '';
   position: absolute;
   top: 0;
-  left: -40%;
-  width: 40%;
+  left: 0;
+  width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
-  animation: slideBar 1.3s linear infinite;
-}
-@keyframes slideBar {
-  from { left: -40%; }
-  to { left: 100%; }
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
 }
 .main-view {
   display: flex;
@@ -801,28 +797,48 @@ select {
   border: 1px solid var(--border);
   background: var(--panel-2);
 }
+.queue-copy,
+.queue-actions {
+  position: relative;
+  z-index: 1;
+}
 .queue-item.queue-item-active {
-  border-color: rgba(104, 225, 253, 0.62);
+  overflow: hidden;
+  border-color: rgba(104, 225, 253, 0.5);
   background:
-    linear-gradient(180deg, rgba(104, 225, 253, 0.08), rgba(255, 111, 145, 0.05)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
     var(--panel-2);
   box-shadow:
-    inset 0 0 0 1px rgba(104, 225, 253, 0.22),
-    0 0 0 1px rgba(104, 225, 253, 0.12),
-    0 0 18px rgba(104, 225, 253, 0.26),
-    0 0 34px rgba(255, 111, 145, 0.16);
+    0 0 14px rgba(104, 225, 253, 0.24),
+    0 0 28px rgba(255, 111, 145, 0.12);
 }
 .queue-item.queue-item-active::before {
   content: "";
   position: absolute;
   inset: -2px;
   border-radius: inherit;
-  border: 1px solid rgba(104, 225, 253, 0.3);
-  box-shadow:
-    0 0 14px rgba(104, 225, 253, 0.28),
-    0 0 28px rgba(255, 158, 88, 0.14);
-  opacity: 0.9;
+  padding: 2px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(104, 225, 253, 0.08),
+    rgba(104, 225, 253, 0.95),
+    rgba(255, 255, 255, 0.92),
+    rgba(255, 111, 145, 0.72),
+    rgba(104, 225, 253, 0.08)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: queueNeonSweep 2.4s linear infinite;
   pointer-events: none;
+}
+@keyframes queueNeonSweep {
+  to { transform: rotate(360deg); }
 }
 .queue-copy {
   min-width: 0;
