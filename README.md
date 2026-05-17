@@ -20,13 +20,48 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
-### v3.3.25
-- **[UI/UX] Live Stream Metadata**: Action progress badges now display real-time statistics, including total duration, chunk count, and character count, giving you full visibility into the AI's generation performance.
+### v3.5.12 — Better context-mode MCP command support
 
-### v3.3.23
-- **[Robustness] AI Self-Correction Loop**: When a file edit fails due to context mismatch, LLeM now automatically feeds the actual file content back to the AI for an immediate, accurate retry.
-- **[UI/UX] Action Progress Visualization**: Live streaming now shows clean, "Codex-style" progress badges for file operations instead of raw XML, keeping you informed without the clutter.
-- **[Reliability] Tag Normalization**: Improved handling of aborted or incomplete streams to ensure actions are executed even if the connection drops.
+LLeM now treats common context-mode utility commands as first-class MCP actions instead of sending them through the normal chat-completion path. That makes commands like `ctx stats` and `/ctx_stats` faster, cleaner, and less likely to confuse local models.
+
+#### Direct context-mode commands
+
+You can now run context-mode utilities directly from chat:
+
+- `ctx stats`
+- `ctx doctor`
+- `ctx upgrade`
+- `ctx purge`
+- `ctx insight`
+
+LLeM recognizes these as MCP utility commands, routes them to the matching context-mode tool, and displays the result back in the chat.
+
+#### Slash aliases for context-mode
+
+LLeM also understands slash-style aliases for the same tools:
+
+- `/ctx_stats`
+- `/ctx-stats`
+- `/ctx_doctor`
+- `/ctx-doctor`
+- `/context-mode:ctx-stats`
+- `/context-mode:ctx-doctor`
+
+Hyphenated aliases are normalized to the MCP tool names internally, so `/ctx-stats` resolves to `ctx_stats`, and `/context-mode:ctx-doctor` resolves to `ctx_doctor`.
+
+#### Cleaner MCP result rendering
+
+MCP responses shaped like `{ content: [{ type: "text", text: "..." }] }` are now unwrapped and displayed as plain text. Raw JSON is only shown as a fallback when LLeM cannot extract text content.
+
+This fixes the context-mode stats display issue where the result could appear as a JSON code block instead of readable output.
+
+#### Less accidental repetition noise
+
+The previous JSON rendering path could expose long separator lines from context-mode stats output. Some local models would echo those separators during follow-up turns, which could trip LLeM's repetition watchdog. With text-first MCP rendering, the stats output stays readable and avoids feeding noisy JSON wrappers back into the conversation.
+
+#### Reliability coverage
+
+This update also adds regression tests for the new context-mode command parsing behavior, including slash aliases and natural utility commands.
 
 ---
 
