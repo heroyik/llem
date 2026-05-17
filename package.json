@@ -2,7 +2,7 @@
   "name": "llem",
   "displayName": "LLeM",
   "description": "A local-first coding sidekick for VS Code and Cursor. Stream live model output, chat with your repo, edit files, run terminal commands, and keep everything on-device.",
-  "version": "3.5.2",
+  "version": "3.5.3",
   "publisher": "nIcK",
   "author": "nIck(heroyik@gmail.com)",
   "repository": {
@@ -185,11 +185,6 @@
           "type": "object",
           "default": {},
           "description": "MCP servers registered directly in LLeM."
-        },
-        "llem.mcpSyncedServers": {
-          "type": "object",
-          "default": {},
-          "description": "Read-only snapshots synced from external MCP configs such as Codex."
         },
         "llem.mcpConfigSources": {
           "type": "array",

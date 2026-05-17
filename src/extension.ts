@@ -5,6 +5,7 @@ import { registerExtensionCommands } from './extensionCommands';
 import { LLEM_VIEW_ID, SidebarChatProvider } from './sidebarChatProvider';
 import { getDiagnosticsFilePath, initLogger, logInfo, getOutputChannel } from './logger';
 import { getCodexMcpSyncSummary } from './mcpCodexSync';
+import { initMcpStorage } from './mcpStorage';
 
 
 // ============================================================
@@ -15,6 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
     const output = getOutputChannel();
     context.subscriptions.push(output);
     initLogger(context.globalStorageUri?.fsPath);
+    initMcpStorage(undefined);
     logInfo('Extension activating...');
     const diagnosticsFile = getDiagnosticsFilePath();
     if (diagnosticsFile) {

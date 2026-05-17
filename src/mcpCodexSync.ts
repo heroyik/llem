@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import { getLlemSettings } from './config';
-import { readCodexConfigs, readSettingsServers, toSettingsObject } from './mcpConfig';
+import { readCodexConfigs, readSettingsServers, readStoredSyncedServers } from './mcpConfig';
+import { writeSyncedMcpServers } from './mcpStorage';
 import { buildMcpSyncDiff, hasMcpSyncDiff, renderMcpSyncDiffMarkdown, summarizeMcpSyncDiff } from './mcpSyncDiff';
 import type { ResolvedMcpServerConfig } from './types';
 
 export async function syncCodexMcpServers(options: { promptForApproval?: boolean } = { promptForApproval: true }): Promise<string> {
     const errors: string[] = [];
     const nextCodex = await readCodexConfigs(errors);
-    const previousAll = readSettingsServers('mcpSyncedServers', 'codex', errors);
+    const previousAll = await readStoredSyncedServers(errors);
     const previousCodex = Object.fromEntries(Object.entries(previousAll).filter(([, server]) => server.sourceKind === 'codex'));
     const local = readSettingsServers('mcpServers', 'llem', errors, true);
     const stampedNext = stampSynced(nextCodex);
@@ -33,14 +33,14 @@ export async function syncCodexMcpServers(options: { promptForApproval?: boolean
     }
 
     const nonCodexSynced = Object.fromEntries(Object.entries(previousAll).filter(([, server]) => server.sourceKind !== 'codex'));
-    await getLlemSettings().update('mcpSyncedServers', toSettingsObject({ ...nonCodexSynced, ...stampedNext }), vscode.ConfigurationTarget.Global);
+    await writeSyncedMcpServers({ ...nonCodexSynced, ...stampedNext });
     return `Codex MCP sync applied. ${summary}`;
 }
 
 export async function previewCodexMcpSync(): Promise<string> {
     const errors: string[] = [];
     const nextCodex = await readCodexConfigs(errors);
-    const previous = Object.fromEntries(Object.entries(readSettingsServers('mcpSyncedServers', 'codex', errors)).filter(([, server]) => server.sourceKind === 'codex'));
+    const previous = Object.fromEntries(Object.entries(await readStoredSyncedServers(errors)).filter(([, server]) => server.sourceKind === 'codex'));
     const local = readSettingsServers('mcpServers', 'llem', errors, true);
     const diff = buildMcpSyncDiff(previous, stampSynced(nextCodex), local);
     const markdown = renderMcpSyncDiffMarkdown(diff);
@@ -51,7 +51,7 @@ export async function previewCodexMcpSync(): Promise<string> {
 export async function getCodexMcpSyncSummary(): Promise<string | undefined> {
     const errors: string[] = [];
     const nextCodex = await readCodexConfigs(errors);
-    const previous = Object.fromEntries(Object.entries(readSettingsServers('mcpSyncedServers', 'codex', errors)).filter(([, server]) => server.sourceKind === 'codex'));
+    const previous = Object.fromEntries(Object.entries(await readStoredSyncedServers(errors)).filter(([, server]) => server.sourceKind === 'codex'));
     const local = readSettingsServers('mcpServers', 'llem', errors, true);
     const diff = buildMcpSyncDiff(previous, stampSynced(nextCodex), local);
     return hasMcpSyncDiff(diff) ? summarizeMcpSyncDiff(diff) : undefined;

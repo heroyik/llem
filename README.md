@@ -130,7 +130,7 @@ Open your VS Code `settings.json` to customize the experience.
 | `llem.bridgeToken` | Security token for authenticated bridge callers. | `(empty)` |
 | `llem.mcpEnabled` | Enable MCP server discovery and tool calls. | `true` |
 | `llem.mcpServers` | MCP servers registered directly in LLeM. | `{}` |
-| `llem.mcpSyncedServers` | Read-only snapshots synced from Codex or imports. | `{}` |
+| `llem.mcpConfigSources` | MCP sources to resolve. | `["llem", "workspace", "codex-global", "codex-project"]` |
 | `llem.mcpConfigPaths` | Extra MCP JSON/TOML config paths to import. | `[]` |
 | `llem.mcpToolTimeoutSeconds` | Timeout for MCP startup, listing, and calls. | `60` |
 | `llem.maxHistoryItems` | Maximum number of sessions to keep in history. | `100` |
@@ -160,7 +160,7 @@ Direct LLeM config lives in `llem.mcpServers`:
 }
 ```
 
-LLeM also syncs Codex MCP settings from `$CODEX_HOME/config.toml`, `~/.codex/config.toml`, and `<workspace>/.codex/config.toml`. Before applying a sync it shows a diff with Added, Removed, and Changed servers; environment values are masked and only changed keys are shown. User-owned `llem.mcpServers` are never deleted or modified by Codex sync.
+LLeM also syncs Codex MCP settings from `$CODEX_HOME/config.toml`, `~/.codex/config.toml`, and `<workspace>/.codex/config.toml`. Before applying a sync it shows a diff with Added, Removed, and Changed servers; environment values are masked and only changed keys are shown. Synced snapshots are stored in `~/.llem/llem-mcp-synced.json` instead of VS Code settings, and user-owned `llem.mcpServers` are never deleted or modified by Codex sync.
 
 Use **Settings -> MCP servers -> Import MCP from GitHub URL** to paste an MCP repository URL. LLeM reads README/package/config examples, previews the inferred server command, and imports it only after approval.
 
@@ -409,6 +409,14 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 **Local-first, offline-always. Let's cook.** 🛫💻
 
 ## Release Notes
+
+### v3.5.3
+
+- Bumped the VSIX build from `3.5.2` to `3.5.3`.
+- Moved synced MCP snapshots from VS Code settings into ~/.llem/llem-mcp-synced.json
+- Documented the home-profile MCP sync storage path in README
+- Added neon highlighting for the active running queue prompt
+- Packaged `release/llem-3.5.3.vsix`.
 
 ### v3.5.2
 

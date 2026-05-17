@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { parse as parseToml } from 'smol-toml';
 import { expandHome, getLlemSettings } from './config';
+import { readSyncedMcpServers } from './mcpStorage';
 import type { McpConfigSnapshot, McpServerConfig, McpSourceKind, ResolvedMcpServerConfig } from './types';
 
 export function getWorkspaceRoot(): string | undefined {
@@ -53,7 +54,7 @@ export async function resolveMcpConfig(): Promise<McpConfigSnapshot> {
     const sources = new Set(getLlemSettings().get<string[]>('mcpConfigSources', ['llem', 'workspace', 'codex-global', 'codex-project']));
 
     if (sources.has('codex-global') || sources.has('codex-project')) {
-        mergeServers(servers, readSettingsServers('mcpSyncedServers', 'codex', errors));
+        mergeServers(servers, await readStoredSyncedServers(errors));
     }
 
     if (workspaceRoot && sources.has('workspace')) {
@@ -95,6 +96,18 @@ export function readSettingsServers(
         }
     }
     return result;
+}
+
+export async function readStoredSyncedServers(errors: string[]): Promise<Record<string, ResolvedMcpServerConfig>> {
+    try {
+        const stored = await readSyncedMcpServers();
+        if (Object.keys(stored).length > 0) {
+            return stored;
+        }
+    } catch (err) {
+        errors.push(`Failed to read LLeM MCP synced storage: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return readSettingsServers('mcpSyncedServers', 'codex', errors);
 }
 
 export async function readJsonMcpConfig(

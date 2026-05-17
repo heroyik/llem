@@ -801,6 +801,7 @@ select {
   gap: 8px;
 }
 .queue-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -811,8 +812,27 @@ select {
   background: var(--panel-2);
 }
 .queue-item.queue-item-active {
-  border-color: rgba(255, 158, 88, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(255, 158, 88, 0.08);
+  border-color: rgba(104, 225, 253, 0.62);
+  background:
+    linear-gradient(180deg, rgba(104, 225, 253, 0.08), rgba(255, 111, 145, 0.05)),
+    var(--panel-2);
+  box-shadow:
+    inset 0 0 0 1px rgba(104, 225, 253, 0.22),
+    0 0 0 1px rgba(104, 225, 253, 0.12),
+    0 0 18px rgba(104, 225, 253, 0.26),
+    0 0 34px rgba(255, 111, 145, 0.16);
+}
+.queue-item.queue-item-active::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid rgba(104, 225, 253, 0.3);
+  box-shadow:
+    0 0 14px rgba(104, 225, 253, 0.28),
+    0 0 28px rgba(255, 158, 88, 0.14);
+  opacity: 0.9;
+  pointer-events: none;
 }
 .queue-copy {
   min-width: 0;

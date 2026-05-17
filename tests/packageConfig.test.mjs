@@ -19,7 +19,7 @@ test('package.json exposes MCP settings and commands', async () => {
   const properties = packageJson.contributes.configuration.properties;
   const commands = packageJson.contributes.commands.map(command => command.command);
 
-  for (const key of ['llem.mcpEnabled', 'llem.mcpServers', 'llem.mcpSyncedServers', 'llem.mcpConfigSources', 'llem.mcpConfigPaths', 'llem.mcpToolTimeoutSeconds']) {
+  for (const key of ['llem.mcpEnabled', 'llem.mcpServers', 'llem.mcpConfigSources', 'llem.mcpConfigPaths', 'llem.mcpToolTimeoutSeconds']) {
     assert.ok(properties[key], `${key} should be exposed`);
   }
   for (const command of ['llem.reloadMcpServers', 'llem.listMcpServers', 'llem.syncCodexMcpServers', 'llem.importMcpFromGitHub']) {
