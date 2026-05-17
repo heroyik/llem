@@ -54,6 +54,26 @@ type ChatWebviewSurface = vscode.WebviewView | vscode.WebviewPanel;
 
 const MAX_DROPPED_IMAGE_BYTES = 8 * 1024 * 1024;
 
+function extractMcpTextParts(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value
+            .flatMap(item => extractMcpTextParts(item))
+            .filter(Boolean);
+    }
+    if (!value || typeof value !== 'object') {
+        return [];
+    }
+
+    const record = value as { type?: unknown; text?: unknown; content?: unknown };
+    const directText = record.type === 'text' && typeof record.text === 'string'
+        ? [record.text]
+        : [];
+    return [
+        ...directText,
+        ...extractMcpTextParts(record.content)
+    ];
+}
+
 function renderMcpSlashResultMessage(content: string): string | undefined {
     if (!content.startsWith('[SYSTEM: MCP slash command result]')) {
         return undefined;
@@ -64,13 +84,9 @@ function renderMcpSlashResultMessage(content: string): string | undefined {
     }
     try {
         const parsed = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(parsed)) {
-            const textParts = parsed
-                .map(item => item && typeof item === 'object' && 'text' in item ? String((item as { text?: unknown }).text ?? '') : '')
-                .filter(Boolean);
-            if (textParts.length > 0) {
-                return textParts.join('\n\n');
-            }
+        const textParts = extractMcpTextParts(parsed);
+        if (textParts.length > 0) {
+            return textParts.join('\n\n');
         }
         return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
     } catch {
@@ -625,7 +641,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             .split(/\r?\n/)
             .map(line => line.trim())
             .filter(Boolean);
-        if (commandLines.some(line => !/^\/[A-Za-z][A-Za-z0-9_-]*(?:\s|$)/.test(line))) {
+        if (commandLines.some(line => !this.isMcpDirectCommandLine(line))) {
             return false;
         }
 
@@ -646,6 +662,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
         await this.saveHistory();
         return true;
+    }
+
+    private isMcpDirectCommandLine(line: string): boolean {
+        return /^\/(?:context-mode:)?[A-Za-z][A-Za-z0-9_-]*(?:\s|$)/.test(line) ||
+            /^ctx\s+(?:stats|doctor|upgrade|purge|insight)(?:\s|$)/i.test(line);
     }
 
     private async _enqueueRequest(request: QueuedRequest): Promise<void> {

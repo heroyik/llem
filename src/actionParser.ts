@@ -98,17 +98,29 @@ export function parseCallMcpToolActions(message: string): McpToolAction[] {
 
 export function parseMcpSlashCommandActions(message: string): McpSlashCommandAction[] {
     const actions: McpSlashCommandAction[] = [];
-    const regex = /(?:^|\n)[ \t]*\/([A-Za-z][A-Za-z0-9_-]*)(?:[ \t]+([^\n]*))?/g;
+    const regex = /(?:^|\n)[ \t]*\/(?:context-mode:)?([A-Za-z][A-Za-z0-9_-]*)(?:[ \t]+([^\n]*))?/g;
+    const ctxUtilityRegex = /(?:^|\n)[ \t]*ctx[ \t]+(stats|doctor|upgrade|purge|insight)(?:[ \t]+([^\n]*))?/gi;
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(String(message || ''))) !== null) {
         actions.push({
-            command: match[1].trim(),
+            command: normalizeMcpCommandName(match[1].trim()),
+            body: String(match[2] || '').trim()
+        });
+    }
+
+    while ((match = ctxUtilityRegex.exec(String(message || ''))) !== null) {
+        actions.push({
+            command: normalizeMcpCommandName(`ctx_${match[1].trim()}`),
             body: String(match[2] || '').trim()
         });
     }
 
     return actions;
+}
+
+function normalizeMcpCommandName(command: string): string {
+    return command.replace(/-/g, '_');
 }
 
 export function parseFallbackFileBlocks(message: string): PathAction[] {

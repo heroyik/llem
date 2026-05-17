@@ -72,6 +72,18 @@ test('parse MCP slash commands from line starts', () => {
   assert.deepEqual(parseMcpSlashCommandActions('/ctx_stats'), [
     { command: 'ctx_stats', body: '' }
   ]);
+  assert.deepEqual(parseMcpSlashCommandActions('/ctx-stats'), [
+    { command: 'ctx_stats', body: '' }
+  ]);
+  assert.deepEqual(parseMcpSlashCommandActions('/context-mode:ctx-doctor'), [
+    { command: 'ctx_doctor', body: '' }
+  ]);
+  assert.deepEqual(parseMcpSlashCommandActions('ctx stats'), [
+    { command: 'ctx_stats', body: '' }
+  ]);
+  assert.deepEqual(parseMcpSlashCommandActions('ctx purge {"confirm":true}'), [
+    { command: 'ctx_purge', body: '{"confirm":true}' }
+  ]);
   assert.deepEqual(parseMcpSlashCommandActions('before\n  /ctx_query {"q":"notes"}\nafter'), [
     { command: 'ctx_query', body: '{"q":"notes"}' }
   ]);

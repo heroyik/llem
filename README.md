@@ -415,6 +415,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.12
+
+- Bumped the VSIX build from `3.5.11` to `3.5.12`.
+- Support context-mode utility command aliases and render MCP text results directly.
+- Packaged `release/llem-3.5.12.vsix`.
+
 ### v3.5.11
 
 - Bumped the VSIX build from `3.5.10` to `3.5.11`.
