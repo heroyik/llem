@@ -175,17 +175,51 @@ export class ChatPipeline {
                 logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
 
-            // MLLM safe limit: rapid-mlx의 MLLM 스케줄러는 이미지+컨텍스트 합산 토큰 한계(2048)가 있음.
-            // 이미지가 포함된 요청에서는 히스토리를 [system, ...last N turns]으로 슬라이싱해서
-            // 토큰 초과 에러를 방지한다.
-            const MLLM_MAX_HISTORY_TURNS = 4; // system 1 + 최근 대화 메시지 최대 4개
+            // MLLM safe limit: rapid-mlx의 MLLM 스케줄러는 prefill_step_size(기본 2048 토큰) 한도가 있음.
+            // 이미지 토큰(~256~1024)을 포함하면 텍스트 컨텍스트 예산이 크게 줄어드므로
+            // chars÷4 로 토큰을 추정하여 한도 내에 들어오도록 동적으로 히스토리를 트리밍한다.
+            const MLLM_TOKEN_HARD_CAP = 1800; // 2048에서 이미지 여유분 ~250 토큰 확보
+            const MLLM_CHARS_PER_TOKEN = 4;   // 평균 추정치 (영문 ~4자, 한글 ~2자 혼합 기준)
             if (imagesToSend.length > 0 && endpoint.engineKind === 'rapid-mlx') {
+                const estimateTokens = (msg: ChatMessage): number => {
+                    const text = typeof msg.content === 'string'
+                        ? msg.content
+                        : JSON.stringify(msg.content);
+                    return Math.ceil(text.length / MLLM_CHARS_PER_TOKEN);
+                };
+
                 const systemMessages = reqMessages.filter(m => m.role === 'system');
                 const nonSystemMessages = reqMessages.filter(m => m.role !== 'system');
-                const trimmed = nonSystemMessages.slice(-MLLM_MAX_HISTORY_TURNS);
+
+                // 시스템 메시지 토큰 합산
+                let systemTokens = systemMessages.reduce((s, m) => s + estimateTokens(m), 0);
+
+                // 시스템 메시지 자체가 너무 크면 마지막 부분만 남김
+                if (systemTokens > MLLM_TOKEN_HARD_CAP - 200) {
+                    const maxSysChars = (MLLM_TOKEN_HARD_CAP - 200) * MLLM_CHARS_PER_TOKEN;
+                    for (const sm of systemMessages) {
+                        if (typeof sm.content === 'string' && sm.content.length > maxSysChars) {
+                            sm.content = sm.content.slice(-maxSysChars);
+                        }
+                    }
+                    systemTokens = systemMessages.reduce((s, m) => s + estimateTokens(m), 0);
+                    logInfo(`[PIPELINE] MLLM system message truncated to fit token cap (est. ${systemTokens} tokens)`);
+                }
+
+                // 비시스템 메시지를 최신 것부터 역순으로 추가하되 예산 초과 시 중단
+                const budgetLeft = MLLM_TOKEN_HARD_CAP - systemTokens;
+                const keptMessages: ChatMessage[] = [];
+                let usedTokens = 0;
+                for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+                    const t = estimateTokens(nonSystemMessages[i]);
+                    if (usedTokens + t > budgetLeft) { break; }
+                    keptMessages.unshift(nonSystemMessages[i]);
+                    usedTokens += t;
+                }
+
                 const before = reqMessages.length;
-                reqMessages.splice(0, reqMessages.length, ...systemMessages, ...trimmed);
-                logInfo(`[PIPELINE] MLLM history trim: ${before} → ${reqMessages.length} messages (rapid-mlx vision safe limit)`);
+                reqMessages.splice(0, reqMessages.length, ...systemMessages, ...keptMessages);
+                logInfo(`[PIPELINE] MLLM token-aware trim: ${before} → ${reqMessages.length} msgs, est. ${systemTokens + usedTokens}/${MLLM_TOKEN_HARD_CAP} tokens (rapid-mlx vision safe limit)`);
             }
 
             this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
