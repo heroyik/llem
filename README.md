@@ -20,48 +20,15 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
-### v3.5.12 — Better context-mode MCP command support
+### v3.5.13 — Cleaner modes, refreshed branding, and better Gemma vision support
 
-LLeM now treats common context-mode utility commands as first-class MCP actions instead of sending them through the normal chat-completion path. That makes commands like `ctx stats` and `/ctx_stats` faster, cleaner, and less likely to confuse local models.
+LLeM's latest release tightens the main chat controls and improves multimodal routing for local Ollama Gemma-family models.
 
-#### Direct context-mode commands
-
-You can now run context-mode utilities directly from chat:
-
-- `ctx stats`
-- `ctx doctor`
-- `ctx upgrade`
-- `ctx purge`
-- `ctx insight`
-
-LLeM recognizes these as MCP utility commands, routes them to the matching context-mode tool, and displays the result back in the chat.
-
-#### Slash aliases for context-mode
-
-LLeM also understands slash-style aliases for the same tools:
-
-- `/ctx_stats`
-- `/ctx-stats`
-- `/ctx_doctor`
-- `/ctx-doctor`
-- `/context-mode:ctx-stats`
-- `/context-mode:ctx-doctor`
-
-Hyphenated aliases are normalized to the MCP tool names internally, so `/ctx-stats` resolves to `ctx_stats`, and `/context-mode:ctx-doctor` resolves to `ctx_doctor`.
-
-#### Cleaner MCP result rendering
-
-MCP responses shaped like `{ content: [{ type: "text", text: "..." }] }` are now unwrapped and displayed as plain text. Raw JSON is only shown as a fallback when LLeM cannot extract text content.
-
-This fixes the context-mode stats display issue where the result could appear as a JSON code block instead of readable output.
-
-#### Less accidental repetition noise
-
-The previous JSON rendering path could expose long separator lines from context-mode stats output. Some local models would echo those separators during follow-up turns, which could trip LLeM's repetition watchdog. With text-first MCP rendering, the stats output stays readable and avoids feeding noisy JSON wrappers back into the conversation.
-
-#### Reliability coverage
-
-This update also adds regression tests for the new context-mode command parsing behavior, including slash aliases and natural utility commands.
+- Moved execution mode selection into the chat composer for a cleaner, more direct workflow.
+- Added visible mode toggles for Default, Plan, and Agent-style work.
+- Refreshed the LLeM icon with a transparent background.
+- Improved Ollama Gemma 4 multimodal detection and image attachment forwarding.
+- Packaged `release/llem-3.5.13.vsix`.
 
 ---
 
@@ -72,8 +39,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 ### 1. Download the Extension
 1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
 2. Look at the **Releases** section on the right sidebar.
-3. Click on the latest release tag (e.g., `v3.1.3`).
-4. Under the **Assets** section, click on the `.vsix` file (e.g., `llem-3.1.3.vsix`) to download it to your machine.
+3. Click on the latest release tag (for example, `v3.5.13`).
+4. Under the **Assets** section, click on the `.vsix` file (for example, `llem-3.5.13.vsix`) to download it to your machine.
 
 ### 2. Install in VS Code or Cursor
 1. Open **VS Code** or **Cursor**.
@@ -133,7 +100,7 @@ For larger local runs, a 24B+ Gemma-family model is a better fit for the new per
 
 ```bash
 # Example 26B-class local setup
-ollama pull gemma6:26b
+ollama pull gemma4:26b
 ollama serve
 ```
 
@@ -212,7 +179,7 @@ LLeM reads markdown files from `~/.llem/prolog` before every prompt. Files are l
 
 ### 26B Local Model Tuning
 
-For bigger local models such as `gemma6:26b` or other 24B+ Gemma-family builds:
+For bigger local models such as `gemma4:26b` or other 24B+ Gemma-family builds:
 
 - prefer **Rapid-MLX** or **LM Studio** when you want an OpenAI-compatible local server,
 - prefer **Ollama** when you want the native Ollama `/api/chat` path and local manifest-based capability hints,
@@ -292,171 +259,9 @@ In practice, this makes it much easier to see whether the bottleneck is model lo
 
 ## 📝 Release Notes
 
-### v3.1.1 — Editable Message Branching, Preference Memory, and Markdown Rendering Fixes
-
-**v3.1.1** builds on the `v3.1.0` chat UX refresh and adds the missing piece: editing earlier user messages in a Gemini Web-style flow.
-
-#### Edit earlier messages like Gemini Web
-
-You can now go back to a previous **user** message, click **Edit**, revise the prompt, and continue from there.
-
-- the old thread stays intact,
-- LLeM creates a new branch from the point before that message,
-- the edited prompt is resubmitted into that branch,
-- and any reusable attached files from the original message can travel with the edit flow.
-
-This keeps the conversation history safe while making prompt iteration much faster and less destructive.
-
-#### Reply actions are now a full iteration loop
-
-With `Copy`, `Branch`, `Edit`, `👍`, and `👎`, each finished exchange can now be reused in multiple ways:
-
-- **Copy** a strong answer,
-- **Branch** an assistant response into a new direction,
-- **Edit** a user message to retry from an earlier point,
-- **Like** a response style you want repeated,
-- **Dislike** a response style you want avoided later.
-
-That makes LLeM feel much closer to modern consumer chat tools while staying inside VS Code and staying local-first.
-
-#### Persistent response memory still carries across everything
-
-Preference memory continues to apply across:
-
-- normal follow-up turns,
-- new chats,
-- chat branches,
-- and edited-message branches.
-
-So if you teach LLeM what kind of answers you like, that preference signal survives even when you fork or revise the conversation path.
-
-#### File click behavior is stricter and smarter
-
-Clickable file references in chat are now more accurate:
-
-- only editable file types can be opened from chat,
-- basename-only references like `extension.ts` can resolve to a real workspace file when the match is unambiguous,
-- and chat attachments preserve enough metadata to reopen the right source more reliably.
-
-#### Markdown rendering is more reliable inside chat
-
-The webview renderer now handles leftover inline Markdown markers more gracefully in normal prose.
-
-- inline bold and emphasis markers render more reliably in mixed-language text,
-- bullet items such as `- **“로컬 환경에 뿌리내린(Local-first) 지능형 에이전트”**` now display with the intended emphasis,
-- and the fallback logic avoids touching fenced code blocks while cleaning up visible chat output.
-
-#### Technical highlights
-
-- added editable earlier-message branching from the webview action bar,
-- preserved reusable attachment payloads in display history for edit/retry flows,
-- added branch generation from the point before a selected user message,
-- improved workspace filename resolution for clickable chat file references,
-- added a safe inline-Markdown fallback for webview chat rendering,
-- kept reply-style preference memory persistent across branch variants.
-
-#### Why `v3.1.1` matters
-
-The big shift here is that LLeM is no longer just good at answering or branching. It is now better at **revising**. That means less copy-paste, less losing context, and much smoother iteration when you're tightening prompts or trying alternate implementation directions.
-
-### v3.1.0 — Gemini-Style Reply Actions, Branching, and Preference Memory
-
-**v3.1.0** is the first release that makes each completed reply feel more like a modern chat product, while still keeping the whole workflow local-first.
-
-#### New reply actions after every completed assistant turn
-
-Once an assistant reply finishes streaming, LLeM now shows a compact action row directly under that message.
-
-- **Copy**: Copies just that specific assistant response to your clipboard.
-- **Branch**: Creates a brand-new chat branch from that response so you can explore a different direction without losing the original thread.
-- **👍 Like**: Marks that answer style as something the user wants more of.
-- **👎 Dislike**: Marks that answer style as something the user wants less of.
-
-This interaction model is intentionally inspired by the post-reply controls you see in Gemini Web, but adapted to LLeM's local VS Code workflow.
-
-#### Chat branching
-
-Branching is now a first-class concept inside the chat experience.
-
-- You can branch from any completed assistant response.
-- The new branch becomes its own saved chat session.
-- The original conversation remains untouched in history.
-- The branch inherits the visible conversation context up to the selected reply, making it easy to explore alternate plans, implementations, or follow-up prompts.
-
-This is especially useful when you want to:
-
-- compare two implementation strategies,
-- keep one thread focused on debugging while another explores a refactor,
-- or preserve a "good state" before taking the conversation in a different direction.
-
-#### Persistent response-preference memory
-
-Likes and dislikes are not cosmetic. They now update a persistent memory layer that survives:
-
-- new chats,
-- branched chats,
-- and extension restarts.
-
-When you give feedback on a reply, LLeM stores a compact memory of that preference and uses it to steer future responses. In practice, that means:
-
-- replies you like help reinforce the kind of tone, structure, and answer shape you want,
-- replies you dislike tell the assistant to avoid similar response patterns later unless you explicitly ask for them.
-
-This preference memory is injected into the system context for future requests, so LLeM can adapt over time instead of acting like every conversation starts from zero.
-
-#### Better alignment between UI behavior and file opening rules
-
-This release also tightens the file interaction model inside chat:
-
-- only editable file types are shown as clickable in message content,
-- only editable attachments can be opened from chat,
-- and dropped file attachments preserve enough metadata to open the correct source more reliably.
-
-That keeps chat interactions cleaner and avoids misleading "clickable" affordances on files that are not actually editable in the intended way.
-
-#### What changed technically
-
-Under the hood, this release adds several important building blocks:
-
-- a shared editable-file classifier used by both the webview and extension host,
-- per-message feedback state in persisted chat history,
-- a new response preference manager backed by extension global state,
-- message-level UI actions for copy, branching, and feedback,
-- and branch session generation from the currently visible conversation timeline.
-
-#### Why this matters
-
-LLeM has always focused on local execution, real file edits, and practical repo-aware assistance. With **v3.1.0**, the chat UX becomes much more iterative:
-
-- you can fork thought paths without losing your place,
-- quickly reuse or share strong replies,
-- and gradually teach the assistant how you want it to respond.
-
-Still local. Still yours. Just much more adaptable.
-
-### v3.0.5 — The "First Flight" Public Drop ✈️
-
-Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first public release**. 🚀
-
-- **Branding on Point**: We ditched the boring stuff for a fresh icon and a UI that actually looks good.
-- **Gemma Optimization**: We tweaked the engine to hunt down Ollama's or LM Studio's default model automatically.
-- **Chat History 2.0**: Full persistence layer implemented. Your conversations now survive VS Code restarts.
-- **Workspace Sync**: Instant UI updates when you rename, delete, or add files to your project.
-- **Security Audit**: Completed a deep-dive security pass on the Bridge Server, adding rate limiting and token-based auth.
-- **Better Vibes**: Smoother logging and descriptive errors so you're never left guessing.
-- **Public Launch**: This is it. The first time we're letting this thing out of the hangar for everyone to use.
-
-**Local-first, offline-always. Let's cook.** 🛫💻
-
-## Release Notes
-
 ### v3.5.13
 
 - Moved execution mode selection into the chat composer and refreshed the LLeM icon with transparent background.
-- Packaged `release/llem-3.5.13.vsix`.
-
-### v3.5.13
-
 - Added chat header mode toggles for Default, Plan, and Agent modes.
 - Improved Ollama Gemma 4 multimodal detection and image attachment forwarding.
 - Packaged `release/llem-3.5.13.vsix`.
@@ -667,12 +472,8 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.3.16
 
-- Added structured repetition abort handling, retry and action loop guards, safer file mutation validation, restored clickable editable files, and added default-browser opening for chat URL links
-- Packaged `release/llem-3.3.16.vsix`.
-
-### v3.3.16
-
 - Bumped the extension version from `3.3.15` to `3.3.16`.
+- Added structured repetition abort handling, retry and action loop guards, safer file mutation validation, restored clickable editable files, and added default-browser opening for chat URL links.
 - Fixed Korean IME Enter handling so composing Hangul no longer sends a duplicated trailing message.
 - Added composition-aware Enter submission logic with regression coverage for `isComposing` and IME confirm keycode `229`.
 - Hardened stream loop handling so repetition detection is promoted into structured pipeline state instead of being treated like a normal completion.
@@ -688,6 +489,7 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Restored clickable editable-file behavior in chat by improving local file link validation, workspace-path resolution, and message rerendering after workspace file sync.
 - Added default-browser opening for URL links in chat by routing external links through the extension host with `vscode.env.openExternal(...)`.
 - Expanded tests for stream outcome handling, retry guards, action loop guards, file mutation guards, design planning mode, editable file resolution, external link routing, and file-safety edge cases.
+- Packaged `release/llem-3.3.16.vsix`.
 
 ### v3.3.15
 
@@ -730,10 +532,6 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 ### v3.3.7
 
 - Fix edit banner visibility on initial chat load
-- Packaged `release/llem-3.3.7.vsix`.
-
-### v3.3.7
-
 - Fix terminal rendering, layout stability, and improve hardware summary quality
 - Packaged `release/llem-3.3.7.vsix`.
 
