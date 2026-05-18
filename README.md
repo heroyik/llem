@@ -450,6 +450,12 @@ Sup world! 🌍 **v3.0.5** is officially out in the wild and it's our **first pu
 
 ## Release Notes
 
+### v3.5.13
+
+- Added chat header mode toggles for Default, Plan, and Agent modes.
+- Improved Ollama Gemma 4 multimodal detection and image attachment forwarding.
+- Packaged `release/llem-3.5.13.vsix`.
+
 ### v3.5.12
 
 - Support context-mode utility command aliases and render MCP text results directly.

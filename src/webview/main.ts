@@ -61,6 +61,8 @@ interface QueueDraftPayload {
   messageIndex?: number;
 }
 
+type ExecutionMode = 'default' | 'plan' | 'agent';
+
 interface WebviewWindow extends Window {
   markdownit?: any;
 }
@@ -132,6 +134,7 @@ try {
   const dropOverlay = document.getElementById('dropOverlay');
   const thinkingBar = document.getElementById('thinkingBar');
   const settingsBtn = document.getElementById('settingsBtn');
+  const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-btn[data-mode]'));
   const imageLightbox = document.createElement('div');
   imageLightbox.className = 'image-lightbox';
   imageLightbox.hidden = true;
@@ -156,12 +159,38 @@ try {
   let queueState: QueueStatePayload = { running: false, paused: false, pendingRequests: [] };
   let lastQueuePaused = false;
   let internetEnabled = false;
+  let executionMode: ExecutionMode = 'default';
   let inputCompositionActive = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
     internetBtn.classList.toggle('active', internetEnabled);
     internetBtn.title = 'Live web: ' + (internetEnabled ? 'ON' : 'OFF');
   }
+
+  function normalizeExecutionMode(value: any): ExecutionMode {
+    return value === 'plan' || value === 'agent' || value === 'default' ? value : 'default';
+  }
+
+  function executionModeLabel(mode: ExecutionMode): string {
+    if (mode === 'plan') return 'Plan Mode';
+    if (mode === 'agent') return 'Agent Mode';
+    return 'Default Mode';
+  }
+
+  function setExecutionModeUi(mode: ExecutionMode) {
+    executionMode = normalizeExecutionMode(mode);
+    modeButtons.forEach(function(btn) {
+      const active = btn.dataset.mode === executionMode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+    const modeToggle = document.getElementById('modeToggle');
+    if (modeToggle) {
+      modeToggle.title = executionModeLabel(executionMode);
+    }
+  }
+
+  setExecutionModeUi(executionMode);
   let dragCounter = 0;
   let dropSequence = 0;
   let streamEl: HTMLElement | null = null;
@@ -2076,6 +2105,14 @@ try {
     log('[UI] Settings button clicked');
     vscode.postMessage({ type: 'openSettings' });
   });
+  modeButtons.forEach(function(btn) {
+    safeListen(btn, 'click', function() {
+      const nextMode = normalizeExecutionMode(btn.dataset.mode);
+      log('[UI] Execution mode selected: ' + nextMode);
+      setExecutionModeUi(nextMode);
+      vscode.postMessage({ type: 'setExecutionMode', mode: nextMode });
+    });
+  });
   safeListen(brainBtn, 'click', function() {
     log('[UI] Brain sync button clicked');
     vscode.postMessage({ type: 'syncBrain' });
@@ -2248,6 +2285,9 @@ try {
           }
         }
         log('[MODELS] Loaded ' + msg.value.length + ' model(s): ' + msg.value.join(', '));
+        break;
+      case 'executionMode':
+        setExecutionModeUi(normalizeExecutionMode(msg.value));
         break;
       case 'clearChat':
         log('[RESET] clearChat received — resetting all UI state (streamEl=' + !!streamEl + ', sending=' + sending + ')');

@@ -33,6 +33,7 @@ function createHost() {
     requestClearAllHistory: async () => { calls.push(['requestClearAllHistory']); },
     getWorkspaceFiles: async () => { calls.push(['getWorkspaceFiles']); },
     setDefaultModel: async (modelName) => { calls.push(['setDefaultModel', modelName]); },
+    setExecutionMode: async (mode) => { calls.push(['setExecutionMode', mode]); },
     log: (message, level) => { calls.push(['log', message, level]); }
   };
 
@@ -120,5 +121,17 @@ test('routeWebviewMessage forwards external link open requests', async () => {
 
   assert.deepEqual(calls, [
     ['openExternalUrl', 'https://example.com/docs']
+  ]);
+});
+
+test('routeWebviewMessage forwards execution mode changes', async () => {
+  const { host, calls } = createHost();
+
+  await routeWebviewMessage({ type: 'setExecutionMode', mode: 'plan' }, host);
+  await routeWebviewMessage({ type: 'setExecutionMode', mode: 'agent' }, host);
+
+  assert.deepEqual(calls, [
+    ['setExecutionMode', 'plan'],
+    ['setExecutionMode', 'agent']
   ]);
 });

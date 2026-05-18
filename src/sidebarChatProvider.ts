@@ -506,7 +506,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             handleInjectLocalBrain: (files) => this._handleInjectLocalBrain(files),
             handleSettingsMenu: () => this._handleSettingsMenu(),
             resetChat: () => this.resetChat(),
-            restoreDisplayMessages: () => this._restoreDisplayMessages(),
+            restoreDisplayMessages: () => {
+                this._restoreDisplayMessages();
+                this._sendExecutionMode();
+            },
             sendModels: () => this._sendModels(),
             showBrainNetwork: () => vscode.commands.executeCommand('llem.showVaultMap'),
             showTerminal: () => this._showTerminal(),
@@ -531,6 +534,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             requestClearAllHistory: () => this.requestClearAllHistory(),
             getWorkspaceFiles: () => this._sendWorkspaceFiles(),
             setDefaultModel: (modelName) => this._setDefaultModel(modelName),
+            setExecutionMode: (mode) => this.setExecutionMode(mode),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -1195,6 +1199,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    private _sendExecutionMode(): void {
+        this._view?.webview.postMessage({
+            type: 'executionMode',
+            value: this._executionMode
+        });
+    }
+
     private _warnLargeModelTimeout(profile: ModelProfile, timeoutMs: number): void {
         if (profile.resolvedPreset !== 'large-local-26b' || !profile.warningTimeoutMs || timeoutMs >= profile.warningTimeoutMs) {
             return;
@@ -1242,6 +1253,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         await this._ctx.globalState.update('executionMode', nextMode);
         const label = executionModeLabel(nextMode);
         this.injectSystemMessage(`Mode changed: ${label}.`);
+        this._sendExecutionMode();
         this._view?.webview.postMessage({ type: 'response', value: `> ${label} enabled.` });
         vscode.window.showInformationMessage(`LLeM ${label} enabled.`);
     }

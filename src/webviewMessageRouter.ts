@@ -35,6 +35,7 @@ export interface WebviewMessageRouterHost {
     requestClearAllHistory(): Promise<void>;
     getWorkspaceFiles(): Promise<void>;
     setDefaultModel(modelName: string): Promise<void>;
+    setExecutionMode(mode: 'default' | 'plan' | 'agent'): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
 }
 
@@ -48,6 +49,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'setDefaultModel':
             await host.setDefaultModel(message.model);
+            break;
+        case 'setExecutionMode':
+            await host.setExecutionMode(message.mode);
             break;
         case 'prompt':
             await host.enqueueRequest({

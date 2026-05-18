@@ -53,6 +53,11 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       </div>
     </div>
     <div class="header-right">
+      <div class="mode-toggle" id="modeToggle" role="group" aria-label="Execution mode">
+        <button class="mode-btn" type="button" data-mode="default" title="Default mode">Default</button>
+        <button class="mode-btn" type="button" data-mode="plan" title="Plan mode">Plan</button>
+        <button class="mode-btn" type="button" data-mode="agent" title="Agent mode">Agent</button>
+      </div>
       <select id="modelSel"></select>
       <button class="btn-icon" id="historyBtn" title="Chat history">🕒</button>
       <button class="btn-icon" id="internetBtn" title="Live web: OFF">

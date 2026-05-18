@@ -13,6 +13,8 @@ const MODEL_CAPS_CACHE_TTL_MS = 60_000;
 const KNOWN_VISION_FAMILIES = [
     'gemma3',
     'gemma4',
+    'gemma 3',
+    'gemma 4',
     'llava',
     'bakllava',
     'moondream',
@@ -43,9 +45,17 @@ function normalizeCapabilities(payload: any): string[] {
         .map(value => value.toLowerCase());
 
     const hasVisionSignal = lowered.includes('vision')
+        || lowered.includes('multimodal')
+        || lowered.includes('multi-modal')
+        || lowered.includes('any-to-any')
+        || lowered.includes('any2any')
         || typeof payload?.projector_info === 'object'
+        || typeof payload?.mmproj_info === 'object'
         || typeof payload?.model_info?.['general.architecture'] === 'string' && payload.model_info['general.architecture'].toLowerCase().includes('vision')
-        || Array.isArray(payload?.details?.families) && payload.details.families.some((family: unknown) => typeof family === 'string' && family.toLowerCase().includes('vision'));
+        || typeof payload?.model_info?.['general.architecture'] === 'string' && /gemma\s*4|gemma4|gemma\s*3|gemma3/.test(payload.model_info['general.architecture'].toLowerCase())
+        || Array.isArray(payload?.details?.families) && inferVisionCapabilityFromStrings(
+            payload.details.families.filter((family: unknown): family is string => typeof family === 'string')
+        );
 
     return hasVisionSignal && !lowered.includes('vision')
         ? [...lowered, 'vision']
@@ -59,6 +69,14 @@ function inferVisionCapabilityFromStrings(values: Array<string | undefined>): bo
 
     return haystack.some(value =>
         value.includes('vision')
+        || value.includes('projector')
+        || value.includes('mmproj')
+        || value.includes('multimodal')
+        || value.includes('multi-modal')
+        || value.includes('any-to-any')
+        || value.includes('any2any')
+        || /gemma\s*3/.test(value)
+        || /gemma\s*4/.test(value)
         || value.includes('llava')
         || value.includes('bakllava')
         || value.includes('moondream')

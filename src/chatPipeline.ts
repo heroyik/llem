@@ -530,8 +530,13 @@ export class ChatPipeline {
             reqMessages[reqMessages.length - 1] = { role: 'user', content: contentParts };
         } else {
             const ollamaImages = imageFiles.map(img => img.data);
+            const contentParts: any[] = [{ type: 'text', text: String(reqMessages[reqMessages.length - 1].content || '') }];
+            for (const img of imageFiles) {
+                contentParts.push({ type: 'image', image: img.data });
+            }
             reqMessages[reqMessages.length - 1] = {
                 ...reqMessages[reqMessages.length - 1],
+                content: contentParts,
                 images: ollamaImages
             } as any;
         }
@@ -785,10 +790,9 @@ export class ChatPipeline {
     }
 
     /**
-     * B-3: 모델이 이미지(비전) 입력을 지원하는지 판단.
-     * 1) Ollama API capabilities에 'vision'이 있으면 true
-     * 2) 모델 이름에 멀티모달 모델 식별자(e4b, 26b, gemma4 등)가 있으면 true
-     * 어느 하나라도 해당되면 vision 지원으로 판단 (OR 로직).
+     * 모델이 이미지 입력을 지원하는지 판단.
+     * Ollama의 newer Gemma 계열은 capability가 비어 있어도 any-to-any/멀티모달로
+     * 동작할 수 있으므로 이름, family, 로컬 manifest, /api/show를 모두 OR로 본다.
      */
     private async modelSupportsVision(
         modelName: string,
@@ -802,10 +806,18 @@ export class ChatPipeline {
         // 이름 기반 휴리스틱: Modelfile에 capability 미선언된 모델도 커버
         const lower = modelName.toLowerCase();
         const nameMatch = (
+            /gemma\s*3/.test(lower) ||
+            /gemma\s*4/.test(lower) ||
             lower.includes('e4b') ||
             lower.includes('26b') ||
             lower.includes('gemma4') ||
+            lower.includes('gemma3') ||
             lower.includes('supergemma4') ||
+            lower.includes('multimodal') ||
+            lower.includes('multi-modal') ||
+            lower.includes('any-to-any') ||
+            lower.includes('any2any') ||
+            lower.includes('mmproj') ||
             lower.includes('llava') ||
             lower.includes('vision') ||
             lower.includes(':vl') ||
@@ -829,7 +841,20 @@ export class ChatPipeline {
 
         if (typeof installedModel?.family === 'string') {
             const family = installedModel.family.toLowerCase();
-            if (family.includes('vision') || family.includes('gemma4') || family.includes('llava') || family.includes('moondream')) {
+            if (
+                family.includes('vision') ||
+                family.includes('gemma4') ||
+                family.includes('gemma3') ||
+                /gemma\s*4/.test(family) ||
+                /gemma\s*3/.test(family) ||
+                family.includes('multimodal') ||
+                family.includes('multi-modal') ||
+                family.includes('any-to-any') ||
+                family.includes('any2any') ||
+                family.includes('mmproj') ||
+                family.includes('llava') ||
+                family.includes('moondream')
+            ) {
                 return { supportsVision: true, reason: `installed model family matched '${installedModel.family}'` };
             }
         }
