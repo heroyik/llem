@@ -174,11 +174,26 @@ export class ChatPipeline {
             if (!modelSupportsVision && attachments.imageFiles.length > 0) {
                 logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
+
+            // MLLM safe limit: rapid-mlx의 MLLM 스케줄러는 이미지+컨텍스트 합산 토큰 한계(2048)가 있음.
+            // 이미지가 포함된 요청에서는 히스토리를 [system, ...last N turns]으로 슬라이싱해서
+            // 토큰 초과 에러를 방지한다.
+            const MLLM_MAX_HISTORY_TURNS = 4; // system 1 + 최근 대화 메시지 최대 4개
+            if (imagesToSend.length > 0 && endpoint.engineKind === 'rapid-mlx') {
+                const systemMessages = reqMessages.filter(m => m.role === 'system');
+                const nonSystemMessages = reqMessages.filter(m => m.role !== 'system');
+                const trimmed = nonSystemMessages.slice(-MLLM_MAX_HISTORY_TURNS);
+                const before = reqMessages.length;
+                reqMessages.splice(0, reqMessages.length, ...systemMessages, ...trimmed);
+                logInfo(`[PIPELINE] MLLM history trim: ${before} → ${reqMessages.length} messages (rapid-mlx vision safe limit)`);
+            }
+
             this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
             if (imagesToSend.length > 0) {
                 const totalImageChars = imagesToSend.reduce((sum, image) => sum + String(image.data || '').length, 0);
                 logInfo(`[PIPELINE] Attached ${imagesToSend.length} image(s) to request for ${endpoint.engineKind || 'unknown'} (${totalImageChars} base64 chars).`);
             }
+
 
             this.host.postWebviewMessage({ type: 'streamStart' });
 
