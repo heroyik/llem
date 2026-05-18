@@ -20,6 +20,24 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
+### v3.6.0 — Codex-style composer, picker attachments, and reliable local vision payloads
+
+This release focuses on making the LLeM chat composer feel much closer to modern agent chat surfaces while also fixing the full pasted-image path across every supported local engine. The important bit: images pasted or attached in chat now stay attached as model input instead of nudging the assistant toward unrelated workspace images.
+
+- Added a Codex-style `/` command palette inside the chat input. Typing `/` now opens a keyboard-navigable menu for common LLeM commands such as `/agent`, `/plan`, `/default`, `/approve`, `/run-plan`, and `/list_mcp_tools`.
+- Added `@` file mention suggestions backed by the synchronized workspace file list. Typing `@` opens file candidates, supports path-style narrowing such as `@src/...`, and inserts the selected workspace path directly into the prompt.
+- Added keyboard controls for the composer suggestion menu: arrow keys move through choices, `Enter` or `Tab` accepts the current item, and `Esc` closes the menu without sending the prompt.
+- Made the chat input helper text reflect the new workflow: `Enter` sends, `Shift+Enter` adds a line, `/` opens commands, and `@` opens file references.
+- Clarified and instrumented the file attachment button path. The existing picker now explicitly supports image attachments in addition to audio and text/code files, so users do not need to rely on drag-and-drop to attach screenshots or book captures.
+- Fixed pasted/attached image forwarding for all supported local engines:
+  - **Ollama** now receives native `/api/chat` image input through `messages[].images`.
+  - **LM Studio** now receives OpenAI-compatible `image_url` content parts with data URLs.
+  - **Rapid-MLX** now receives MLX-VLM-style `input_image` content parts.
+- Split image request shaping into a dedicated helper so the engine-specific payload formats are testable and less likely to regress.
+- Added regression tests covering the three image payload formats: Ollama, LM Studio, and Rapid-MLX.
+- Updated diagnostics to include the detected local engine kind in stream request logs, making future image-routing issues easier to identify from logs.
+- Packaged `release/llem-3.6.0.vsix`.
+
 ### v3.5.13 — Cleaner modes, refreshed branding, and better Gemma vision support
 
 LLeM's latest release tightens the main chat controls and improves multimodal routing for local Ollama Gemma-family models.
@@ -39,8 +57,8 @@ Since **LLeM** is currently in early flight, we distribute it via `.vsix` files.
 ### 1. Download the Extension
 1. Go to the [LLeM GitHub Repository](https://github.com/heroyik/llem).
 2. Look at the **Releases** section on the right sidebar.
-3. Click on the latest release tag (for example, `v3.5.13`).
-4. Under the **Assets** section, click on the `.vsix` file (for example, `llem-3.5.13.vsix`) to download it to your machine.
+3. Click on the latest release tag (for example, `v3.6.0`).
+4. Under the **Assets** section, click on the `.vsix` file (for example, `llem-3.6.0.vsix`) to download it to your machine.
 
 ### 2. Install in VS Code or Cursor
 1. Open **VS Code** or **Cursor**.
@@ -615,3 +633,20 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Saved assistant replies consistently into chat history so follow-up turns keep the right conversation context
 - Updated the chat UI to distinguish truly empty replies from successful completed output
 - Packaged `release/llem-3.1.2.vsix`.
+
+## Release Notes
+
+### v3.6.0
+
+- Added a Codex-style `/` command palette inside the chat composer for quick access to `/agent`, `/plan`, `/default`, `/approve`, `/run-plan`, and `/list_mcp_tools`.
+- Added `@` workspace file mention suggestions with path-aware narrowing and keyboard selection.
+- Added suggestion menu keyboard handling: arrow keys navigate, `Enter`/`Tab` accept, and `Esc` closes the menu.
+- Updated the composer helper text so the new `/` command and `@` file workflows are discoverable from the input area.
+- Clarified the attachment picker path and kept image attachment support available outside drag-and-drop.
+- Fixed pasted and attached image payloads across all supported local engines:
+  - Ollama receives native `/api/chat` `messages[].images`.
+  - LM Studio receives OpenAI-compatible `image_url` content parts.
+  - Rapid-MLX receives MLX-VLM-style `input_image` content parts.
+- Split engine-specific image request shaping into a dedicated helper and added regression tests for Ollama, LM Studio, and Rapid-MLX payloads.
+- Added engine-kind logging to stream request diagnostics so future local runtime routing issues are easier to inspect.
+- Packaged `release/llem-3.6.0.vsix`.

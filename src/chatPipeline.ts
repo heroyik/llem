@@ -6,6 +6,7 @@ import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles
 import { PerfLogger } from './perfLogger';
 import { getEngineDisplayName, resolveAIEndpoint, streamCompletion } from './aiClient';
 import { buildContinuationSystemMessage } from './chatPipelineHelpers';
+import { attachImagesToChatMessages } from './imageRequestPayload';
 import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
 import { logInfo, logStreamEvent } from './logger';
@@ -163,12 +164,9 @@ export class ChatPipeline {
             const visionCheck = await this.modelSupportsVision(selectedModel, endpoint, installedModel);
             const modelSupportsVision = visionCheck.supportsVision;
             logInfo(`[PIPELINE] Vision check for '${selectedModel}': ${modelSupportsVision ? 'supported' : 'not supported'} (${visionCheck.reason})`);
-            const imagesToSend = modelSupportsVision ? attachments.imageFiles : [];
+            const imagesToSend = attachments.imageFiles;
             if (!modelSupportsVision && attachments.imageFiles.length > 0) {
-                logInfo(`[PIPELINE] Skipping ${attachments.imageFiles.length} image(s): model '${selectedModel}' does not appear to support vision input.`);
-                for (const img of attachments.imageFiles) {
-                    attachments.notices.push(`\n\n> 🖼️ **[Image skipped]** ${img.name}: the active model (\`${selectedModel}\`) does not support image input. Switch to a vision model or remove the image.\n\n`);
-                }
+                logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
             this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
 
@@ -517,29 +515,7 @@ export class ChatPipeline {
     }
 
     private attachImagesToRequest(endpoint: AIEndpoint, reqMessages: ChatMessage[], imageFiles: AttachedFile[]): void {
-        if (imageFiles.length === 0) {
-            return;
-        }
-
-        if (endpoint.isLMStudio) {
-            const lastUserMsg = reqMessages[reqMessages.length - 1];
-            const contentParts: any[] = [{ type: 'text', text: lastUserMsg.content }];
-            for (const img of imageFiles) {
-                contentParts.push({ type: 'image_url', image_url: { url: `data:${img.type || 'image/png'};base64,${img.data}` } });
-            }
-            reqMessages[reqMessages.length - 1] = { role: 'user', content: contentParts };
-        } else {
-            const ollamaImages = imageFiles.map(img => img.data);
-            const contentParts: any[] = [{ type: 'text', text: String(reqMessages[reqMessages.length - 1].content || '') }];
-            for (const img of imageFiles) {
-                contentParts.push({ type: 'image', image: img.data });
-            }
-            reqMessages[reqMessages.length - 1] = {
-                ...reqMessages[reqMessages.length - 1],
-                content: contentParts,
-                images: ollamaImages
-            } as any;
-        }
+        attachImagesToChatMessages(endpoint, reqMessages, imageFiles);
     }
 
     private async resolveInternalActions(

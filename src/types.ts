@@ -180,6 +180,7 @@ export interface QueueStatePayload {
 export interface AIEndpoint {
     apiUrl: string;
     isLMStudio: boolean;
+    engineKind?: 'ollama' | 'lm-studio' | 'rapid-mlx' | 'openai-compatible';
 }
 
 export interface StreamOptions {

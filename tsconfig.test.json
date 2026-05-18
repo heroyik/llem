@@ -16,6 +16,7 @@
     "src/aiClient.ts",
     "src/chatSession.ts",
     "src/chatPipelineHelpers.ts",
+    "src/imageRequestPayload.ts",
     "src/commandPolicy.ts",
     "src/designPlanningMode.ts",
     "src/editableFiles.ts",

@@ -45,6 +45,20 @@ function isOpenAICompatibleBase(baseUrl: string): boolean {
         || baseUrl.toLowerCase().includes('rapid-mlx');
 }
 
+function detectEngineKind(baseUrl: string): AIEndpoint['engineKind'] {
+    const lower = baseUrl.toLowerCase();
+    if (hasPort(baseUrl, '1234')) {
+        return 'lm-studio';
+    }
+    if (hasPort(baseUrl, '8000') || lower.includes('rapid-mlx')) {
+        return 'rapid-mlx';
+    }
+    if (isOpenAICompatibleBase(baseUrl)) {
+        return 'openai-compatible';
+    }
+    return 'ollama';
+}
+
 export function getEngineDisplayName(baseUrl: string): string {
     if (hasPort(baseUrl, '1234')) {
         return 'LM Studio';
@@ -61,6 +75,7 @@ export function getEngineDisplayName(baseUrl: string): string {
 export function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
     let base = stripTrailingSlash(baseUrl);
     const isLMStudio = isOpenAICompatibleBase(base);
+    const engineKind = detectEngineKind(base);
     if (base.endsWith('/chat/completions')) {
         base = stripTrailingSlash(base.slice(0, -'/chat/completions'.length));
     }
@@ -70,6 +85,7 @@ export function normalizeAIEndpoint(baseUrl: string): AIEndpoint {
 
     return {
         isLMStudio,
+        engineKind,
         apiUrl: isLMStudio ? `${base}/chat/completions` : `${base}/api/chat`
     };
 }
@@ -93,6 +109,7 @@ export async function resolveAIEndpoint(config: LlemConfig): Promise<AIEndpoint>
     } catch {
         const fallback = {
             isLMStudio: true,
+            engineKind: 'lm-studio' as const,
             apiUrl: 'http://127.0.0.1:1234/v1/chat/completions'
         };
         endpointCache = { baseUrl: config.ollamaBase, endpoint: fallback, expiresAt: now + ENDPOINT_CACHE_TTL_MS };
@@ -149,6 +166,7 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
     logStreamEvent(streamId, 'request_start', {
         endpoint: options.endpoint.apiUrl,
         isLMStudio: options.endpoint.isLMStudio,
+        engineKind: options.endpoint.engineKind || (options.endpoint.isLMStudio ? 'openai-compatible' : 'ollama'),
         modelName: options.modelName,
         timeoutMs: options.timeout,
         temperature: options.temperature,

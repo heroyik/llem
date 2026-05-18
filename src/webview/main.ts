@@ -63,6 +63,15 @@ interface QueueDraftPayload {
 
 type ExecutionMode = 'default' | 'plan' | 'agent';
 
+type SuggestKind = 'slash' | 'mention';
+
+interface SuggestItem {
+  label: string;
+  detail: string;
+  insertText: string;
+  kind: SuggestKind;
+}
+
 interface WebviewWindow extends Window {
   markdownit?: any;
 }
@@ -104,6 +113,7 @@ try {
   const mainView = document.getElementById('mainView');
   const chat = document.getElementById('chat');
   const input = document.getElementById('input') as HTMLTextAreaElement | null;
+  const inputSuggest = document.getElementById('inputSuggest');
   const sendBtn = document.getElementById('sendBtn');
   const stopBtn = document.getElementById('stopBtn');
   const modelSel = document.getElementById('modelSel') as HTMLSelectElement | null;
@@ -203,6 +213,9 @@ try {
   let streamChunkCount = 0;
   let historyItems: HistoryItem[] = [];
   let workspaceFiles = new Set<string>();
+  let suggestItems: SuggestItem[] = [];
+  let suggestSelectedIndex = 0;
+  let suggestTrigger: { kind: SuggestKind; start: number; end: number } | null = null;
   const STREAM_RENDER_INTERVAL = 80;
   const STREAM_META_INTERVAL = 250;
   const MAX_TEXT_ATTACHMENT_BYTES = 512 * 1024;
@@ -213,6 +226,14 @@ try {
     '.py', '.java', '.rs', '.go',
     '.yaml', '.yml', '.xml', '.toml'
   ]);
+  const SLASH_COMMANDS: SuggestItem[] = [
+    { kind: 'slash', label: '/agent', detail: 'Switch to autonomous agent mode', insertText: '/agent' },
+    { kind: 'slash', label: '/plan', detail: 'Switch to planning mode', insertText: '/plan' },
+    { kind: 'slash', label: '/default', detail: 'Switch to default mode', insertText: '/default' },
+    { kind: 'slash', label: '/approve', detail: 'Approve the current plan and run', insertText: '/approve' },
+    { kind: 'slash', label: '/run-plan', detail: 'Approve the current plan and run', insertText: '/run-plan' },
+    { kind: 'slash', label: '/list_mcp_tools', detail: 'Ask the agent to list available MCP tools', insertText: '/list_mcp_tools' }
+  ];
 
   function openImageLightbox(src: string, alt: string): void {
     if (!src || !imageLightboxImg || !imageLightboxCaption) return;
@@ -244,6 +265,148 @@ try {
   imageLightboxDialog?.addEventListener('click', function(event: MouseEvent) {
     event.stopPropagation();
   });
+
+  function hideInputSuggest(): void {
+    suggestItems = [];
+    suggestSelectedIndex = 0;
+    suggestTrigger = null;
+    if (inputSuggest) {
+      inputSuggest.hidden = true;
+      inputSuggest.innerHTML = '';
+    }
+  }
+
+  function getActiveSuggestTrigger(): { kind: SuggestKind; query: string; start: number; end: number } | null {
+    if (!input) return null;
+    const caret = input.selectionStart ?? 0;
+    const before = input.value.slice(0, caret);
+    const match = before.match(/(^|[\s([{])([/@])(\S*)$/);
+    if (!match) return null;
+    const token = match[2];
+    const query = match[3] || '';
+    if (token === '/' && query.includes('/')) return null;
+    const start = caret - token.length - query.length;
+    return {
+      kind: token === '/' ? 'slash' : 'mention',
+      query,
+      start,
+      end: caret
+    };
+  }
+
+  function scoreFileSuggestion(filePath: string, query: string): number {
+    const lower = filePath.toLowerCase();
+    const q = query.toLowerCase();
+    const base = lower.split('/').pop() || lower;
+    if (!q) return filePath.length;
+    if (base.startsWith(q)) return 0;
+    if (lower.startsWith(q)) return 1;
+    const baseIndex = base.indexOf(q);
+    if (baseIndex >= 0) return 10 + baseIndex;
+    const pathIndex = lower.indexOf(q);
+    if (pathIndex >= 0) return 50 + pathIndex;
+    return 9999;
+  }
+
+  function buildSuggestItems(kind: SuggestKind, query: string): SuggestItem[] {
+    if (kind === 'slash') {
+      const q = query.toLowerCase();
+      return SLASH_COMMANDS
+        .filter(function(item) {
+          return item.label.toLowerCase().includes(q) || item.detail.toLowerCase().includes(q);
+        })
+        .slice(0, 8);
+    }
+
+    return Array.from(workspaceFiles)
+      .map(function(filePath) {
+        return { filePath, score: scoreFileSuggestion(filePath, query) };
+      })
+      .filter(function(item) { return item.score < 9999; })
+      .sort(function(a, b) {
+        return a.score - b.score || a.filePath.length - b.filePath.length || a.filePath.localeCompare(b.filePath);
+      })
+      .slice(0, 12)
+      .map(function(item) {
+        const name = item.filePath.split('/').pop() || item.filePath;
+        return {
+          kind: 'mention',
+          label: name,
+          detail: item.filePath,
+          insertText: '@' + item.filePath
+        };
+      });
+  }
+
+  function renderInputSuggest(): void {
+    if (!inputSuggest) return;
+    const trigger = getActiveSuggestTrigger();
+    if (!trigger) {
+      hideInputSuggest();
+      return;
+    }
+
+    const items = buildSuggestItems(trigger.kind, trigger.query);
+    if (items.length === 0) {
+      hideInputSuggest();
+      return;
+    }
+
+    suggestTrigger = { kind: trigger.kind, start: trigger.start, end: trigger.end };
+    suggestItems = items;
+    suggestSelectedIndex = Math.min(suggestSelectedIndex, suggestItems.length - 1);
+    inputSuggest.innerHTML = '';
+    inputSuggest.hidden = false;
+    inputSuggest.dataset.kind = trigger.kind;
+
+    suggestItems.forEach(function(item, index) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'input-suggest-row' + (index === suggestSelectedIndex ? ' active' : '');
+      row.dataset.index = String(index);
+      const icon = document.createElement('span');
+      icon.className = 'input-suggest-icon';
+      icon.textContent = item.kind === 'slash' ? '/' : '@';
+      const copy = document.createElement('span');
+      copy.className = 'input-suggest-copy';
+      const label = document.createElement('span');
+      label.className = 'input-suggest-label';
+      label.textContent = item.label;
+      const detail = document.createElement('span');
+      detail.className = 'input-suggest-detail';
+      detail.textContent = item.detail;
+      copy.appendChild(label);
+      copy.appendChild(detail);
+      row.appendChild(icon);
+      row.appendChild(copy);
+      row.addEventListener('mouseenter', function() {
+        suggestSelectedIndex = index;
+        renderInputSuggest();
+      });
+      row.addEventListener('mousedown', function(event) {
+        event.preventDefault();
+        acceptInputSuggest(index);
+      });
+      inputSuggest.appendChild(row);
+    });
+  }
+
+  function acceptInputSuggest(index = suggestSelectedIndex): boolean {
+    if (!input || !suggestTrigger || suggestItems.length === 0) return false;
+    const item = suggestItems[Math.max(0, Math.min(index, suggestItems.length - 1))];
+    const before = input.value.slice(0, suggestTrigger.start);
+    const after = input.value.slice(suggestTrigger.end);
+    const suffix = after.startsWith(' ') || after.startsWith('\n') || after.length === 0 ? '' : ' ';
+    input.value = before + item.insertText + suffix + after;
+    const nextCaret = (before + item.insertText + suffix).length;
+    input.selectionStart = nextCaret;
+    input.selectionEnd = nextCaret;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    hideInputSuggest();
+    input.focus();
+    return true;
+  }
 
   function queueKindLabel(kind: QueueRequestSummary['kind']): string {
     if (kind === 'promptWithFile') return 'Files';
@@ -1980,6 +2143,18 @@ try {
     }
   });
 
+  input?.addEventListener('input', function() {
+    renderInputSuggest();
+  });
+
+  input?.addEventListener('click', function() {
+    renderInputSuggest();
+  });
+
+  input?.addEventListener('blur', function() {
+    window.setTimeout(hideInputSuggest, 120);
+  });
+
   // Attach button is handled below.
 
   // InjectLocalBtn is handled below.
@@ -2062,6 +2237,30 @@ try {
   });
   safeListen(input, 'keydown', function(event) {
     const keyboardEvent = event as KeyboardEvent;
+    if (inputSuggest && !inputSuggest.hidden && suggestItems.length > 0) {
+      if (keyboardEvent.key === 'ArrowDown') {
+        event.preventDefault();
+        suggestSelectedIndex = (suggestSelectedIndex + 1) % suggestItems.length;
+        renderInputSuggest();
+        return;
+      }
+      if (keyboardEvent.key === 'ArrowUp') {
+        event.preventDefault();
+        suggestSelectedIndex = (suggestSelectedIndex - 1 + suggestItems.length) % suggestItems.length;
+        renderInputSuggest();
+        return;
+      }
+      if (keyboardEvent.key === 'Enter' || keyboardEvent.key === 'Tab') {
+        event.preventDefault();
+        acceptInputSuggest();
+        return;
+      }
+      if (keyboardEvent.key === 'Escape') {
+        event.preventDefault();
+        hideInputSuggest();
+        return;
+      }
+    }
     if (!shouldSubmitOnEnter({
       key: keyboardEvent.key,
       shiftKey: keyboardEvent.shiftKey,
@@ -2154,6 +2353,7 @@ try {
     renderPreview();
   });
   safeListen(attachBtn, 'click', function() {
+    log('[UI] Attach button clicked');
     if (fileInput) fileInput.click();
   });
   safeListen(fileInput, 'change', function() {
@@ -2429,6 +2629,7 @@ try {
       case 'workspaceFilesList':
         workspaceFiles = new Set(msg.value || []);
         log('[FILES] Synchronized ' + workspaceFiles.size + ' workspace file path(s)');
+        renderInputSuggest();
         rerenderDisplayedMessages();
         if (streamPreviewEl && streamRaw) {
           if (streamPreviewEl.classList.contains('stream-preview-final')) {

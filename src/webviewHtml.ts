@@ -103,7 +103,10 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
           <span class="edit-banner-label" id="editBannerLabel">Editing this message in a new branch</span>
           <button class="edit-banner-cancel" id="cancelEditBtn" type="button">Cancel</button>
         </div>
-        <textarea id="input" rows="1" placeholder="What are we building today?"></textarea>
+        <div class="composer-surface">
+          <textarea id="input" rows="1" placeholder="What are we building today?"></textarea>
+          <div class="input-suggest" id="inputSuggest" hidden></div>
+        </div>
         <div class="input-footer">
           <label class="mode-select-wrap" for="modeSel" title="Execution mode">
             <span class="mode-select-label">Mode</span>
@@ -113,9 +116,9 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
               <option value="agent">Agent</option>
             </select>
           </label>
-          <span class="input-hint">Enter sends · Shift+Enter adds a line · Drop files to attach</span>
+          <span class="input-hint">Enter sends · Shift+Enter adds a line · / commands · @ files</span>
           <div class="input-btns">
-            <button class="attach-btn" id="attachBtn" title="Attach files">📎</button>
+            <button class="attach-btn" id="attachBtn" title="Attach files, including images">📎</button>
             <button class="attach-btn" id="injectLocalBtn" title="Drop files into the vault">✦</button>
             <button class="stop-btn" id="stopBtn" title="Stop generating">■</button>
             <button class="send-btn" id="sendBtn" title="Send message">↑</button>
