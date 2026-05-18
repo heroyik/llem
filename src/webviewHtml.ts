@@ -142,6 +142,33 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
   </div>
 
+  <div id="mcpModal" class="modal-overlay">
+    <div class="modal modal-wide">
+      <div class="modal-title-row">
+        <div>
+          <div class="modal-title">MCP Servers</div>
+          <div class="modal-subtitle">Enable or disable tool servers for the next request.</div>
+        </div>
+        <button id="closeMcpModalBtn" class="btn-secondary btn-compact" type="button">Close</button>
+      </div>
+      <div class="mcp-toolbar">
+        <label class="mcp-global-toggle">
+          <input id="mcpGlobalToggle" type="checkbox">
+          <span>MCP runtime</span>
+        </label>
+        <div class="mcp-toolbar-actions">
+          <button id="refreshMcpBtn" class="btn-secondary btn-compact" type="button">Refresh</button>
+          <button id="reloadMcpBtn" class="btn-secondary btn-compact" type="button">Reload</button>
+          <button id="syncMcpBtn" class="btn-secondary btn-compact" type="button">Sync Codex</button>
+          <button id="importMcpBtn" class="btn-secondary btn-compact" type="button">Import</button>
+          <button id="moreSettingsBtn" class="btn-secondary btn-compact" type="button">More</button>
+        </div>
+      </div>
+      <div id="mcpStatus" class="mcp-status"></div>
+      <div id="mcpServerList" class="mcp-server-list"></div>
+    </div>
+  </div>
+
   <script nonce="${nonce}" src="${markdownItUri}"></script>
   <script nonce="${nonce}" src="${mainScriptUri}"></script>
 </body>

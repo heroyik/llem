@@ -67,6 +67,12 @@ interface PreparedAttachments {
     prunedChars: number;
 }
 
+function normalizeImageData(data: unknown): string {
+    const raw = String(data || '').trim();
+    const dataUrlMatch = raw.match(/^data:[^;]+;base64,(.*)$/i);
+    return dataUrlMatch ? dataUrlMatch[1].trim() : raw;
+}
+
 const DEFAULT_BACKGROUND_LABEL = 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED';
 const MAX_TEXT_ATTACHMENT_CHARS = 20000;
 const MAX_TEXT_ATTACHMENT_DECODE_BYTES = 96 * 1024;
@@ -169,6 +175,10 @@ export class ChatPipeline {
                 logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
             this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
+            if (imagesToSend.length > 0) {
+                const totalImageChars = imagesToSend.reduce((sum, image) => sum + String(image.data || '').length, 0);
+                logInfo(`[PIPELINE] Attached ${imagesToSend.length} image(s) to request for ${endpoint.engineKind || 'unknown'} (${totalImageChars} base64 chars).`);
+            }
 
             this.host.postWebviewMessage({ type: 'streamStart' });
 
@@ -438,14 +448,22 @@ export class ChatPipeline {
             const size = file.originalSize ?? estimateBase64Bytes(file.data);
 
             if (type.startsWith('image/')) {
+                const imageData = normalizeImageData(file.data);
+                if (!imageData) {
+                    prepared.displayFiles.push({ name: file.name, type, data: '' });
+                    prepared.notices.push(`\n\n> 📎 **[Image skipped]** ${file.name}: the pasted image data was empty before the model request.\n\n`);
+                    logInfo(`[PIPELINE] Skipped image attachment '${file.name}' because data was empty.`);
+                    continue;
+                }
                 if (size > MAX_IMAGE_ATTACHMENT_BYTES) {
                     prepared.displayFiles.push({ name: file.name, type, data: '' });
                     prepared.notices.push(`\n\n> 📎 **[Image skipped]** ${file.name}: ${formatBytes(size)} is too large for the model request. Max supported size is ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}.\n\n`);
+                    logInfo(`[PIPELINE] Skipped image attachment '${file.name}' because ${formatBytes(size)} exceeds ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}.`);
                     continue;
                 }
 
-                prepared.imageFiles.push({ ...file, type });
-                prepared.displayFiles.push({ name: file.name, type, data: file.data });
+                prepared.imageFiles.push({ ...file, type, data: imageData });
+                prepared.displayFiles.push({ name: file.name, type, data: imageData });
                 continue;
             }
 

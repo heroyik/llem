@@ -13,6 +13,15 @@ function textContentOf(message: ChatMessage | undefined): string {
         : String(message.content || '');
 }
 
+function findLastUserMessageIndex(messages: ChatMessage[]): number {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        if (messages[index]?.role === 'user') {
+            return index;
+        }
+    }
+    return -1;
+}
+
 export function attachImagesToChatMessages(
     endpoint: AIEndpoint,
     messages: ChatMessage[],
@@ -22,11 +31,16 @@ export function attachImagesToChatMessages(
         return;
     }
 
-    const lastUserMsg = messages[messages.length - 1];
+    const targetIndex = findLastUserMessageIndex(messages);
+    if (targetIndex < 0) {
+        return;
+    }
+
+    const lastUserMsg = messages[targetIndex];
     const text = textContentOf(lastUserMsg);
 
     if (endpoint.engineKind === 'ollama' || !endpoint.isLMStudio) {
-        messages[messages.length - 1] = {
+        messages[targetIndex] = {
             ...lastUserMsg,
             content: text,
             images: imageFiles.map(img => img.data)
@@ -41,7 +55,7 @@ export function attachImagesToChatMessages(
         return { type: 'image_url', image_url: { url: dataUrlForImage(img) } };
     });
 
-    messages[messages.length - 1] = {
+    messages[targetIndex] = {
         role: 'user',
         content: [
             { type: 'text', text },

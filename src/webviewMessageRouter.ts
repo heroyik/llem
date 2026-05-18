@@ -34,6 +34,12 @@ export interface WebviewMessageRouterHost {
     requestDeleteHistory(id: string, title: string): Promise<void>;
     requestClearAllHistory(): Promise<void>;
     getWorkspaceFiles(): Promise<void>;
+    getMcpServers(): Promise<void>;
+    setGlobalMcpEnabled(enabled: boolean): Promise<void>;
+    setMcpServerEnabled(name: string, enabled: boolean): Promise<void>;
+    reloadMcpServers(): Promise<void>;
+    syncCodexMcpServers(): Promise<void>;
+    importMcpFromGitHub(): Promise<void>;
     setDefaultModel(modelName: string): Promise<void>;
     setExecutionMode(mode: 'default' | 'plan' | 'agent'): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
@@ -46,6 +52,24 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'getWorkspaceFiles':
             await host.getWorkspaceFiles();
+            break;
+        case 'getMcpServers':
+            await host.getMcpServers();
+            break;
+        case 'setGlobalMcpEnabled':
+            await host.setGlobalMcpEnabled(Boolean(message.enabled));
+            break;
+        case 'setMcpServerEnabled':
+            await host.setMcpServerEnabled(String(message.name || ''), Boolean(message.enabled));
+            break;
+        case 'reloadMcpServers':
+            await host.reloadMcpServers();
+            break;
+        case 'syncCodexMcpServers':
+            await host.syncCodexMcpServers();
+            break;
+        case 'importMcpFromGitHub':
+            await host.importMcpFromGitHub();
             break;
         case 'setDefaultModel':
             await host.setDefaultModel(message.model);

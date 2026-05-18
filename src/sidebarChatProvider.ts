@@ -35,6 +35,7 @@ import { RequestRetryGuard } from './requestRetryGuard';
 import { McpManager } from './mcp/mcpManager';
 import { syncCodexMcpServers } from './mcp/mcpCodexSync';
 import { importMcpFromGitHubUrl } from './mcp/mcpGithubImport';
+import { listMcpServerUiState, setGlobalMcpEnabled, setMcpServerEnabled } from './mcp/mcpServerControl';
 import { executionModeLabel, normalizeExecutionMode, type ExecutionMode } from './executionMode';
 import { PerfLogger, type PerfMetrics } from './perfLogger';
 import {
@@ -559,6 +560,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             requestDeleteHistory: (id, title) => this.requestDeleteHistory(id, title),
             requestClearAllHistory: () => this.requestClearAllHistory(),
             getWorkspaceFiles: () => this._sendWorkspaceFiles(),
+            getMcpServers: () => this._sendMcpServers(),
+            setGlobalMcpEnabled: (enabled) => this._setGlobalMcpEnabled(enabled),
+            setMcpServerEnabled: (name, enabled) => this._setMcpServerEnabled(name, enabled),
+            reloadMcpServers: () => this.reloadMcpServers(),
+            syncCodexMcpServers: () => this.syncCodexMcpServers(),
+            importMcpFromGitHub: () => this.importMcpFromGitHub(),
             setDefaultModel: (modelName) => this._setDefaultModel(modelName),
             setExecutionMode: (mode) => this.setExecutionMode(mode),
             log: (message, level) => {
@@ -622,7 +629,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         internetEnabled?: boolean;
         messageIndex?: number;
     }): Promise<void> {
-        const kind = input.kind;
+        const files = input.files || [];
+        const kind = input.kind === 'prompt' && files.length > 0 ? 'promptWithFile' : input.kind;
         if (!kind) {
             return;
         }
@@ -654,7 +662,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             kind,
             prompt: String(input.prompt || ''),
             modelName: String(input.modelName || this._lastModel || ''),
-            files: input.files || [],
+            files,
             internetEnabled: input.internetEnabled,
             messageIndex: input.messageIndex
         });
@@ -1322,7 +1330,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _runPromptWithFilesNow(prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean) {
         if (!this._view) { logError('[PROMPT] handlePromptWithFile called but no view', false); return; }
-        logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', internet=' + !!internetEnabled + ')');
+        const imageCount = files.filter(file => String(file.type || '').startsWith('image/')).length;
+        const imageDataChars = files
+            .filter(file => String(file.type || '').startsWith('image/'))
+            .reduce((sum, file) => sum + String(file.data || '').length, 0);
+        logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', images=' + imageCount + ', imageDataChars=' + imageDataChars + ', internet=' + !!internetEnabled + ')');
         return await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
     }
 
@@ -1338,7 +1350,27 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             injectSystemMessage: (message) => this.injectSystemMessage(message),
             invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
             listMcpTools: () => this._mcpManager.listTools(),
-            callMcpTool: (server, tool, args) => this._mcpManager.callTool(server, tool, args),
+            callMcpTool: async (server, tool, args) => {
+                const startedAt = Date.now();
+                this._view?.webview.postMessage({
+                    type: 'mcpToolStatus',
+                    state: 'running',
+                    server,
+                    tool,
+                    startedAt
+                });
+                try {
+                    return await this._mcpManager.callTool(server, tool, args);
+                } finally {
+                    this._view?.webview.postMessage({
+                        type: 'mcpToolStatus',
+                        state: 'done',
+                        server,
+                        tool,
+                        durationMs: Date.now() - startedAt
+                    });
+                }
+            },
             getExecutionMode: () => this._executionMode
         });
     }
@@ -1516,6 +1548,43 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._view.webview.postMessage({ type: 'workspaceFilesList', value: relativePaths });
         } catch (err) {
             logError('[WEBVIEW] Failed to fetch workspace files: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    private async _sendMcpServers(): Promise<void> {
+        if (!this._view) { return; }
+        try {
+            const state = await listMcpServerUiState();
+            this._view.webview.postMessage({ type: 'mcpServersList', value: state });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logError('[MCP] Failed to list MCP servers for UI: ' + message);
+            this._view.webview.postMessage({ type: 'mcpServersError', value: message });
+        }
+    }
+
+    private async _setGlobalMcpEnabled(enabled: boolean): Promise<void> {
+        try {
+            await setGlobalMcpEnabled(enabled);
+            await this._mcpManager.reload();
+            await this._sendMcpServers();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logError('[MCP] Failed to toggle MCP runtime: ' + message);
+            this._view?.webview.postMessage({ type: 'mcpServersError', value: message });
+        }
+    }
+
+    private async _setMcpServerEnabled(name: string, enabled: boolean): Promise<void> {
+        try {
+            await setMcpServerEnabled(name, enabled);
+            await this._mcpManager.reload();
+            await this._sendMcpServers();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logError('[MCP] Failed to toggle MCP server ' + name + ': ' + message);
+            this._view?.webview.postMessage({ type: 'mcpServersError', value: message });
+            await this._sendMcpServers();
         }
     }
 

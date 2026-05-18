@@ -19,6 +19,20 @@ test('Ollama image attachments use native messages[].images', () => {
   assert.deepEqual(messages[0].images, ['abc123']);
 });
 
+test('image attachments target the latest user message when context follows it', () => {
+  const endpoint = { apiUrl: 'http://127.0.0.1:11434/api/chat', isLMStudio: false, engineKind: 'ollama' };
+  const messages = [
+    { role: 'system', content: 'system context' },
+    { role: 'user', content: 'Describe this image.' },
+    { role: 'assistant', content: 'placeholder' }
+  ];
+
+  attachImagesToChatMessages(endpoint, messages, [image]);
+
+  assert.deepEqual(messages[1].images, ['abc123']);
+  assert.equal(messages[2].images, undefined);
+});
+
 test('LM Studio image attachments use OpenAI image_url content parts', () => {
   const endpoint = { apiUrl: 'http://127.0.0.1:1234/v1/chat/completions', isLMStudio: true, engineKind: 'lm-studio' };
   const messages = [{ role: 'user', content: 'Describe this image.' }];

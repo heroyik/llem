@@ -30,6 +30,11 @@ This patch makes `/ctx_stats` truthful inside the LLeM VS Code extension. The co
 - Added context breakdown details for prompt estimate, final request size, history, attachments, active editor, workspace, vault context, pruned messages, pruned attachments, vault scan timing, and stream timing.
 - Kept the output in a preserved plain-text block so spacing and line breaks remain readable in the chat transcript.
 - Added a `PerfLogger.snapshot()` API so UI commands can safely read the latest LLeM performance counters without mutating diagnostics.
+- Hardened pasted-image request routing after log review showed LLeM received `files=1` but did not log whether the actual model request contained image payload data. Image attachments are now normalized before dispatch, empty pasted-image data is skipped with a visible notice, prompt requests with files are forced onto the file-aware path, and stream request logs include Ollama image counts/base64 size plus OpenAI-compatible image part counts.
+- Made image payload insertion target the latest user message instead of assuming the last request message is always the user turn, so future context-building changes cannot accidentally attach images to a trailing assistant/system message.
+- Added an in-chat MCP Servers panel from the settings button. It lists resolved MCP servers with source, transport, command, and enabled state, supports global MCP runtime toggling, and lets editable LLeM/Codex-synced servers be enabled or disabled immediately without editing settings JSON.
+- Added MCP panel controls for refresh, runtime reload, Codex MCP sync, GitHub MCP import, and the existing advanced settings picker. Workspace/custom source servers are shown read-only with their source path so the UI does not silently rewrite external config files.
+- Added live MCP tool activity in the response status bar. While an MCP server is executing a tool, LLeM now shows the active server and function name, for example `context-mode · ctx_batch_execute`, then restores the normal live-output state when the call completes.
 - Packaged `release/llem-3.6.1.vsix`.
 
 ### v3.6.0 — Codex-style composer, picker attachments, and reliable local vision payloads
@@ -656,6 +661,9 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Changed `/ctx_stats` to report LLeM-local chat/context statistics instead of Codex CLI context-mode adapter data.
 - Added local stats output for saved LLeM sessions, current chat messages, model/profile, context sizes, pruning, vault scan timing, and stream timing.
 - Added `PerfLogger.snapshot()` for read-only access to the latest LLeM Performance metrics.
+- Hardened pasted-image dispatch by validating image data, forcing file-bearing prompts through the file-aware path, attaching images to the latest user message, and logging outgoing image payload counts/sizes.
+- Added a webview MCP Servers panel with per-server enable/disable toggles for editable LLeM and Codex-synced servers plus global MCP runtime controls.
+- Added live MCP tool status during generation so the chat shows which server/tool is currently running.
 - Packaged `release/llem-3.6.1.vsix`.
 
 ### v3.6.0

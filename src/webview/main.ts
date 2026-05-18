@@ -52,6 +52,24 @@ interface QueueStatePayload {
   pendingRequests: QueueRequestSummary[];
 }
 
+interface McpServerUiState {
+  name: string;
+  enabled: boolean;
+  editable: boolean;
+  sourceKind: string;
+  sourcePath?: string;
+  transport: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  disabledReason?: string;
+}
+
+interface McpServerListUiState {
+  mcpEnabled: boolean;
+  servers: McpServerUiState[];
+}
+
 interface QueueDraftPayload {
   kind: 'prompt' | 'promptWithFile' | 'editMessage' | 'regenerate';
   prompt: string;
@@ -145,6 +163,16 @@ try {
   const thinkingBar = document.getElementById('thinkingBar');
   const settingsBtn = document.getElementById('settingsBtn');
   const modeSel = document.getElementById('modeSel') as HTMLSelectElement | null;
+  const mcpModal = document.getElementById('mcpModal');
+  const closeMcpModalBtn = document.getElementById('closeMcpModalBtn');
+  const mcpGlobalToggle = document.getElementById('mcpGlobalToggle') as HTMLInputElement | null;
+  const refreshMcpBtn = document.getElementById('refreshMcpBtn');
+  const reloadMcpBtn = document.getElementById('reloadMcpBtn');
+  const syncMcpBtn = document.getElementById('syncMcpBtn');
+  const importMcpBtn = document.getElementById('importMcpBtn');
+  const moreSettingsBtn = document.getElementById('moreSettingsBtn');
+  const mcpStatus = document.getElementById('mcpStatus');
+  const mcpServerList = document.getElementById('mcpServerList');
   const imageLightbox = document.createElement('div');
   imageLightbox.className = 'image-lightbox';
   imageLightbox.hidden = true;
@@ -170,6 +198,7 @@ try {
   let lastQueuePaused = false;
   let internetEnabled = false;
   let executionMode: ExecutionMode = 'default';
+  let mcpServersState: McpServerListUiState = { mcpEnabled: true, servers: [] };
   let inputCompositionActive = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
@@ -211,6 +240,7 @@ try {
   let streamLastRender = 0;
   let streamStartedAt = 0;
   let streamChunkCount = 0;
+  let activeMcpToolLabel = '';
   let historyItems: HistoryItem[] = [];
   let workspaceFiles = new Set<string>();
   let suggestItems: SuggestItem[] = [];
@@ -1424,6 +1454,7 @@ try {
   function updateStreamMeta(): void {
     if (!streamMetaEl) return;
     const parts = [formatElapsed(Date.now() - streamStartedAt)];
+    if (activeMcpToolLabel) parts.push(activeMcpToolLabel);
     if (streamChunkCount > 0) parts.push(streamChunkCount + ' chunk' + (streamChunkCount === 1 ? '' : 's'));
     if (streamRaw.length > 0) parts.push(streamRaw.length + ' chars');
     streamMetaEl.textContent = parts.join(' · ');
@@ -1448,6 +1479,33 @@ try {
     streamLastRender = 0;
     streamStartedAt = 0;
     streamChunkCount = 0;
+    activeMcpToolLabel = '';
+  }
+
+  function formatMcpToolLabel(server: string, tool: string): string {
+    return [server, tool].filter(Boolean).join(' · ') || 'MCP tool';
+  }
+
+  function setMcpToolStatus(msg: any): void {
+    const label = formatMcpToolLabel(String(msg.server || ''), String(msg.tool || ''));
+    if (msg.state === 'running') {
+      activeMcpToolLabel = label;
+      if (streamStatusEl) streamStatusEl.className = 'stream-status live mcp-active';
+      if (streamStatusTitleEl) streamStatusTitleEl.textContent = label;
+      updateStreamMeta();
+      return;
+    }
+
+    if (activeMcpToolLabel === label) {
+      activeMcpToolLabel = '';
+    }
+    if (streamStatusEl && streamStatusEl.classList.contains('mcp-active')) {
+      streamStatusEl.className = streamRaw.length > 0 ? 'stream-status live' : 'stream-status pending';
+    }
+    if (streamStatusTitleEl) {
+      streamStatusTitleEl.textContent = streamRaw.length > 0 ? 'Live output' : 'Warming up output';
+    }
+    updateStreamMeta();
   }
 
   function appendRegenButton(target: HTMLElement | null): void {
@@ -2033,6 +2091,87 @@ try {
     }
   }
 
+  function showMcpModal(): void {
+    if (!mcpModal) return;
+    mcpModal.classList.add('visible');
+    setMcpStatus('Loading MCP servers...');
+    vscode.postMessage({ type: 'getMcpServers' });
+  }
+
+  function hideMcpModal(): void {
+    if (!mcpModal) return;
+    mcpModal.classList.remove('visible');
+  }
+
+  function setMcpStatus(message: string): void {
+    if (!mcpStatus) return;
+    mcpStatus.textContent = message;
+  }
+
+  function mcpServerCommand(server: McpServerUiState): string {
+    if (server.command) {
+      return [server.command].concat(server.args || []).join(' ');
+    }
+    return server.url || server.transport || '';
+  }
+
+  function renderMcpServers(state: McpServerListUiState): void {
+    mcpServersState = state || { mcpEnabled: true, servers: [] };
+    if (mcpGlobalToggle) {
+      mcpGlobalToggle.checked = Boolean(mcpServersState.mcpEnabled);
+    }
+    if (!mcpServerList) return;
+    mcpServerList.innerHTML = '';
+    const servers = mcpServersState.servers || [];
+    setMcpStatus(servers.length > 0
+      ? servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' found.'
+      : 'No MCP servers configured.');
+    servers.forEach(function(server) {
+      const row = document.createElement('div');
+      row.className = 'mcp-server-row' + (server.enabled ? '' : ' mcp-server-disabled') + (server.editable ? '' : ' mcp-server-readonly');
+
+      const main = document.createElement('div');
+      main.className = 'mcp-server-main';
+      const title = document.createElement('div');
+      title.className = 'mcp-server-title';
+      title.textContent = server.name;
+      const meta = document.createElement('div');
+      meta.className = 'mcp-server-meta';
+      meta.textContent = [
+        server.sourceKind,
+        server.transport,
+        mcpServerCommand(server)
+      ].filter(Boolean).join(' · ');
+      main.appendChild(title);
+      main.appendChild(meta);
+      if (server.disabledReason) {
+        const reason = document.createElement('div');
+        reason.className = 'mcp-server-reason';
+        reason.textContent = server.disabledReason;
+        main.appendChild(reason);
+      }
+
+      const toggleLabel = document.createElement('label');
+      toggleLabel.className = 'mcp-switch';
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.checked = Boolean(server.enabled);
+      toggle.disabled = !server.editable;
+      toggle.addEventListener('change', function() {
+        setMcpStatus((toggle.checked ? 'Enabling ' : 'Disabling ') + server.name + '...');
+        vscode.postMessage({ type: 'setMcpServerEnabled', name: server.name, enabled: toggle.checked });
+      });
+      const visual = document.createElement('span');
+      visual.className = 'mcp-switch-ui';
+      toggleLabel.appendChild(toggle);
+      toggleLabel.appendChild(visual);
+
+      row.appendChild(main);
+      row.appendChild(toggleLabel);
+      mcpServerList.appendChild(row);
+    });
+  }
+
   // History, internet, and other listeners are now handled below via safeListen.
 
   function postQueuedRequest(request: {
@@ -2298,7 +2437,37 @@ try {
   });
   safeListen(settingsBtn, 'click', function() {
     log('[UI] Settings button clicked');
+    showMcpModal();
+  });
+  safeListen(closeMcpModalBtn, 'click', hideMcpModal);
+  mcpModal?.addEventListener('click', function(event: MouseEvent) {
+    if (event.target === mcpModal) {
+      hideMcpModal();
+    }
+  });
+  safeListen(refreshMcpBtn, 'click', function() {
+    setMcpStatus('Refreshing MCP servers...');
+    vscode.postMessage({ type: 'getMcpServers' });
+  });
+  safeListen(reloadMcpBtn, 'click', function() {
+    setMcpStatus('Reloading MCP runtime...');
+    vscode.postMessage({ type: 'reloadMcpServers' });
+  });
+  safeListen(syncMcpBtn, 'click', function() {
+    setMcpStatus('Syncing Codex MCP servers...');
+    vscode.postMessage({ type: 'syncCodexMcpServers' });
+  });
+  safeListen(importMcpBtn, 'click', function() {
+    setMcpStatus('Opening MCP import flow...');
+    vscode.postMessage({ type: 'importMcpFromGitHub' });
+  });
+  safeListen(moreSettingsBtn, 'click', function() {
     vscode.postMessage({ type: 'openSettings' });
+  });
+  safeListen(mcpGlobalToggle, 'change', function() {
+    const enabled = Boolean(mcpGlobalToggle?.checked);
+    setMcpStatus((enabled ? 'Enabling' : 'Disabling') + ' MCP runtime...');
+    vscode.postMessage({ type: 'setGlobalMcpEnabled', enabled: enabled });
   });
   safeListen(modeSel, 'change', function() {
     const nextMode = normalizeExecutionMode(modeSel?.value);
@@ -2444,8 +2613,11 @@ try {
         }
         if (msg.value) streamChunkCount += 1;
         if (streamStatusEl) streamStatusEl.className = 'stream-status live';
-        if (streamStatusTitleEl && streamRaw.length > 0) streamStatusTitleEl.textContent = 'Live output';
+        if (streamStatusTitleEl && streamRaw.length > 0 && !activeMcpToolLabel) streamStatusTitleEl.textContent = 'Live output';
         scheduleStreamRender(false);
+        break;
+      case 'mcpToolStatus':
+        setMcpToolStatus(msg);
         break;
       case 'streamEnd':
         log('[STREAM] Stream ended (chunks=' + streamChunkCount + ', chars=' + streamRaw.length + ')');
@@ -2640,6 +2812,12 @@ try {
             streamPreviewEl.textContent = streamPreviewRaw;
           }
         }
+        break;
+      case 'mcpServersList':
+        renderMcpServers((msg.value || { mcpEnabled: true, servers: [] }) as McpServerListUiState);
+        break;
+      case 'mcpServersError':
+        setMcpStatus('Error: ' + (msg.value || 'Could not load MCP servers.'));
         break;
       default:
         log('[MSG←] Unhandled message type: ' + msg.type, 'error');

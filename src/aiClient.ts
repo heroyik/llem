@@ -15,14 +15,24 @@ function createStreamId(): string {
 }
 
 function summarizeMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
-    return messages.map((message, index) => ({
-        index,
-        role: message.role,
-        contentType: Array.isArray(message.content) ? 'array' : typeof message.content,
-        charLength: typeof message.content === 'string'
-            ? message.content.length
-            : JSON.stringify(message.content || '').length
-    }));
+    return messages.map((message, index) => {
+        const contentArray = Array.isArray(message.content) ? message.content : [];
+        const imageUrlParts = contentArray.filter((part: any) =>
+            part?.type === 'image_url' || part?.type === 'input_image'
+        );
+        const ollamaImages = Array.isArray((message as any).images) ? (message as any).images : [];
+        return {
+            index,
+            role: message.role,
+            contentType: Array.isArray(message.content) ? 'array' : typeof message.content,
+            charLength: typeof message.content === 'string'
+                ? message.content.length
+                : JSON.stringify(message.content || '').length,
+            ollamaImageCount: ollamaImages.length,
+            ollamaImageBytes: ollamaImages.reduce((sum: number, data: unknown) => sum + String(data || '').length, 0),
+            imagePartCount: imageUrlParts.length
+        };
+    });
 }
 
 export function stripTrailingSlash(value: string): string {

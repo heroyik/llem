@@ -32,6 +32,12 @@ function createHost() {
     requestDeleteHistory: async (id, title) => { calls.push(['requestDeleteHistory', id, title]); },
     requestClearAllHistory: async () => { calls.push(['requestClearAllHistory']); },
     getWorkspaceFiles: async () => { calls.push(['getWorkspaceFiles']); },
+    getMcpServers: async () => { calls.push(['getMcpServers']); },
+    setGlobalMcpEnabled: async (enabled) => { calls.push(['setGlobalMcpEnabled', enabled]); },
+    setMcpServerEnabled: async (name, enabled) => { calls.push(['setMcpServerEnabled', name, enabled]); },
+    reloadMcpServers: async () => { calls.push(['reloadMcpServers']); },
+    syncCodexMcpServers: async () => { calls.push(['syncCodexMcpServers']); },
+    importMcpFromGitHub: async () => { calls.push(['importMcpFromGitHub']); },
     setDefaultModel: async (modelName) => { calls.push(['setDefaultModel', modelName]); },
     setExecutionMode: async (mode) => { calls.push(['setExecutionMode', mode]); },
     log: (message, level) => { calls.push(['log', message, level]); }
@@ -61,6 +67,26 @@ test('routeWebviewMessage maps prompt messages into enqueue requests', async () 
       internetEnabled: true
     }
   ]]);
+});
+
+test('routeWebviewMessage forwards MCP server UI actions', async () => {
+  const { host, calls } = createHost();
+
+  await routeWebviewMessage({ type: 'getMcpServers' }, host);
+  await routeWebviewMessage({ type: 'setGlobalMcpEnabled', enabled: false }, host);
+  await routeWebviewMessage({ type: 'setMcpServerEnabled', name: 'context7', enabled: true }, host);
+  await routeWebviewMessage({ type: 'reloadMcpServers' }, host);
+  await routeWebviewMessage({ type: 'syncCodexMcpServers' }, host);
+  await routeWebviewMessage({ type: 'importMcpFromGitHub' }, host);
+
+  assert.deepEqual(calls, [
+    ['getMcpServers'],
+    ['setGlobalMcpEnabled', false],
+    ['setMcpServerEnabled', 'context7', true],
+    ['reloadMcpServers'],
+    ['syncCodexMcpServers'],
+    ['importMcpFromGitHub']
+  ]);
 });
 
 test('routeWebviewMessage forwards queue control messages', async () => {
