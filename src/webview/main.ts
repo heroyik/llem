@@ -134,7 +134,7 @@ try {
   const dropOverlay = document.getElementById('dropOverlay');
   const thinkingBar = document.getElementById('thinkingBar');
   const settingsBtn = document.getElementById('settingsBtn');
-  const modeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-btn[data-mode]'));
+  const modeSel = document.getElementById('modeSel') as HTMLSelectElement | null;
   const imageLightbox = document.createElement('div');
   imageLightbox.className = 'image-lightbox';
   imageLightbox.hidden = true;
@@ -179,14 +179,10 @@ try {
 
   function setExecutionModeUi(mode: ExecutionMode) {
     executionMode = normalizeExecutionMode(mode);
-    modeButtons.forEach(function(btn) {
-      const active = btn.dataset.mode === executionMode;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', String(active));
-    });
-    const modeToggle = document.getElementById('modeToggle');
-    if (modeToggle) {
-      modeToggle.title = executionModeLabel(executionMode);
+    if (modeSel) {
+      modeSel.value = executionMode;
+      modeSel.title = executionModeLabel(executionMode);
+      modeSel.dataset.mode = executionMode;
     }
   }
 
@@ -2105,13 +2101,11 @@ try {
     log('[UI] Settings button clicked');
     vscode.postMessage({ type: 'openSettings' });
   });
-  modeButtons.forEach(function(btn) {
-    safeListen(btn, 'click', function() {
-      const nextMode = normalizeExecutionMode(btn.dataset.mode);
-      log('[UI] Execution mode selected: ' + nextMode);
-      setExecutionModeUi(nextMode);
-      vscode.postMessage({ type: 'setExecutionMode', mode: nextMode });
-    });
+  safeListen(modeSel, 'change', function() {
+    const nextMode = normalizeExecutionMode(modeSel?.value);
+    log('[UI] Execution mode selected: ' + nextMode);
+    setExecutionModeUi(nextMode);
+    vscode.postMessage({ type: 'setExecutionMode', mode: nextMode });
   });
   safeListen(brainBtn, 'click', function() {
     log('[UI] Brain sync button clicked');

@@ -53,11 +53,6 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
       </div>
     </div>
     <div class="header-right">
-      <div class="mode-toggle" id="modeToggle" role="group" aria-label="Execution mode">
-        <button class="mode-btn" type="button" data-mode="default" title="Default mode">Default</button>
-        <button class="mode-btn" type="button" data-mode="plan" title="Plan mode">Plan</button>
-        <button class="mode-btn" type="button" data-mode="agent" title="Agent mode">Agent</button>
-      </div>
       <select id="modelSel"></select>
       <button class="btn-icon" id="historyBtn" title="Chat history">🕒</button>
       <button class="btn-icon" id="internetBtn" title="Live web: OFF">
@@ -110,6 +105,14 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
         </div>
         <textarea id="input" rows="1" placeholder="What are we building today?"></textarea>
         <div class="input-footer">
+          <label class="mode-select-wrap" for="modeSel" title="Execution mode">
+            <span class="mode-select-label">Mode</span>
+            <select id="modeSel" aria-label="Execution mode">
+              <option value="default">Default</option>
+              <option value="plan">Plan</option>
+              <option value="agent">Agent</option>
+            </select>
+          </label>
           <span class="input-hint">Enter sends · Shift+Enter adds a line · Drop files to attach</span>
           <div class="input-btns">
             <button class="attach-btn" id="attachBtn" title="Attach files">📎</button>
