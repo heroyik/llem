@@ -56,6 +56,10 @@ export const PerfLogger = {
         Object.assign(metrics, updates);
     },
 
+    snapshot(): PerfMetrics {
+        return { ...metrics };
+    },
+
     log(message: string): void {
         const time = new Date().toLocaleTimeString('en-US', { hour12: false });
         getPerfChannel().appendLine(`[${time}] ${message}`);

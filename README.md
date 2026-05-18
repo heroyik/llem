@@ -20,6 +20,18 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
+### v3.6.1 — LLeM-local context stats for `/ctx_stats`
+
+This patch makes `/ctx_stats` truthful inside the LLeM VS Code extension. The command now reports statistics from LLeM's own chat history and context-building metrics instead of forwarding to context-mode's Codex CLI adapter and showing Codex chat data.
+
+- Changed `/ctx_stats` so it is handled locally by LLeM when typed in the LLeM chat composer.
+- Replaced Codex CLI context-mode adapter output with LLeM-specific stats sourced from saved LLeM chat history and LLeM Performance metrics.
+- Added current-chat stats for total messages, user messages, assistant messages, session id, model/profile, and last update time.
+- Added context breakdown details for prompt estimate, final request size, history, attachments, active editor, workspace, vault context, pruned messages, pruned attachments, vault scan timing, and stream timing.
+- Kept the output in a preserved plain-text block so spacing and line breaks remain readable in the chat transcript.
+- Added a `PerfLogger.snapshot()` API so UI commands can safely read the latest LLeM performance counters without mutating diagnostics.
+- Packaged `release/llem-3.6.1.vsix`.
+
 ### v3.6.0 — Codex-style composer, picker attachments, and reliable local vision payloads
 
 This release focuses on making the LLeM chat composer feel much closer to modern agent chat surfaces while also fixing the full pasted-image path across every supported local engine. The important bit: images pasted or attached in chat now stay attached as model input instead of nudging the assistant toward unrelated workspace images.
@@ -36,6 +48,9 @@ This release focuses on making the LLeM chat composer feel much closer to modern
 - Split image request shaping into a dedicated helper so the engine-specific payload formats are testable and less likely to regress.
 - Added regression tests covering the three image payload formats: Ollama, LM Studio, and Rapid-MLX.
 - Updated diagnostics to include the detected local engine kind in stream request logs, making future image-routing issues easier to identify from logs.
+- Fixed direct context-mode slash output rendering so `/ctx_stats` preserves its original bars, spacing, separators, and line breaks in the LLeM chat instead of being flattened by Markdown.
+- Changed `/ctx_stats` inside LLeM so it reports LLeM-local context statistics from LLeM chat history and LLeM Performance metrics instead of forwarding the command to context-mode's Codex CLI adapter. The output now summarizes saved LLeM conversations, current chat message counts, prompt/request size, history, attachments, active editor, workspace, vault context, pruning, and stream timing.
+- Fixed `/list_mcp_tools` slash handling so it runs as the built-in MCP tool listing action without also producing a bogus "MCP slash command not found" error.
 - Packaged `release/llem-3.6.0.vsix`.
 
 ### v3.5.13 — Cleaner modes, refreshed branding, and better Gemma vision support
@@ -636,6 +651,13 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ## Release Notes
 
+### v3.6.1
+
+- Changed `/ctx_stats` to report LLeM-local chat/context statistics instead of Codex CLI context-mode adapter data.
+- Added local stats output for saved LLeM sessions, current chat messages, model/profile, context sizes, pruning, vault scan timing, and stream timing.
+- Added `PerfLogger.snapshot()` for read-only access to the latest LLeM Performance metrics.
+- Packaged `release/llem-3.6.1.vsix`.
+
 ### v3.6.0
 
 - Added a Codex-style `/` command palette inside the chat composer for quick access to `/agent`, `/plan`, `/default`, `/approve`, `/run-plan`, and `/list_mcp_tools`.
@@ -649,4 +671,7 @@ This release focuses on making agentic file edits visible, debuggable, and easie
   - Rapid-MLX receives MLX-VLM-style `input_image` content parts.
 - Split engine-specific image request shaping into a dedicated helper and added regression tests for Ollama, LM Studio, and Rapid-MLX payloads.
 - Added engine-kind logging to stream request diagnostics so future local runtime routing issues are easier to inspect.
+- Fixed direct context-mode slash output rendering so `/ctx_stats` displays as preserved plain text inside LLeM.
+- Changed `/ctx_stats` to render LLeM-local chat/context statistics from LLeM history and performance metrics instead of showing Codex CLI context-mode adapter data.
+- Fixed `/list_mcp_tools` slash handling so it does not double-run as an unresolved MCP tool command.
 - Packaged `release/llem-3.6.0.vsix`.

@@ -36,6 +36,7 @@ import { McpManager } from './mcp/mcpManager';
 import { syncCodexMcpServers } from './mcp/mcpCodexSync';
 import { importMcpFromGitHubUrl } from './mcp/mcpGithubImport';
 import { executionModeLabel, normalizeExecutionMode, type ExecutionMode } from './executionMode';
+import { PerfLogger, type PerfMetrics } from './perfLogger';
 import {
     cancelPendingRequest,
     clearPendingRequests,
@@ -78,6 +79,8 @@ function renderMcpSlashResultMessage(content: string): string | undefined {
     if (!content.startsWith('[SYSTEM: MCP slash command result]')) {
         return undefined;
     }
+    const commandMatch = content.match(/^Command:\s*\/([^\s]+)/m);
+    const command = commandMatch ? commandMatch[1].replace(/-/g, '_') : '';
     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
     if (!jsonMatch) {
         return undefined;
@@ -86,7 +89,11 @@ function renderMcpSlashResultMessage(content: string): string | undefined {
         const parsed = JSON.parse(jsonMatch[1]);
         const textParts = extractMcpTextParts(parsed);
         if (textParts.length > 0) {
-            return textParts.join('\n\n');
+            const text = textParts.join('\n\n');
+            if (command === 'ctx_stats') {
+                return `\`\`\`text\n${text}\n\`\`\``;
+            }
+            return text;
         }
         return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
     } catch {
@@ -100,6 +107,25 @@ function collectMcpSlashResultMessages(messages: ChatMessage[], startIndex: numb
         .filter(message => message.role === 'user')
         .map(message => renderMcpSlashResultMessage(message.content))
         .filter((message): message is string => !!message);
+}
+
+function formatApproxKb(chars: number): string {
+    if (!Number.isFinite(chars) || chars <= 0) {
+        return '0 KB';
+    }
+    const kb = chars / 1024;
+    return kb >= 10 ? `${kb.toFixed(1)} KB` : `${kb.toFixed(2)} KB`;
+}
+
+function formatMs(ms: number): string {
+    if (!Number.isFinite(ms) || ms <= 0) {
+        return '0 ms';
+    }
+    return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms.toFixed(1)} ms`;
+}
+
+function countRole(messages: Array<{ role?: string }>, role: string): number {
+    return messages.filter(message => message.role === role).length;
 }
 const MAX_DROPPED_TEXT_BYTES = 512 * 1024;
 const IMAGE_ATTACHMENT_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
@@ -651,12 +677,31 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         this._chatSession.chatHistory.push({ role: 'user', content: promptText });
         this._chatSession.displayMessages.push({ role: 'user', text: promptText, feedback: null });
+
+        const localSlashResponse = await this._tryBuildLocalSlashResponse(actions);
+        if (localSlashResponse) {
+            await this._appendSlashResponse(localSlashResponse);
+            return true;
+        }
+
         const resultStartIndex = this._chatSession.chatHistory.length;
         const report = await this._executeActions(promptText);
         const resultMessages = collectMcpSlashResultMessages(this._chatSession.chatHistory, resultStartIndex);
         const responseText = resultMessages.length > 0
             ? resultMessages.join('\n\n')
             : report.length > 0 ? report.map(item => `> ${item}`).join('\n') : '> MCP slash command completed.';
+        await this._appendSlashResponse(responseText);
+        return true;
+    }
+
+    private async _tryBuildLocalSlashResponse(actions: ReturnType<typeof parseMcpSlashCommandActions>): Promise<string | undefined> {
+        if (actions.length !== 1 || actions[0].command !== 'ctx_stats') {
+            return undefined;
+        }
+        return this._buildLlemContextStatsMessage();
+    }
+
+    private async _appendSlashResponse(responseText: string): Promise<void> {
         this._chatSession.chatHistory.push({ role: 'assistant', content: responseText });
         this._chatSession.displayMessages.push({ role: 'ai', text: responseText, feedback: null });
         this._view?.webview.postMessage({
@@ -665,7 +710,62 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             messageIndex: this._chatSession.displayMessages.length - 1
         });
         await this.saveHistory();
-        return true;
+    }
+
+    private async _buildLlemContextStatsMessage(): Promise<string> {
+        const metrics = PerfLogger.snapshot();
+        const history = await this._historyManager.listSessions();
+        const sessionCount = history.some(item => item.id === this._chatSession.id)
+            ? history.length
+            : history.length + 1;
+        const savedMessageCount = await this._countSavedDisplayMessages(history.map(item => item.id));
+        const currentDisplayCount = this._chatSession.displayMessages.length;
+        const totalMessages = Math.max(savedMessageCount, currentDisplayCount);
+        const userMessages = countRole(this._chatSession.displayMessages, 'user');
+        const assistantMessages = countRole(this._chatSession.displayMessages, 'ai') + countRole(this._chatSession.displayMessages, 'assistant');
+        const lastUpdated = new Date(this._chatSession.lastModified || Date.now()).toLocaleString();
+
+        const lines = [
+            `you ran ${sessionCount} conversations in LLeM.`,
+            '',
+            'LLeM context-mode stats',
+            `context build ${formatMs(metrics.contextBuildMs)} | vault scan ${formatMs(metrics.vaultScanMs)} | ${metrics.vaultFileCount} vault files`,
+            `${formatApproxKb(metrics.finalRequestChars)} entered context | ${metrics.prunedMessages} messages pruned | ${formatApproxKb(metrics.prunedAttachmentChars)} attachments pruned`,
+            '',
+            this._formatContextBreakdown(metrics),
+            '',
+            'Current LLeM chat',
+            `${currentDisplayCount} messages | ${userMessages} user | ${assistantMessages} assistant`,
+            `model ${metrics.modelName || '(unknown)'} | profile ${metrics.performancePreset || '(unknown)'}`,
+            `stream ${formatMs(metrics.streamTotalMs)} | ${metrics.streamTotalTokens} tokens | ${metrics.streamTokensPerSecond.toFixed(1)} tokens/sec`,
+            `session ${this._chatSession.id}`,
+            `updated ${lastUpdated}`,
+            '',
+            'Persistent LLeM history preserved across compact, restart & upgrade',
+            `${sessionCount} sessions | ${totalMessages} visible messages indexed locally`,
+            '~/.llem-history',
+            '',
+            'Source: LLeM chat history and LLeM Performance metrics, not Codex CLI.'
+        ];
+
+        return `\`\`\`text\n${lines.join('\n')}\n\`\`\``;
+    }
+
+    private _formatContextBreakdown(metrics: PerfMetrics): string {
+        return [
+            `Prompt estimate ${formatApproxKb(metrics.promptSizeEstimateChars)} | final request ${formatApproxKb(metrics.finalRequestChars)}`,
+            `History ${formatApproxKb(metrics.historyChars)} | attachments ${formatApproxKb(metrics.attachmentChars)}`,
+            `Active editor ${formatApproxKb(metrics.activeEditorChars)} | workspace ${formatApproxKb(metrics.workspaceChars)} | vault ${formatApproxKb(metrics.vaultChars)}`
+        ].join('\n');
+    }
+
+    private async _countSavedDisplayMessages(sessionIds: string[]): Promise<number> {
+        let count = 0;
+        for (const id of sessionIds) {
+            const session = await this._historyManager.getSession(id);
+            count += session?.displayMessages?.length || 0;
+        }
+        return count;
     }
 
     private isMcpDirectCommandLine(line: string): boolean {

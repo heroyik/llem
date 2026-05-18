@@ -63,6 +63,8 @@ test('parseUrlActions trims requested URLs', () => {
 
 test('parse MCP action tags', () => {
   assert.equal(parseListMcpToolsActions('<list_mcp_tools/>').length, 1);
+  assert.equal(parseListMcpToolsActions('/list_mcp_tools').length, 1);
+  assert.equal(parseListMcpToolsActions('/list-mcp-tools').length, 1);
   assert.deepEqual(parseCallMcpToolActions('<call_mcp_tool server="github" tool="list_issues">{"state":"open"}</call_mcp_tool>'), [
     { server: 'github', tool: 'list_issues', body: '{"state":"open"}' }
   ]);
@@ -87,6 +89,7 @@ test('parse MCP slash commands from line starts', () => {
   assert.deepEqual(parseMcpSlashCommandActions('before\n  /ctx_query {"q":"notes"}\nafter'), [
     { command: 'ctx_query', body: '{"q":"notes"}' }
   ]);
+  assert.deepEqual(parseMcpSlashCommandActions('/list_mcp_tools'), []);
   assert.deepEqual(parseMcpSlashCommandActions('not a /ctx_stats command'), []);
 });
 

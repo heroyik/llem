@@ -83,7 +83,10 @@ export function parseUrlActions(message: string): TextAction[] {
 }
 
 export function parseListMcpToolsActions(message: string): TextAction[] {
-    return [...String(message || '').matchAll(/(?:<|call:)\s*list_mcp_tools\s*\/?>(?:<\/list_mcp_tools>)?/gi)].map(() => ({ text: '' }));
+    const value = String(message || '');
+    const tagActions = [...value.matchAll(/(?:<|call:)\s*list_mcp_tools\s*\/?>(?:<\/list_mcp_tools>)?/gi)].map(() => ({ text: '' }));
+    const slashActions = [...value.matchAll(/(?:^|\n)[ \t]*\/list[_-]mcp[_-]tools(?:[ \t]*$)?/gi)].map(() => ({ text: '' }));
+    return [...tagActions, ...slashActions];
 }
 
 export function parseCallMcpToolActions(message: string): McpToolAction[] {
@@ -103,8 +106,12 @@ export function parseMcpSlashCommandActions(message: string): McpSlashCommandAct
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(String(message || ''))) !== null) {
+        const command = normalizeMcpCommandName(match[1].trim());
+        if (command === 'list_mcp_tools') {
+            continue;
+        }
         actions.push({
-            command: normalizeMcpCommandName(match[1].trim()),
+            command,
             body: String(match[2] || '').trim()
         });
     }
