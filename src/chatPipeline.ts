@@ -5,7 +5,7 @@ import { getConfig } from './config';
 import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
 import { getEngineDisplayName, resolveAIEndpoint, streamCompletion } from './aiClient';
-import { buildContinuationSystemMessage } from './chatPipelineHelpers';
+import { buildContinuationSystemMessage, normalizeChatMessages } from './chatPipelineHelpers';
 import { attachImagesToChatMessages } from './imageRequestPayload';
 import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery';
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
@@ -657,6 +657,10 @@ export class ChatPipeline {
         let firstTokenTime = 0;
         let tokenCount = 0;
 
+        const normalizedMessages = normalizeChatMessages(messages);
+        const roles = normalizedMessages.map(m => m.role);
+        logInfo(`[PIPELINE] Normalized messages for stream: roles=${JSON.stringify(roles)}`);
+
         // Repetition Watchdog
         const watchdog = new RepetitionWatchdog();
         let loopDetected = false;
@@ -684,7 +688,7 @@ export class ChatPipeline {
         try {
             const result = await streamCompletion({
                 endpoint,
-                messages,
+                messages: normalizedMessages,
                 modelName,
                 timeout,
                 temperature: this.host.getTemperature(),

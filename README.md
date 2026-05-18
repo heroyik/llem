@@ -656,6 +656,11 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ## Release Notes
 
+### v3.6.5
+
+- Fix repeating output / loop error in multimodal chat by implementing strict role alternation and chat message normalization
+- Packaged `release/llem-3.6.5.vsix`.
+
 ### v3.6.4
 
 - Fix MLLM token cap error for rapid-mlx engine without image attachments
