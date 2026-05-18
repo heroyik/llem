@@ -18,7 +18,7 @@ function summarizeMessages(messages: ChatMessage[]): Array<Record<string, unknow
     return messages.map((message, index) => {
         const contentArray = Array.isArray(message.content) ? message.content : [];
         const imageUrlParts = contentArray.filter((part: any) =>
-            part?.type === 'image_url' || part?.type === 'input_image'
+            part?.type === 'image_url'
         );
         const ollamaImages = Array.isArray((message as any).images) ? (message as any).images : [];
         return {

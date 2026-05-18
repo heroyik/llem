@@ -49,9 +49,6 @@ export function attachImagesToChatMessages(
     }
 
     const imageParts = imageFiles.map(img => {
-        if (endpoint.engineKind === 'rapid-mlx') {
-            return { type: 'input_image', image_url: dataUrlForImage(img) };
-        }
         return { type: 'image_url', image_url: { url: dataUrlForImage(img) } };
     });
 

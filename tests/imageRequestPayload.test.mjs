@@ -46,7 +46,7 @@ test('LM Studio image attachments use OpenAI image_url content parts', () => {
   ]);
 });
 
-test('Rapid-MLX image attachments use MLX-VLM input_image content parts', () => {
+test('Rapid-MLX image attachments use OpenAI image_url content parts', () => {
   const endpoint = { apiUrl: 'http://127.0.0.1:8000/v1/chat/completions', isLMStudio: true, engineKind: 'rapid-mlx' };
   const messages = [{ role: 'user', content: 'Describe this image.' }];
 
@@ -55,6 +55,6 @@ test('Rapid-MLX image attachments use MLX-VLM input_image content parts', () => 
   assert.equal(endpoint.engineKind, 'rapid-mlx');
   assert.deepEqual(messages[0].content, [
     { type: 'text', text: 'Describe this image.' },
-    { type: 'input_image', image_url: 'data:image/png;base64,abc123' }
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,abc123' } }
   ]);
 });
