@@ -175,12 +175,13 @@ export class ChatPipeline {
                 logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
 
-            // MLLM safe limit: rapid-mlx의 MLLM 스케줄러는 prefill_step_size(기본 2048 토큰) 한도가 있음.
-            // 이미지 토큰(~256~1024)을 포함하면 텍스트 컨텍스트 예산이 크게 줄어드므로
-            // chars÷4 로 토큰을 추정하여 한도 내에 들어오도록 동적으로 히스토리를 트리밍한다.
-            const MLLM_TOKEN_HARD_CAP = 1500; // 2048 - 이미지(~300) - 안전 여유(~250)
+            // MLLM safe limit: rapid-mlx의 MLLM 스케줄러는 --mllm 플래그 사용 시
+            // 이미지 유무와 관계없이 prefill_step_size(기본 2048 토큰) 한도가 항상 적용됨.
+            // chars÷2 로 토큰을 추정하여 한도 내에 들어오도록 동적으로 히스토리를 트리밍한다.
+            // 이미지가 있으면 이미지 토큰(~300)만큼 예산을 추가 감산한다.
             const MLLM_CHARS_PER_TOKEN = 2;   // 보수적 추정: 한국어 ~2.7 chars/token, 혼합 기준 2로 설정
-            if (imagesToSend.length > 0 && endpoint.engineKind === 'rapid-mlx') {
+            const MLLM_TOKEN_HARD_CAP = imagesToSend.length > 0 ? 1500 : 1800; // 이미지 있으면 토큰 예산 감산
+            if (endpoint.engineKind === 'rapid-mlx') {
                 const estimateTokens = (msg: ChatMessage): number => {
                     const text = typeof msg.content === 'string'
                         ? msg.content

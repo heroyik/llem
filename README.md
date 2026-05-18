@@ -656,6 +656,11 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ## Release Notes
 
+### v3.6.4
+
+- Fix MLLM token cap error for rapid-mlx engine without image attachments
+- Packaged `release/llem-3.6.4.vsix`.
+
 ### v3.6.1
 
 - Changed `/ctx_stats` to report LLeM-local chat/context statistics instead of Codex CLI context-mode adapter data.
