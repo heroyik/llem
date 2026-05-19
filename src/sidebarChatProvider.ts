@@ -136,7 +136,21 @@ const TEXT_ATTACHMENT_EXTENSIONS = new Set([
     'txt', 'md', 'csv', 'json',
     'js', 'ts', 'html', 'css',
     'py', 'java', 'rs', 'go',
-    'yaml', 'yml', 'xml', 'toml'
+    'yaml', 'yml', 'xml', 'toml',
+    // Code:
+    'c', 'cpp', 'h', 'hpp', 'cxx', 'cc', 'hh',
+    'rb', 'php', 'sh', 'bash', 'zsh', 'fish',
+    'swift', 'kt', 'kts',
+    'svelte', 'vue',
+    'jsx', 'tsx', 'mjs', 'cjs',
+    'scss', 'less', 'styl',
+    'sql', 'proto',
+    // Build/config:
+    'gradle', 'cmake', 'makefile',
+    'dockerfile',
+    'env', 'gitignore', 'editorconfig', 'prettierrc', 'eslintrc',
+    // Shell:
+    'ps1', 'bat', 'cmd'
 ]);
 
 function cleanDroppedUriString(uriString: string): string {
@@ -580,6 +594,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             resetRapidMlxParams: () => this._resetRapidMlxParams(),
             resetSystemPromptFromWebview: () => this._resetSystemPromptFromWebview(),
             getSettingsData: () => this._sendSettingsData(),
+            fetchFileContent: (path, requestId) => this._fetchFileContent(path, requestId),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -1154,6 +1169,52 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             void vscode.window.showErrorMessage(`Could not open link: ${value}`);
             logError('[LINK] Failed to open external URL: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    private async _fetchFileContent(path: string, requestId?: string): Promise<void> {
+        if (!this._view) { return; }
+        logInfo(`[FETCH] fetchFileContent start requestId=${requestId || 'none'} path=${path}`);
+
+        let uri: vscode.Uri;
+        if (path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path)) {
+            uri = vscode.Uri.file(path);
+        } else {
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+            if (!workspaceRoot) { return; }
+            uri = vscode.Uri.joinPath(workspaceRoot, path);
+        }
+
+        const name = basenameFromUri(uri);
+        const type = attachmentTypeFromName(name);
+
+        try {
+            const stat = await vscode.workspace.fs.stat(uri);
+            if (stat.type === vscode.FileType.Directory) { return; }
+
+            const limit = type.startsWith('image/') ? MAX_DROPPED_IMAGE_BYTES : MAX_DROPPED_TEXT_BYTES;
+            if (stat.size > limit) {
+                logInfo(`[FETCH] fetchFileContent skipped too large requestId=${requestId || 'none'} name=${name} bytes=${stat.size} limit=${limit}`);
+                return;
+            }
+
+            const bytes = await vscode.workspace.fs.readFile(uri);
+            const data = Buffer.from(bytes).toString('base64');
+
+            logInfo(`[FETCH] fetchFileContent read requestId=${requestId || 'none'} name=${name} type=${type} bytes=${bytes.length} encodedChars=${data.length}`);
+            this._view.webview.postMessage({
+                type: 'injectAttachment',
+                value: {
+                    name,
+                    type,
+                    data,
+                    sourceUri: uri.toString(true),
+                    requestId,
+                    originalSize: stat.size
+                }
+            });
+        } catch (err) {
+            logError(`[FETCH] fetchFileContent failed requestId=${requestId || 'none'} name=${name} path=${path}: ${summarizeDropError(err)}`);
         }
     }
 

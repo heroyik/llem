@@ -280,7 +280,21 @@ try {
     '.txt', '.md', '.csv', '.json',
     '.js', '.ts', '.html', '.css',
     '.py', '.java', '.rs', '.go',
-    '.yaml', '.yml', '.xml', '.toml'
+    '.yaml', '.yml', '.xml', '.toml',
+    // Code:
+    '.c', '.cpp', '.h', '.hpp', '.cxx', '.cc', '.hh',
+    '.rb', '.php', '.sh', '.bash', '.zsh', '.fish',
+    '.swift', '.kt', '.kts',
+    '.svelte', '.vue',
+    '.jsx', '.tsx', '.mjs', '.cjs',
+    '.scss', '.less', '.styl',
+    '.sql', '.proto',
+    // Build/config:
+    '.gradle', '.cmake', '.makefile',
+    '.dockerfile',
+    '.env', '.gitignore', '.editorconfig', '.prettierrc', '.eslintrc',
+    // Shell:
+    '.ps1', '.bat', '.cmd'
   ]);
   const SLASH_COMMANDS: SuggestItem[] = [
     { kind: 'slash', label: '/agent', detail: 'Switch to autonomous agent mode', insertText: '/agent' },
@@ -461,6 +475,15 @@ try {
     input.style.height = Math.min(input.scrollHeight, 150) + 'px';
     hideInputSuggest();
     input.focus();
+    // If this was an @ mention, send fetchFileContent to read and attach the file
+    if (item.kind === 'mention') {
+      const filePath = item.detail;
+      vscode.postMessage({
+        type: 'fetchFileContent',
+        requestId: 'mention-' + Date.now(),
+        path: filePath
+      });
+    }
     return true;
   }
 
@@ -1724,11 +1747,9 @@ try {
       'files=' + files.map(function(file) { return file.name + ':' + file.size + ':' + (file.type || 'unknown'); }).join('|'),
       'items=' + items.map(function(item) { return item.kind + ':' + (item.type || 'unknown'); }).join('|')
     ].join(', ');
-  }
-
-  function canAcceptDropEvent(event: DragEvent): boolean {
-    return Boolean(event && event.shiftKey && hasFilePayload(event));
-  }
+  }function canAcceptDropEvent(event: DragEvent): boolean {
+    return Boolean(event && hasFilePayload(event));
+}
 
   function acceptDropEvent(event: DragEvent): void {
     event.preventDefault();
@@ -1795,10 +1816,8 @@ try {
     }
     const types = getLowerTransferTypes(transfer);
     const items = Array.from(transfer.items || []);
-    // Include 'text/plain' to catch some VS Code file/tree drag actions.
     return types.includes('files') ||
            types.includes('text/uri-list') ||
-           types.includes('text/plain') ||
            types.some(isVsCodeDragType) ||
            items.some(function(item) { return item.kind === 'file'; });
   }
@@ -2582,15 +2601,24 @@ try {
         return;
       }
     }
-    // Arrow Up/Down history navigation (when suggestions are not active)
+    // Arrow Up: history navigation (only when cursor is at start or already in history)
     if (keyboardEvent.key === 'ArrowUp' && !inputCompositionActive && userMessageHistory.length > 0) {
-      event.preventDefault();
-      navigateHistory(-1);
-      return;
+      const isAtStart = (input?.selectionStart ?? 0) === 0;
+      if (isAtStart || historyIndex >= 0) {
+        event.preventDefault();
+        navigateHistory(-1);
+        return;
+      }
     }
+    // Arrow Down: history navigation (only when already in history mode)
     if (keyboardEvent.key === 'ArrowDown' && !inputCompositionActive && historyIndex >= 0) {
       event.preventDefault();
       navigateHistory(1);
+      return;
+    }
+    // Prevent ArrowUp/ArrowDown from scrolling the page when nothing else handles them
+    if ((keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'ArrowDown') && !inputCompositionActive) {
+      event.preventDefault();
       return;
     }
     if (!shouldSubmitOnEnter({

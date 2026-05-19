@@ -39,7 +39,8 @@ export function attachImagesToChatMessages(
     const lastUserMsg = messages[targetIndex];
     const text = textContentOf(lastUserMsg);
 
-    if (endpoint.engineKind === 'ollama' || !endpoint.isLMStudio) {
+    if (endpoint.engineKind === 'ollama') {
+        // Ollama native format: uses `images` array field
         messages[targetIndex] = {
             ...lastUserMsg,
             content: text,
@@ -48,6 +49,7 @@ export function attachImagesToChatMessages(
         return;
     }
 
+    // All other engines (Rapid-MLX, LM Studio, OpenAI-compatible): use OpenAI image_url format
     const imageParts = imageFiles.map(img => {
         return { type: 'image_url', image_url: { url: dataUrlForImage(img) } };
     });

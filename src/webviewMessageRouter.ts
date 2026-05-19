@@ -49,6 +49,7 @@ export interface WebviewMessageRouterHost {
     resetRapidMlxParams(): Promise<void>;
     resetSystemPromptFromWebview(): Promise<void>;
     getSettingsData(): Promise<void>;
+    fetchFileContent(path: string, requestId?: string): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
 }
 
@@ -216,6 +217,9 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'requestClearAllHistory':
             await host.requestClearAllHistory();
+            break;
+        case 'fetchFileContent':
+            await host.fetchFileContent(message.path, message.requestId);
             break;
         case 'log':
             if (message.level === 'error') {
