@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { extractStreamToken, parseStreamBuffer } = require('../out-test/streamParsing.js');
+const { buildStreamBody } = require('../out-test/streamBody.js');
 
 test('extractStreamToken reads LM Studio delta arrays and message fallback', () => {
   const deltaToken = extractStreamToken(
@@ -69,4 +70,24 @@ test('parseStreamBuffer preserves partial chunks and flushes trailing content on
   assert.equal(partial.remainder, '{"message":{"role":"assistant","content":"lo"}}');
   assert.deepEqual(flushed.tokens, ['lo']);
   assert.equal(flushed.remainder, '');
+});
+
+test('buildStreamBody sends Rapid-MLX/OpenAI-compatible repetition controls', () => {
+  const body = buildStreamBody(
+    'gemma-4-26b',
+    [{ role: 'user', content: [{ type: 'text', text: 'Describe' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } }] }],
+    true,
+    0.2,
+    0.85,
+    20,
+    undefined,
+    2048,
+    1.12
+  );
+
+  assert.equal(body.max_tokens, 2048);
+  assert.equal(body.temperature, 0.2);
+  assert.equal(body.top_p, 0.85);
+  assert.equal(body.top_k, 20);
+  assert.equal(body.repetition_penalty, 1.12);
 });

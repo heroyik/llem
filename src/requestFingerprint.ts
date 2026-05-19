@@ -7,13 +7,20 @@ function normalizeText(value: string): string {
         .toLowerCase();
 }
 
+export function stripInternalSystemHints(prompt: string): string {
+    return String(prompt || '')
+        .replace(/\s*\[SYSTEM HINT\][\s\S]*?(?=\n\n\S|$)/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 /**
  * B-4: 프롬프트 앞 300자를 추가로 사용해 fingerprint를 강화.
  * AI가 표현을 조금씩 바꿔도 같은 요청으로 감지할 수 있도록
  * 핵심 단어만 남기는 정규화를 적용한다.
  */
 function normalizePromptCore(prompt: string): string {
-    return String(prompt || '')
+    return stripInternalSystemHints(prompt)
         .toLowerCase()
         .replace(/[^a-z0-9가-힣\s]/g, '') // 구두점·특수문자 제거
         .replace(/\s+/g, ' ')

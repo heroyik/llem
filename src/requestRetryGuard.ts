@@ -14,7 +14,11 @@ export class RequestRetryGuard {
 
     constructor(private readonly ttlMs = 2 * 60 * 1000) {}
 
-    public markRepeated(request: QueuedRequest, reason = 'repetition detected'): { retryAllowed: boolean; nextDelayMs: number } {
+    public markRepeated(
+        request: QueuedRequest,
+        reason = 'repetition detected',
+        options: { retryable?: boolean } = {}
+    ): { retryAllowed: boolean; nextDelayMs: number } {
         const fingerprint = buildQueuedRequestFingerprint(request);
         const existing = this.blocked.get(fingerprint);
         
@@ -23,8 +27,9 @@ export class RequestRetryGuard {
         
         // Tiered delays: 3s, 10s, 30s
         const delays = [3000, 10000, 30000];
-        const nextDelayMs = retryCount <= delays.length ? delays[retryCount - 1] : 0;
-        const retryAllowed = retryCount <= delays.length;
+        const retryable = options.retryable !== false;
+        const nextDelayMs = retryable && retryCount <= delays.length ? delays[retryCount - 1] : 0;
+        const retryAllowed = retryable && retryCount <= delays.length;
 
         this.blocked.set(fingerprint, {
             fingerprint,

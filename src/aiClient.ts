@@ -3,7 +3,8 @@ import type { AIEndpoint, ChatMessage, LlemConfig, StreamOptions } from './types
 import { getConfig } from './config';
 import { extractStreamToken, parseStreamBuffer } from './streamParsing';
 import { logInfo, logStreamEvent, logStructured } from './logger';
-import { completedStreamOutcome, interruptedStreamOutcome, type StreamOutcome } from './streamOutcome';
+import { completedStreamOutcome, type StreamOutcome } from './streamOutcome';
+import { buildStreamBody } from './streamBody';
 
 const ENDPOINT_CACHE_TTL_MS = 60_000;
 const REASONING_ONLY_ERROR = 'The selected model streamed reasoning without a final answer. Disable thinking for this model or choose one that returns answer content.';
@@ -127,46 +128,6 @@ export async function resolveAIEndpoint(config: LlemConfig): Promise<AIEndpoint>
     }
 }
 
-function buildStreamBody(
-    model: string,
-    messages: ChatMessage[],
-    isLMStudio: boolean,
-    temperature: number,
-    topP: number,
-    topK: number,
-    contextWindow?: number,
-    predictTokens?: number,
-    repeatPenalty?: number
-) {
-    // Determine a safe default for predictTokens if not provided
-    const defaultPredict = 4096;
-    const finalPredict = (predictTokens && predictTokens > 0) ? predictTokens : defaultPredict;
-
-    return {
-        model,
-        messages,
-        stream: true,
-        ...(isLMStudio
-            ? { 
-                max_tokens: finalPredict,
-                temperature, 
-                top_p: topP 
-            }
-            : {
-                think: false,
-                options: {
-                    num_ctx: contextWindow ?? 8192,
-                    num_predict: predictTokens ?? finalPredict, // Use finalPredict if null
-                    repeat_penalty: repeatPenalty ?? 1.1,
-                    temperature,
-                    top_p: topP,
-                    top_k: topK,
-                    stop: ["<|endoftext|>", "### Instruction:", "### Response:"] // Add common stop sequences
-                }
-            }),
-    };
-}
-
 function containsReasoningTrace(rawText: string): boolean {
     return /"thinking"\s*:|"reasoning(?:_content|_text)?"\s*:|"thought"\s*:/.test(rawText);
 }
@@ -185,7 +146,11 @@ export async function streamCompletion(options: StreamOptions, onToken: (token: 
         contextWindow: options.contextWindow ?? null,
         predictTokens: options.predictTokens ?? null,
         repeatPenalty: options.repeatPenalty ?? null,
+        maxTokens: (options.predictTokens && options.predictTokens > 0) ? options.predictTokens : 4096,
+        samplingProfile: options.samplingProfile ?? null,
         messageCount: options.messages.length,
+        hasImages: options.messages.some(message => Array.isArray(message.content)
+            && message.content.some((part: any) => part?.type === 'image_url')),
         messages: summarizeMessages(options.messages)
     });
 

@@ -38,6 +38,7 @@ import { importMcpFromGitHubUrl } from './mcp/mcpGithubImport';
 import { listMcpServerUiState, setGlobalMcpEnabled, setMcpServerEnabled } from './mcp/mcpServerControl';
 import { executionModeLabel, normalizeExecutionMode, type ExecutionMode } from './executionMode';
 import { PerfLogger, type PerfMetrics } from './perfLogger';
+import { RAPID_MLX_TEXT_SAMPLING_DEFAULTS, normalizeRapidMlxTextSampling, type RapidMlxTextSamplingSettings } from './samplingProfiles';
 import {
     cancelPendingRequest,
     clearPendingRequests,
@@ -243,6 +244,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _temperature: number;
     private _topP: number;
     private _topK: number;
+    private _rapidMlxTextSampling: RapidMlxTextSamplingSettings;
     private _systemPrompt: string;
     private readonly _contextBuilder = new ContextBuilder();
     private readonly _chatSession: ChatSession;
@@ -259,6 +261,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._temperature = ctx.globalState.get<number>('aiTemperature', 0.8);
         this._topP = ctx.globalState.get<number>('aiTopP', 0.9);
         this._topK = ctx.globalState.get<number>('aiTopK', 40);
+        this._rapidMlxTextSampling = normalizeRapidMlxTextSampling(ctx.globalState.get('rapidMlxTextSampling', RAPID_MLX_TEXT_SAMPLING_DEFAULTS));
         this._systemPrompt = ctx.globalState.get<string>('aiSystemPrompt', SYSTEM_PROMPT);
         this._executionMode = normalizeExecutionMode(ctx.globalState.get<string>('executionMode', 'default'));
         this._historyManager = new HistoryManager(ctx);
@@ -270,6 +273,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getChatHistory: () => this._chatSession.chatHistory,
             getDisplayMessages: () => this._chatSession.displayMessages,
             getExecutionMode: () => this._executionMode,
+            getRapidMlxTextSampling: () => this._rapidMlxTextSampling,
             getTemperature: () => this._temperature,
             getTopK: () => this._topK,
             getTopP: () => this._topP,
@@ -902,7 +906,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _handleExecutionResult(
         request: QueuedRequest,
-        result?: { repeated: boolean; stopReason?: string }
+        result?: { repeated: boolean; stopReason?: string; repeatedKind?: string; repeatedToken?: string; retryable?: boolean }
     ): Promise<void> {
         if (!result?.repeated) {
             this._requestRetryGuard.clearRetryHistory(request);
@@ -910,21 +914,33 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         const reason = result.stopReason || 'repetition detected';
+        if (result.retryable === false) {
+            this._requestRetryGuard.markRepeated(request, reason, { retryable: false });
+            const filtered = this._requestRetryGuard.filterBlocked(this._queueState.pendingRequests);
+            if (filtered.blocked.length > 0) {
+                this._queueState = {
+                    ...this._queueState,
+                    pendingRequests: filtered.allowed
+                };
+                logInfo(`[QUEUE] Removed ${filtered.blocked.length} queued retry request(s) after non-retryable repetition stop`);
+            }
+            logInfo('[QUEUE] Repetition stop is non-retryable; not scheduling retry');
+            this._view?.webview.postMessage({
+                type: 'streamChunk',
+                value: `\n\n> ⚠️ 반복 출력이 감지되어 자동 재시도 없이 중단했습니다. 부분 결과는 반복 꼬리를 제거해 보존했습니다.\n\n`
+            });
+            this._syncQueueStateToWebview();
+            return;
+        }
+
         const { retryAllowed, nextDelayMs } = this._requestRetryGuard.markRepeated(request, reason);
 
         if (retryAllowed) {
             const retryCount = (request.retryCount ?? 0) + 1;
             const scheduledAt = Date.now() + nextDelayMs;
 
-            // Inject a strategy shift hint to help the AI analyze the root cause
-            const strategyHint = `\n\n[SYSTEM HINT] A repetition loop was detected. Please analyze why this happened (e.g., outdated file info, conflicting instructions). Shift your strategy by breaking the task into smaller units or trying a different approach. Avoid repeating the same logic.`;
-            const updatedPrompt = request.prompt.includes('[SYSTEM HINT]') 
-                ? request.prompt 
-                : request.prompt + strategyHint;
-
             const retryRequest: QueuedRequest = {
                 ...request,
-                prompt: updatedPrompt,
                 retryCount,
                 scheduledAt,
                 wasQueued: true
@@ -1045,6 +1061,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _settingsCommandHost(): SettingsCommandsHost {
         return {
             getSystemPrompt: () => this._systemPrompt,
+            getRapidMlxTextSampling: () => this._rapidMlxTextSampling,
             getTemperature: () => this._temperature,
             getTopK: () => this._topK,
             getTopP: () => this._topP,
@@ -1058,6 +1075,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             setSystemPrompt: (value) => {
                 this._systemPrompt = value;
                 this._ctx.globalState.update('aiSystemPrompt', value);
+            },
+            resetRapidMlxTextSampling: () => {
+                this._rapidMlxTextSampling = { ...RAPID_MLX_TEXT_SAMPLING_DEFAULTS };
+                this._ctx.globalState.update('rapidMlxTextSampling', this._rapidMlxTextSampling);
+            },
+            setRapidMlxTextSampling: (value) => {
+                this._rapidMlxTextSampling = normalizeRapidMlxTextSampling(value);
+                this._ctx.globalState.update('rapidMlxTextSampling', this._rapidMlxTextSampling);
             },
             setTemperature: (value) => {
                 this._temperature = value;
@@ -1470,7 +1495,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         await this.saveHistory();
     }
 
-    private async _runEditNow(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<{ repeated: boolean; stopReason?: string } | undefined> {
+    private async _runEditNow(messageIndex: number, prompt: string, modelName: string, files: AttachedFile[], internetEnabled?: boolean): Promise<{ repeated: boolean; stopReason?: string; repeatedKind?: string; repeatedToken?: string; retryable?: boolean } | undefined> {
         if (!Number.isInteger(messageIndex) || messageIndex < 0) {
             return;
         }

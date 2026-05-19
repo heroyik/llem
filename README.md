@@ -20,6 +20,44 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
+### v3.6.6 — Rapid-MLX repetition-loop fix, safer sampling, and full generation controls
+
+This release implements the root-cause fix described in [`plan/20260519_무한반복_fix.md`](plan/20260519_무한반복_fix.md). The investigation showed that pasted/attached images were already reaching Rapid-MLX correctly, and Rapid-MLX was able to read the image and begin producing a useful answer. The real failure happened later: the model fell into a repeated-token tail such as `stone stone stone...`, LLeM's watchdog stopped the stream, and the queue layer treated the stop as retryable by replaying the same edited request with an internal `[SYSTEM HINT]`. That created a visible repeat loop instead of a clean stop.
+
+The fix changes LLeM's behavior from "try the same generation again" to "preserve the clean partial result, remove the repeated tail, and stop without automatic retry." This is especially important for Rapid-MLX multimodal/OCR-style requests, but the same protection now also applies to plain text requests where local models can fall into repeated words, repeated blocks, or repeated action tags.
+
+- Implemented the planned `RepetitionWatchdog` restructuring. Watchdog results now carry structured metadata including `kind`, `repeatedToken`, `retryable`, and `cleanText`, so LLeM can tell the difference between token spam, repeated blocks, action-tag loops, and ordinary manual aborts.
+- Added `StreamOutcome` repetition metadata (`repeatedKind`, `repeatedToken`, `retryable`, and `cleanText`) so the stream layer, chat pipeline, queue handler, UI, logs, and tests all receive the same loop-detection state.
+- Changed `chatPipeline` so watchdog stops no longer create an empty or polluted assistant message. If a meaningful clean partial answer exists, LLeM saves that clean answer, strips the repeated token tail, and shows a short notice that generation was stopped without automatic retry.
+- Removed the automatic retry path for model-output repetition in `sidebarChatProvider._handleExecutionResult`. When `retryable=false`, LLeM no longer schedules the same request again after 3, 10, or 30 seconds.
+- Removed the old internal retry prompt injection that appended `[SYSTEM HINT] A repetition loop was detected...` to the user's message. That internal hint is no longer added to prompts, displayed in chat, saved to history, or allowed to leak into generated session titles.
+- Kept `RequestRetryGuard`, but narrowed its job to short-term duplicate blocking. It now blocks immediate replays of the same prompt/image/model after a non-retryable repetition stop, and request fingerprints strip any legacy `[SYSTEM HINT]` text before comparison.
+- Added Rapid-MLX image/OCR safe sampling for requests with attached images: `temperature=0.2`, `top_p=0.85`, `top_k=20`, `repeatPenalty=1.12`, and `max_tokens=2048`. This profile is intentionally conservative because image transcription and analysis should prioritize stability over creative variation.
+- Added Rapid-MLX plain-text safe sampling for requests without images: `temperature=0.35`, `top_p=0.85`, `top_k=30`, `repeatPenalty=1.12`, and `max_tokens=3072`. This reduces runaway repetition in normal chat/code requests while still leaving enough room for longer answers.
+- Extended OpenAI-compatible/Rapid-MLX request bodies so LLeM sends `top_k` and `repetition_penalty` along with `temperature`, `top_p`, and `max_tokens`. Previously, some local OpenAI-compatible paths did not receive the repeat-control parameters needed to reduce loops.
+- Added detailed diagnostics to make future loop reports easier to understand from logs. Request-start logs now include `samplingProfile`, `hasImages`, `repeatPenalty`, and `maxTokens`; watchdog stops log `repeatedKind`, `repeatedToken`, `cleanChars`, and `retryable=false`; queue handling logs when a repetition stop is non-retryable and therefore not scheduled again.
+- Added Settings -> Tune generation controls for the Rapid-MLX text profile, so users can change `temperature`, `top_p`, `top_k`, `repeatPenalty`, and `max_tokens` without editing source code.
+- Added input validation for each generation parameter. LLeM rejects out-of-range values before saving them, including invalid nucleus sampling values, negative token budgets, and non-integer `top_k` or `max_tokens`.
+- Added a `? Explain parameters` entry in the Settings UI. Each parameter now has an in-app explanation covering what it does, how it affects randomness or repetition, and what tradeoff to expect when adjusting it.
+- Added a one-click reset action for Rapid-MLX text generation settings. Reset restores the stable anti-repeat defaults: `temperature=0.35`, `top_p=0.85`, `top_k=30`, `repeatPenalty=1.12`, and `max_tokens=3072`.
+- Moved sampling defaults and normalization into a shared `samplingProfiles` module. The Settings UI, persisted global state, chat pipeline, stream request builder, and tests now read the same source of truth instead of duplicating constants.
+- Kept the Rapid-MLX image-safe profile separate from the user-adjustable Rapid-MLX text profile. Image/OCR requests still force the conservative image profile, while plain-text Rapid-MLX requests use the values configured in Settings.
+- Added regression tests for token-spam detection and repeated-tail trimming, non-retryable watchdog outcomes, hint-free request fingerprints, Rapid-MLX request body controls, sampling defaults, normalization, and `max_tokens` mapping into the stream token budget.
+- Verified the release with `npm test` (`133` tests passing) and packaged `release/llem-3.6.6.vsix`.
+
+### v3.6.5 — Rapid-MLX vision loop guard and safe image sampling
+
+This update fixes the failure mode found in Rapid-MLX image analysis logs where the model correctly recognized an attached textbook screenshot, generated a useful transcription/translation, then collapsed into a repeated token tail such as `stone stone stone...`. LLeM now treats that as a non-retryable generation failure, preserves the clean partial answer, and stops instead of feeding the same image request back into the queue.
+
+- Added structured repetition watchdog metadata for loop kind, repeated token, retryability, and clean partial text.
+- Trimmed repeated token tails before saving the assistant message, so useful image-analysis output is preserved without contaminating chat history.
+- Stopped automatic queue retries for model-output repetition loops. The previous retry flow appended an internal `[SYSTEM HINT]` to the edited prompt and replayed the same image request; that hint is no longer injected or shown in chat/history titles.
+- Kept `RequestRetryGuard` as a short-term duplicate-request blocker and made request fingerprints ignore any legacy internal system hints.
+- Added Rapid-MLX loop-safe sampling profiles for both attached-image and plain-text requests: lower temperature, tighter `top_p`/`top_k`, bounded `max_tokens`, and explicit repetition penalty.
+- Extended OpenAI-compatible local requests so LM Studio/Rapid-MLX can receive repetition penalty controls instead of leaving text requests with no repeat guard.
+- Extended OpenAI-compatible/Rapid-MLX request bodies with `top_k` and `repetition_penalty` when available, and added diagnostics for sampling profile, image presence, repeat penalty, and max token limit.
+- Added regression coverage for token-spam trimming, non-retryable repetition stops, internal-hint-free fingerprints, and Rapid-MLX sampling payload controls.
+
 ### v3.6.1 — LLeM-local context stats for `/ctx_stats`
 
 This patch makes `/ctx_stats` truthful inside the LLeM VS Code extension. The command now reports statistics from LLeM's own chat history and context-building metrics instead of forwarding to context-mode's Codex CLI adapter and showing Codex chat data.
@@ -655,6 +693,21 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Packaged `release/llem-3.1.2.vsix`.
 
 ## Release Notes
+
+### v3.6.6
+
+- Implemented the root-cause fix from [`plan/20260519_무한반복_fix.md`](plan/20260519_무한반복_fix.md): Rapid-MLX image requests were reaching the model, but repeated-token generation tails were being treated as retryable queue failures.
+- Structured watchdog loop metadata with `kind`, `repeatedToken`, `retryable`, and `cleanText`, then propagated that through `StreamOutcome`, `chatPipeline`, queue handling, logs, and tests.
+- Preserved clean partial answers after repetition stops while removing repeated token tails from the UI and saved history.
+- Disabled automatic retries for non-retryable model-output loops and removed the internal `[SYSTEM HINT]` retry prompt injection from user-visible chat/history/title flows.
+- Added short-term duplicate blocking through `RequestRetryGuard` so the same prompt/image/model is not immediately replayed after a repetition stop.
+- Added conservative Rapid-MLX image/OCR sampling: `temperature=0.2`, `top_p=0.85`, `top_k=20`, `repeatPenalty=1.12`, `max_tokens=2048`.
+- Added safer Rapid-MLX text sampling: `temperature=0.35`, `top_p=0.85`, `top_k=30`, `repeatPenalty=1.12`, `max_tokens=3072`.
+- Extended OpenAI-compatible/Rapid-MLX request bodies with `top_k` and `repetition_penalty`, plus richer request/watchdog/queue diagnostics.
+- Added Settings -> Tune generation controls for Rapid-MLX text `temperature`, `top_p`, `top_k`, `repeatPenalty`, and `max_tokens`.
+- Added parameter help through a `? Explain parameters` entry, input validation, shared sampling-profile defaults, and one-click reset to the stable anti-repeat defaults.
+- Added regression tests for watchdog trimming, non-retryable repetition outcomes, hint-free fingerprints, request body controls, sampling defaults, normalization, and max-token mapping.
+- Packaged `release/llem-3.6.6.vsix`.
 
 ### v3.6.5
 

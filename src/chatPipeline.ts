@@ -11,6 +11,7 @@ import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery
 import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
 import { logInfo, logStreamEvent } from './logger';
 import { RepetitionWatchdog } from './repetitionWatchdog';
+import { RAPID_MLX_IMAGE_SAMPLING, buildRapidMlxTextSamplingProfile, type RapidMlxTextSamplingSettings } from './samplingProfiles';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
 import { shouldUseDesignPlanningMode } from './designPlanningMode';
 import { isLoopStopReason, type StreamOutcome } from './streamOutcome';
@@ -34,6 +35,7 @@ export interface ChatPipelineHost {
     getChatHistory(): ChatMessage[];
     getDisplayMessages(): DisplayMessage[];
     getExecutionMode?(): ExecutionMode;
+    getRapidMlxTextSampling(): RapidMlxTextSamplingSettings;
     getTemperature(): number;
     getTopK(): number;
     getTopP(): number;
@@ -48,6 +50,9 @@ export interface ChatPipelineHost {
 export interface PromptExecutionResult {
     repeated: boolean;
     stopReason?: string;
+    repeatedKind?: string;
+    repeatedToken?: string;
+    retryable?: boolean;
 }
 
 interface PromptRunOptions {
@@ -77,7 +82,6 @@ const DEFAULT_BACKGROUND_LABEL = 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO TH
 const MAX_TEXT_ATTACHMENT_CHARS = 20000;
 const MAX_TEXT_ATTACHMENT_DECODE_BYTES = 96 * 1024;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
-
 export class ChatPipeline {
     constructor(private readonly host: ChatPipelineHost) {}
 
@@ -99,6 +103,9 @@ export class ChatPipeline {
         const hasFiles = files.length > 0;
         let abortController: AbortController | undefined;
         let repeatedStopReason: string | undefined;
+        let repeatedKind: string | undefined;
+        let repeatedToken: string | undefined;
+        let retryable: boolean | undefined;
         const runStart = performance.now();
 
         try {
@@ -252,11 +259,21 @@ export class ChatPipeline {
             );
             if (currentAiResponse.repeated) {
                 repeatedStopReason = currentAiResponse.stopReason;
-                this.postSingleLoopStopNotice(currentAiResponse.stopReason);
-                // B-1: 반복 감지된 응답은 히스토리에 추가하지 않고 즉시 종료
-                // (이미 L119에서 user 메시지만 push된 상태이므로 오염 없이 반환)
-                logInfo('[PIPELINE] Initial response repeated — skipping history push to prevent context contamination.');
-                const emptyFinalDisplay: DisplayMessage = { text: currentAiResponse.text, role: 'ai', feedback: null };
+                repeatedKind = currentAiResponse.repeatedKind;
+                repeatedToken = currentAiResponse.repeatedToken;
+                retryable = currentAiResponse.retryable;
+                this.postSingleLoopStopNotice(currentAiResponse);
+                // B-1: 반복 꼬리는 제거하고 깨끗한 부분 응답만 보존한다.
+                logInfo('[PIPELINE] Initial response repeated — preserving clean partial response without repeated tail.');
+                const cleanText = (currentAiResponse.cleanText || currentAiResponse.text || '').trim();
+                if (cleanText) {
+                    this.host.getChatHistory().push({
+                        role: 'assistant',
+                        content: cleanText
+                    });
+                    logInfo('[PIPELINE] Preserved clean partial response after repetition stop.');
+                }
+                const emptyFinalDisplay: DisplayMessage = { text: cleanText, role: 'ai', feedback: null };
                 this.host.getDisplayMessages().push(emptyFinalDisplay);
                 this.saveHistoryInBackground('initial_repeated');
                 this.host.postWebviewMessage({
@@ -264,7 +281,13 @@ export class ChatPipeline {
                     message: emptyFinalDisplay,
                     messageIndex: this.host.getDisplayMessages().length - 1
                 });
-                return { repeated: true, stopReason: repeatedStopReason };
+                return {
+                    repeated: true,
+                    stopReason: repeatedStopReason,
+                    repeatedKind: currentAiResponse.repeatedKind,
+                    repeatedToken: currentAiResponse.repeatedToken,
+                    retryable: currentAiResponse.retryable
+                };
             }
             if (planningOnlyInitialTurn) {
                 if (containsActionTags(currentAiResponse.text)) {
@@ -379,8 +402,11 @@ export class ChatPipeline {
                     currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
                     if (currentAiResponse.repeated) {
                         repeatedStopReason = currentAiResponse.stopReason;
-                        this.postSingleLoopStopNotice(currentAiResponse.stopReason);
-                        fullAiMessage += currentAiResponse.text;
+                        repeatedKind = currentAiResponse.repeatedKind;
+                        repeatedToken = currentAiResponse.repeatedToken;
+                        retryable = currentAiResponse.retryable;
+                        this.postSingleLoopStopNotice(currentAiResponse);
+                        fullAiMessage += (currentAiResponse.cleanText || currentAiResponse.text);
                         // B-1: followup 반복 감지 시 마지막 오염 assistant 메시지 제거
                         const hist = this.host.getChatHistory();
                         if (hist.length > 0 && hist[hist.length - 1].role === 'assistant') {
@@ -403,7 +429,9 @@ export class ChatPipeline {
                     if (isSimilar && currentAiResponse.text.length > 50) {
                         logInfo('[PIPELINE] Turn-to-turn loop detected. Breaking execution chain.');
                         repeatedStopReason = 'turn_to_turn_loop';
-                        this.postSingleLoopStopNotice('repetition_detected');
+                        repeatedKind = 'turn-to-turn-loop';
+                        retryable = false;
+                        this.postSingleLoopStopNotice({ stopReason: 'repetition_detected' });
                         fullAiMessage += currentAiResponse.text;
                         break;
                     }
@@ -444,7 +472,10 @@ export class ChatPipeline {
             });
             return {
                 repeated: Boolean(repeatedStopReason),
-                stopReason: repeatedStopReason
+                stopReason: repeatedStopReason,
+                repeatedKind,
+                repeatedToken,
+                retryable
             };
         } catch (error: any) {
             if (isAbortError(error)) {
@@ -660,10 +691,20 @@ export class ChatPipeline {
         const normalizedMessages = normalizeChatMessages(messages);
         const roles = normalizedMessages.map(m => m.role);
         logInfo(`[PIPELINE] Normalized messages for stream: roles=${JSON.stringify(roles)}`);
+        const hasImages = normalizedMessages.some(message => Array.isArray(message.content)
+            && message.content.some((part: any) => part?.type === 'image_url'));
+        const useRapidMlxImageSafeProfile = endpoint.engineKind === 'rapid-mlx' && hasImages;
+        const useRapidMlxTextSafeProfile = endpoint.engineKind === 'rapid-mlx' && !hasImages;
+        const sampling = useRapidMlxImageSafeProfile
+            ? RAPID_MLX_IMAGE_SAMPLING
+            : useRapidMlxTextSafeProfile
+                ? buildRapidMlxTextSamplingProfile(this.host.getRapidMlxTextSampling())
+                : undefined;
 
         // Repetition Watchdog
         const watchdog = new RepetitionWatchdog();
         let loopDetected = false;
+        let loopResult = watchdog.getResult();
         let streamedText = '';
 
         const abortController = new AbortController();
@@ -691,16 +732,21 @@ export class ChatPipeline {
                 messages: normalizedMessages,
                 modelName,
                 timeout,
-                temperature: this.host.getTemperature(),
-                topP: this.host.getTopP(),
-                topK: this.host.getTopK(),
+                temperature: sampling ? sampling.temperature : this.host.getTemperature(),
+                topP: sampling ? sampling.topP : this.host.getTopP(),
+                topK: sampling ? sampling.topK : this.host.getTopK(),
                 contextWindow: !endpoint.isLMStudio ? modelProfile?.requestTuning.numCtx : undefined,
-                predictTokens: !endpoint.isLMStudio
+                predictTokens: sampling
+                    ? sampling.predictTokens
+                    : !endpoint.isLMStudio
                     ? (phase === 'followup'
                         ? modelProfile?.requestTuning.followupPredict
                         : modelProfile?.requestTuning.initialPredict)
                     : undefined,
-                repeatPenalty: !endpoint.isLMStudio ? modelProfile?.requestTuning.repeatPenalty : undefined,
+                repeatPenalty: sampling
+                    ? sampling.repeatPenalty
+                    : modelProfile?.requestTuning.repeatPenalty,
+                samplingProfile: sampling?.profile,
                 signal: combinedSignal
             }, token => {
                 if (firstTokenTime === 0) {
@@ -715,9 +761,21 @@ export class ChatPipeline {
                 if (!loopDetected && token.trim().length > 0) {
                     if (watchdog.addToken(token)) {
                         loopDetected = true;
-                        const reason = watchdog.getAbortedReason();
+                        loopResult = watchdog.getResult();
+                        loopResult = {
+                            ...loopResult,
+                            cleanText: watchdog.cleanText(streamedText)
+                        };
+                        const reason = loopResult.reason || watchdog.getAbortedReason();
                         const recentPreview = streamedText.slice(-240).replace(/\s+/g, ' ').trim();
                         logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream. Recent output: ${recentPreview}`);
+                        logStreamEvent('watchdog', 'repetition_stop', {
+                            repeatedKind: loopResult.kind,
+                            repeatedToken: loopResult.repeatedToken,
+                            cleanChars: loopResult.cleanText.length,
+                            retryable: loopResult.retryable,
+                            reason
+                        });
                         abortController.abort();
                     }
                 }
@@ -735,7 +793,7 @@ export class ChatPipeline {
             });
 
             if (loopDetected && !result.repeated) {
-                let text = streamedText || result.text;
+                let text = loopResult.cleanText || streamedText || result.text;
                 // 태그 보정
                 if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
                 if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
@@ -745,7 +803,11 @@ export class ChatPipeline {
                     text,
                     stopReason: 'watchdog_loop',
                     repeated: true,
-                    aborted: true
+                    aborted: true,
+                    repeatedKind: loopResult.kind,
+                    repeatedToken: loopResult.repeatedToken,
+                    retryable: loopResult.retryable,
+                    cleanText: text
                 };
             }
             return result;
@@ -753,7 +815,7 @@ export class ChatPipeline {
             clearInterval(flushInterval);
             flushBuffer();
             if (loopDetected || err?.name === 'AbortError' || axios.isCancel(err)) {
-                let text = streamedText;
+                let text = loopDetected ? (loopResult.cleanText || streamedText) : streamedText;
                 // 태그 보정
                 if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
                 if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
@@ -763,16 +825,20 @@ export class ChatPipeline {
                     text,
                     stopReason: loopDetected ? 'watchdog_loop' : 'manual_abort',
                     repeated: loopDetected,
-                    aborted: true
+                    aborted: true,
+                    repeatedKind: loopDetected ? loopResult.kind : undefined,
+                    repeatedToken: loopDetected ? loopResult.repeatedToken : undefined,
+                    retryable: loopDetected ? loopResult.retryable : undefined,
+                    cleanText: loopDetected ? text : undefined
                 };
             }
             throw err;
         }
     }
 
-    private postSingleLoopStopNotice(stopReason?: string): void {
-        const label = isLoopStopReason(stopReason as any)
-            ? 'Repeating output detected. Stopping this run before it loops again.'
+    private postSingleLoopStopNotice(outcome: Pick<StreamOutcome, 'stopReason' | 'repeatedToken'>): void {
+        const label = isLoopStopReason(outcome.stopReason as any)
+            ? `Repeating output detected${outcome.repeatedToken ? ` (${outcome.repeatedToken.trim()})` : ''}. Stopping this run without automatic retry.`
             : 'This run was stopped before continuing.';
         this.host.postWebviewMessage({
             type: 'streamChunk',

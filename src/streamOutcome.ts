@@ -9,6 +9,10 @@ export interface StreamOutcome {
     stopReason: StreamStopReason;
     repeated: boolean;
     aborted: boolean;
+    repeatedKind?: string;
+    repeatedToken?: string;
+    retryable?: boolean;
+    cleanText?: string;
 }
 
 export function completedStreamOutcome(text: string): StreamOutcome {
@@ -22,13 +26,15 @@ export function completedStreamOutcome(text: string): StreamOutcome {
 
 export function interruptedStreamOutcome(
     text: string,
-    stopReason: Exclude<StreamStopReason, 'completed'>
+    stopReason: Exclude<StreamStopReason, 'completed'>,
+    options: Pick<StreamOutcome, 'repeatedKind' | 'repeatedToken' | 'retryable' | 'cleanText'> = {}
 ): StreamOutcome {
     return {
         text,
         stopReason,
         repeated: stopReason === 'repetition_detected' || stopReason === 'watchdog_loop',
-        aborted: true
+        aborted: true,
+        ...options
     };
 }
 

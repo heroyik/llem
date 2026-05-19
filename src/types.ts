@@ -194,6 +194,7 @@ export interface StreamOptions {
     contextWindow?: number;
     predictTokens?: number;
     repeatPenalty?: number;
+    samplingProfile?: string;
     signal?: AbortSignal;
 }
 

@@ -14,7 +14,16 @@ test('completedStreamOutcome marks successful completion', () => {
 });
 
 test('interruptedStreamOutcome marks repetition stop as repeated', () => {
-  const result = interruptedStreamOutcome('partial', 'repetition_detected');
+  const result = interruptedStreamOutcome('partial stone stone', 'repetition_detected', {
+    repeatedKind: 'token-spam',
+    repeatedToken: ' stone',
+    retryable: false,
+    cleanText: 'partial'
+  });
   assert.equal(result.repeated, true);
   assert.equal(isLoopStopReason(result.stopReason), true);
+  assert.equal(result.repeatedKind, 'token-spam');
+  assert.equal(result.repeatedToken, ' stone');
+  assert.equal(result.retryable, false);
+  assert.equal(result.cleanText, 'partial');
 });

@@ -125,6 +125,38 @@ test('RepetitionWatchdog aborts when a long block repeats across the stream', ()
   assert.match(watchdog.getAbortedReason(), /recent block loop/);
 });
 
+test('RepetitionWatchdog reports token spam as non-retryable and trims repeated tail', () => {
+  const watchdog = new RepetitionWatchdog();
+  const chunks = [
+    'The image contains a vocabulary table and a dialogue.',
+    ' stone',
+    ' stone',
+    ' stone',
+    ' stone',
+    ' stone',
+    ' stone',
+    ' stone',
+    ' stone'
+  ];
+
+  let detected = false;
+  for (const chunk of chunks) {
+    if (watchdog.addToken(chunk)) {
+      detected = true;
+      break;
+    }
+  }
+
+  const result = watchdog.getResult();
+  const clean = watchdog.cleanText(chunks.join(''));
+
+  assert.equal(detected, true);
+  assert.equal(result.kind, 'token-spam');
+  assert.equal(result.repeatedToken, ' stone');
+  assert.equal(result.retryable, false);
+  assert.equal(clean, 'The image contains a vocabulary table and a dialogue.');
+});
+
 test('RepetitionWatchdog aborts when an important sentence keeps returning', () => {
   const watchdog = new RepetitionWatchdog();
   const repeatedSentence = 'The deployment should not restart the background worker until the database migration is fully complete.';

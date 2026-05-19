@@ -10,6 +10,23 @@ export interface ImportantSentenceLoopOptions {
     threshold?: number;
 }
 
+export type RepetitionLoopKind =
+    | 'token-spam'
+    | 'sequence-loop'
+    | 'action-tag-loop'
+    | 'suffix-loop'
+    | 'block-repeat'
+    | 'sentence-repeat';
+
+export interface RepetitionWatchdogResult {
+    detected: boolean;
+    kind?: RepetitionLoopKind;
+    reason?: string;
+    repeatedToken?: string;
+    retryable: boolean;
+    cleanText: string;
+}
+
 const DEFAULT_RECENT_BLOCK_SIZE = 100;
 const DEFAULT_MIN_SIGNIFICANT_CHARS = 30;
 const DEFAULT_RECENT_BLOCK_THRESHOLD = 3;
@@ -25,6 +42,8 @@ export class RepetitionWatchdog {
     private tokens: string[] = [];
     private fullText: string = '';
     private abortedReason: string | undefined;
+    private abortedKind: RepetitionLoopKind | undefined;
+    private repeatedToken: string | undefined;
 
     constructor(
         private maxHistory = 150,
@@ -56,7 +75,7 @@ export class RepetitionWatchdog {
             const lastN = this.tokens.slice(-10);
             const occurrences = lastN.filter(t => t === token).length;
             if (occurrences >= 8 && !isLowSignalMarkdownStructureToken(token)) {
-                this.abortedReason = `token spam: "${token}"`;
+                this.markDetected('token-spam', `token spam: "${token}"`, token);
                 return true;
             }
         }
@@ -123,7 +142,7 @@ export class RepetitionWatchdog {
             const previous = previousTokens.join('\u0000');
             const older = olderTokens.join('\u0000');
             if (current === previous && previous === older && current.length > 10) {
-                this.abortedReason = `sequence loop (len=${l})`;
+                this.markDetected('sequence-loop', `sequence loop (len=${l})`);
                 return true;
             }
         }
@@ -133,7 +152,7 @@ export class RepetitionWatchdog {
     private detectRepeatedActionBlockLoop(): boolean {
         const repeated = findRepeatedCompletedActionBlock(this.fullText, 3);
         if (repeated.detected) {
-            this.abortedReason = `repeated action block loop (kind=${repeated.kind}, count=${repeated.count})`;
+            this.markDetected('action-tag-loop', `repeated action block loop (kind=${repeated.kind}, count=${repeated.count})`);
             return true;
         }
         return false;
@@ -170,7 +189,7 @@ export class RepetitionWatchdog {
                 continue;
             }
             if (suffix === prev) {
-                this.abortedReason = `text suffix loop (len=${l})`;
+                this.markDetected('suffix-loop', `text suffix loop (len=${l})`);
                 return true;
             }
         }
@@ -190,7 +209,7 @@ export class RepetitionWatchdog {
                 return false;
             }
             
-            this.abortedReason = `recent block loop (len=${result.blockSize}, count=${result.count})`;
+            this.markDetected('block-repeat', `recent block loop (len=${result.blockSize}, count=${result.count})`);
             return true;
         }
         return false;
@@ -199,14 +218,49 @@ export class RepetitionWatchdog {
     private detectImportantSentenceLoop(): boolean {
         const result = detectImportantSentenceLoop(this.fullText);
         if (result.detected) {
-            this.abortedReason = `important sentence loop (count=${result.count})`;
+            this.markDetected('sentence-repeat', `important sentence loop (count=${result.count})`);
             return true;
         }
         return false;
     }
 
+    private markDetected(kind: RepetitionLoopKind, reason: string, repeatedToken?: string): void {
+        this.abortedKind = kind;
+        this.abortedReason = reason;
+        this.repeatedToken = repeatedToken;
+    }
+
     getAbortedReason(): string | undefined {
         return this.abortedReason;
+    }
+
+    getResult(): RepetitionWatchdogResult {
+        const cleanText = this.cleanText(this.fullText);
+        return {
+            detected: !!this.abortedReason,
+            kind: this.abortedKind,
+            reason: this.abortedReason,
+            repeatedToken: this.repeatedToken,
+            retryable: false,
+            cleanText
+        };
+    }
+
+    cleanText(value: string): string {
+        let text = String(value || '');
+        const token = this.repeatedToken;
+        if (token) {
+            let trimmed = text;
+            let repeats = 0;
+            while (trimmed.endsWith(token) && repeats < 100) {
+                trimmed = trimmed.slice(0, -token.length);
+                repeats++;
+            }
+            if (repeats >= 2) {
+                text = trimmed.replace(/[ \t]+$/g, '');
+            }
+        }
+        return text;
     }
 }
 
