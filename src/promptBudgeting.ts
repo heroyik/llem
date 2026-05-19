@@ -202,7 +202,11 @@ export function pruneHistoryMessages(
 
     if (keptChars > maxChars && lastUserIndex >= 0 && retained.has(lastUserIndex)) {
         const content = stringifyContent(working[lastUserIndex].content);
-        const targetChars = Math.max(160, content.length - (keptChars - maxChars));
+        // 첨부파일([ATTACHED FILE:) 또는 워크스페이스 파일([WORKSPACE FILE:) 블록이 있으면
+        // 최소 4,000자 이상 보존하여 AI가 파일 내용을 잃지 않도록 함
+        const hasAttachedContent = /\[ATTACHED FILE:|\[WORKSPACE FILE:/i.test(content);
+        const minRetain = hasAttachedContent ? 4_000 : 160;
+        const targetChars = Math.max(minRetain, content.length - (keptChars - maxChars));
         const nextContent = truncateText(content, targetChars);
         keptChars -= content.length - nextContent.length;
         working[lastUserIndex] = { ...working[lastUserIndex], content: nextContent };

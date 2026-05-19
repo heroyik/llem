@@ -695,6 +695,11 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ## Release Notes
 
+### v3.6.9
+
+- fix: preserve attachment file content during history pruning (min 4,000 chars instead of 160)\nfix: ensure latest user message is never dropped during MLLM token trimming\nfix: raise attachment message retention floor to keep file contents intact
+- Packaged `release/llem-3.6.9.vsix`.
+
 ### v3.6.8
 
 - feat: automatic chunked file reading for large workspace files\n\n- Large files (>20KB) now automatically split into 4KB chunks when using <read_file>\n- Use <read_file>path:2</read_file>, <read_file>path:3</read_file> etc. to read subsequent chunks\n- Key files preview in context increased to 4,000 chars to match chunk boundary\n- AI reads only as many chunks as needed to answer

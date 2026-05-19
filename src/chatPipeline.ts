@@ -215,15 +215,28 @@ export class ChatPipeline {
                     logInfo(`[PIPELINE] MLLM system message truncated to fit token cap (est. ${systemTokens} tokens)`);
                 }
 
-                // 비시스템 메시지를 최신 것부터 역순으로 추가하되 예산 초과 시 중단
+                // 비시스템 메시지를 최신 것부터 역순으로 추가.
+                // 최신 메시지(첨부파일 포함 가능)는 항상 포함되며, 예산 초과 시 잘라서라도 유지.
                 const budgetLeft = MLLM_TOKEN_HARD_CAP - systemTokens;
                 const keptMessages: ChatMessage[] = [];
                 let usedTokens = 0;
-                for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
-                    const t = estimateTokens(nonSystemMessages[i]);
-                    if (usedTokens + t > budgetLeft) { break; }
-                    keptMessages.unshift(nonSystemMessages[i]);
-                    usedTokens += t;
+                const lastIdx = nonSystemMessages.length - 1;
+                for (let i = lastIdx; i >= 0; i--) {
+                    const msg = nonSystemMessages[i];
+                    const t = estimateTokens(msg);
+                    if (usedTokens + t <= budgetLeft) {
+                        keptMessages.unshift(msg);
+                        usedTokens += t;
+                    } else if (i === lastIdx && typeof msg.content === 'string') {
+                        // 최신 메시지가 예산 초과: 잘라서라도 포함 (첨부파일 내용 보존)
+                        const maxChars = Math.max(400, (budgetLeft - usedTokens) * MLLM_CHARS_PER_TOKEN);
+                        const truncated = msg.content.slice(0, maxChars);
+                        keptMessages.unshift({ ...msg, content: truncated });
+                        usedTokens += estimateTokens({ ...msg, content: truncated });
+                        break;
+                    } else {
+                        break;
+                    }
                 }
 
                 const before = reqMessages.length;
