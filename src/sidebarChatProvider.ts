@@ -1151,21 +1151,25 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     private async _fetchUris(uris: string[], requestId?: string): Promise<void> {
         if (!this._view) { return; }
+        logInfo(`[DROP] fetchUris start requestId=${requestId || 'none'} count=${uris.length}`);
         for (const uriString of uris) {
             const uri = parseDroppedUri(uriString);
             const name = basenameFromUri(uri);
             const type = attachmentTypeFromName(name);
 
             if (!isSafeAttachmentLookupName(name)) {
+                logInfo(`[DROP] fetchUris skipped unsafe name requestId=${requestId || 'none'} uri=${uriString} name=${name}`);
                 continue;
             }
 
             try {
                 const stat = await vscode.workspace.fs.stat(uri);
                 if (stat.type === vscode.FileType.Directory) {
+                    logInfo(`[DROP] fetchUris skipped directory requestId=${requestId || 'none'} name=${name} uri=${uri.toString(true)}`);
                     continue;
                 }
                 if (stat.size > droppedAttachmentLimit(type)) {
+                    logInfo(`[DROP] fetchUris rejected too large requestId=${requestId || 'none'} name=${name} type=${type} bytes=${stat.size} limit=${droppedAttachmentLimit(type)}`);
                     this._view.webview.postMessage({
                         type: 'dropError',
                         value: `File too large: ${name} (${Math.round(stat.size / 1024)} KB)`
@@ -1174,11 +1178,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
                 const bytes = await vscode.workspace.fs.readFile(uri);
                 const data = Buffer.from(bytes).toString('base64');
+                logInfo(`[DROP] fetchUris read requestId=${requestId || 'none'} name=${name} type=${type} bytes=${bytes.length} encodedChars=${data.length} uri=${uri.toString(true)}`);
                 this._view.webview.postMessage({
                     type: 'injectAttachment',
                     value: { name, type, data, requestId, sourceUri: uri.toString(true) }
                 });
             } catch (err) {
+                logError(`[DROP] fetchUris failed requestId=${requestId || 'none'} name=${name} uri=${uriString}: ${summarizeDropError(err)}`);
                 this._view.webview.postMessage({
                     type: 'dropError',
                     value: `Could not read ${name}: ${summarizeDropError(err)}`
@@ -1359,7 +1365,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         const imageDataChars = files
             .filter(file => String(file.type || '').startsWith('image/'))
             .reduce((sum, file) => sum + String(file.data || '').length, 0);
-        logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', images=' + imageCount + ', imageDataChars=' + imageDataChars + ', internet=' + !!internetEnabled + ')');
+        const textFiles = files.filter(file => !String(file.type || '').startsWith('image/'));
+        const textDataChars = textFiles.reduce((sum, file) => sum + String(file.data || '').length, 0);
+        const fileSummary = files.map(file => [
+            file.name,
+            file.type || 'unknown',
+            'dataChars=' + String(file.data || '').length,
+            'originalBytes=' + (file.originalSize ?? 'unknown'),
+            file.truncated ? 'truncated' : 'full',
+            file.sourceUri ? 'uri' : 'native'
+        ].join(':')).join('|');
+        logInfo('[PROMPT] handlePromptWithFile (model=' + modelName + ', files=' + files.length + ', textFiles=' + textFiles.length + ', textDataChars=' + textDataChars + ', images=' + imageCount + ', imageDataChars=' + imageDataChars + ', internet=' + !!internetEnabled + ', fileSummary=' + fileSummary + ')');
         return await this._chatPipeline.handlePromptWithFile(prompt, modelName, files, internetEnabled);
     }
 

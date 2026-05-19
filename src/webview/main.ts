@@ -1688,6 +1688,18 @@ try {
     return String(type || '').toLowerCase().startsWith('application/vnd.code.');
   }
 
+  function describeDropEvent(event: DragEvent): string {
+    const transfer = event.dataTransfer;
+    const files = Array.from((transfer && transfer.files) || []);
+    const items = Array.from((transfer && transfer.items) || []);
+    return [
+      'shift=' + Boolean(event.shiftKey),
+      'types=' + getTransferTypes(transfer).join('|'),
+      'files=' + files.map(function(file) { return file.name + ':' + file.size + ':' + (file.type || 'unknown'); }).join('|'),
+      'items=' + items.map(function(item) { return item.kind + ':' + (item.type || 'unknown'); }).join('|')
+    ].join(', ');
+  }
+
   function canAcceptDropEvent(event: DragEvent): boolean {
     return Boolean(event && event.shiftKey && hasFilePayload(event));
   }
@@ -1913,6 +1925,7 @@ try {
 
   async function buildAttachment(file: File): Promise<FileAttachment | null> {
     if (!isSupportedAttachment(file)) {
+      log('[DROP] Rejected unsupported attachment name=' + file.name + ', type=' + (file.type || 'unknown') + ', size=' + file.size, 'error');
       alert(file.name + ' is not a supported attachment yet.');
       return null;
     }
@@ -1929,6 +1942,7 @@ try {
     const blobSource = file.size > limit ? file.slice(0, limit) : file;
     const dataUrl = await readBlobAsDataUrl(blobSource);
     const base64 = String(dataUrl).split(',')[1] || '';
+    log('[DROP] Built attachment name=' + file.name + ', type=' + type + ', originalBytes=' + file.size + ', encodedChars=' + base64.length + ', truncated=' + (file.size > limit));
 
     const attachment: FileAttachment = {
       name: file.name,
@@ -1943,6 +1957,9 @@ try {
 
   async function appendPendingFiles(files: File[], source: string, requestId: string): Promise<void> {
     const incoming = Array.from(files || []);
+    log('[DROP] appendPendingFiles source=' + source + ', requestId=' + requestId + ', count=' + incoming.length + ', files=' + incoming.map(function(file) {
+      return file.name + ':' + file.size + ':' + (file.type || 'unknown');
+    }).join('|'));
     if (incoming.length === 0) {
       return;
     }
@@ -1966,6 +1983,7 @@ try {
     }
 
     appendAttachmentRecords(appended);
+    log('[DROP] appendPendingFiles complete requestId=' + requestId + ', appended=' + appended.length + ', pending=' + pendingFiles.length);
   }
 
   function renderPreview(): void {
@@ -2302,8 +2320,12 @@ try {
 
   window.addEventListener('dragenter', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
+      if (hasFilePayload(event)) {
+        log('[DROP] dragenter ignored: ' + describeDropEvent(event));
+      }
       return;
     }
+    log('[DROP] dragenter accepted: ' + describeDropEvent(event));
     acceptDropEvent(event);
     dragCounter++;
     setDropActive(true);
@@ -2312,6 +2334,7 @@ try {
   window.addEventListener('dragover', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
       if (dragCounter > 0 && hasFilePayload(event)) {
+        log('[DROP] dragover became unacceptable: ' + describeDropEvent(event));
         dragCounter = 0;
         resetDropActive();
       }
@@ -2338,6 +2361,9 @@ try {
 
   window.addEventListener('drop', function(event: DragEvent) {
     if (!canAcceptDropEvent(event)) {
+      if (hasFilePayload(event)) {
+        log('[DROP] drop ignored: ' + describeDropEvent(event));
+      }
       if (dragCounter > 0) {
         dragCounter = 0;
         resetDropActive();
@@ -2348,6 +2374,7 @@ try {
     const requestId = 'drop-' + (++dropSequence);
     dragCounter = 0;
     resetDropActive();
+    log('[DROP] drop accepted requestId=' + requestId + ': ' + describeDropEvent(event));
 
     const droppedFiles = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
     if (droppedFiles.length > 0) {
@@ -2355,6 +2382,7 @@ try {
     }
 
     const droppedUris = collectDroppedUris(event.dataTransfer);
+    log('[DROP] collected requestId=' + requestId + ', nativeFiles=' + droppedFiles.length + ', uris=' + droppedUris.length + (droppedUris.length ? ', uriList=' + droppedUris.join('|') : ''));
     if (droppedUris.length > 0) {
       vscode.postMessage({ type: 'fetchUris', requestId: requestId, uris: droppedUris });
     }

@@ -14,6 +14,7 @@ import {
 } from './config';
 import { buildDesignPlanningDirective, shouldUseDesignPlanningMode, type RequestExecutionPhase } from './designPlanningMode';
 import { buildExecutionModeDirective, type ExecutionMode } from './executionMode';
+import { logInfo } from './logger';
 import { PerfLogger } from './perfLogger';
 import { collectRelevantTerms, pruneHistoryMessages, truncateText } from './promptBudgeting';
 import type { BrainFilesCache, ChatMessage, ModelProfile, TextContextCache } from './types';
@@ -323,6 +324,13 @@ export class ContextBuilder {
                 historyBudget,
                 collectRelevantTerms(activeEditor.name, options.attachmentNames || [])
             );
+            const finalLatestUser = [...prunedHistory.messages]
+                .reverse()
+                .find(message => message.role === 'user' && typeof message.content === 'string' && !message.content.trimStart().startsWith('[SYSTEM:'));
+            if ((options.attachmentNames || []).length > 0) {
+                const finalLatestUserContent = String(finalLatestUser?.content || '');
+                logInfo(`[CONTEXT] Attachment final request check names=${(options.attachmentNames || []).join('|')} historyBudget=${historyBudget} keptHistoryChars=${prunedHistory.keptChars} latestUserChars=${finalLatestUserContent.length} hasAttachedFileBlock=${finalLatestUserContent.includes('[ATTACHED FILE:')} prunedMessages=${prunedHistory.prunedMessages}`);
+            }
             reqMessages.splice(1, reqMessages.length - 1, ...prunedHistory.messages);
             reqMessages[0] = {
                 role: 'system',

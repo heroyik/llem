@@ -551,6 +551,7 @@ export class ChatPipeline {
             const decoded = decodeBase64TextPrefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES);
             const preview = decoded.slice(0, MAX_TEXT_ATTACHMENT_CHARS);
             const budgetedPreview = allocateAttachmentPreview(preview, remainingAttachmentChars, attachmentBudget.perFileChars);
+            logInfo(`[PIPELINE] Prepared text attachment '${file.name}' type=${type} originalBytes=${size} encodedChars=${String(file.data || '').length} decodedChars=${decoded.length} previewChars=${preview.length} includedChars=${budgetedPreview.included.length} prunedChars=${budgetedPreview.prunedChars} remainingAttachmentChars=${Number.isFinite(budgetedPreview.remainingChars) ? budgetedPreview.remainingChars : 'unlimited'} truncated=${Boolean(file.truncated)}`);
             const wasTruncated = Boolean(file.truncated)
                 || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
                 || decoded.length > MAX_TEXT_ATTACHMENT_CHARS
