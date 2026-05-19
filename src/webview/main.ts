@@ -163,16 +163,37 @@ try {
   const thinkingBar = document.getElementById('thinkingBar');
   const settingsBtn = document.getElementById('settingsBtn');
   const modeSel = document.getElementById('modeSel') as HTMLSelectElement | null;
-  const mcpModal = document.getElementById('mcpModal');
-  const closeMcpModalBtn = document.getElementById('closeMcpModalBtn');
-  const mcpGlobalToggle = document.getElementById('mcpGlobalToggle') as HTMLInputElement | null;
-  const refreshMcpBtn = document.getElementById('refreshMcpBtn');
-  const reloadMcpBtn = document.getElementById('reloadMcpBtn');
-  const syncMcpBtn = document.getElementById('syncMcpBtn');
-  const importMcpBtn = document.getElementById('importMcpBtn');
-  const moreSettingsBtn = document.getElementById('moreSettingsBtn');
-  const mcpStatus = document.getElementById('mcpStatus');
-  const mcpServerList = document.getElementById('mcpServerList');
+  // Settings modal
+  const settingsModal = document.getElementById('settingsModal');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const settingsEngineSel = document.getElementById('settingsEngineSel') as HTMLSelectElement | null;
+  const settingsModelSel = document.getElementById('settingsModelSel') as HTMLSelectElement | null;
+  const settingsPerfSel = document.getElementById('settingsPerfSel') as HTMLSelectElement | null;
+  const settingsPerfDesc = document.getElementById('settingsPerfDesc');
+  const settingsAdvancedToggle = document.getElementById('settingsAdvancedToggle');
+  const settingsAdvancedArrow = document.getElementById('settingsAdvancedArrow');
+  const settingsAdvancedBody = document.getElementById('settingsAdvancedBody');
+  // Sliders
+  const settingsTemp = document.getElementById('settingsTemp') as HTMLInputElement | null;
+  const settingsTempVal = document.getElementById('settingsTempVal');
+  const settingsTopP = document.getElementById('settingsTopP') as HTMLInputElement | null;
+  const settingsTopPVal = document.getElementById('settingsTopPVal');
+  const settingsTopK = document.getElementById('settingsTopK') as HTMLInputElement | null;
+  const settingsTopKVal = document.getElementById('settingsTopKVal');
+  const settingsRepeatPenalty = document.getElementById('settingsRepeatPenalty') as HTMLInputElement | null;
+  const settingsRepeatPenaltyVal = document.getElementById('settingsRepeatPenaltyVal');
+  const settingsMaxTokens = document.getElementById('settingsMaxTokens') as HTMLInputElement | null;
+  const settingsMaxTokensVal = document.getElementById('settingsMaxTokensVal');
+  const settingsResetSamplingBtn = document.getElementById('settingsResetSamplingBtn');
+  const settingsSystemPrompt = document.getElementById('settingsSystemPrompt') as HTMLTextAreaElement | null;
+  const settingsResetPromptBtn = document.getElementById('settingsResetPromptBtn');
+  // MCP within settings
+  const settingsMcpGlobalToggle = document.getElementById('settingsMcpGlobalToggle') as HTMLInputElement | null;
+  const settingsRefreshMcpBtn = document.getElementById('settingsRefreshMcpBtn');
+  const settingsSyncMcpBtn = document.getElementById('settingsSyncMcpBtn');
+  const settingsImportMcpBtn = document.getElementById('settingsImportMcpBtn');
+  const settingsMcpStatus = document.getElementById('settingsMcpStatus');
+  const settingsMcpServerList = document.getElementById('settingsMcpServerList');
   const imageLightbox = document.createElement('div');
   imageLightbox.className = 'image-lightbox';
   imageLightbox.hidden = true;
@@ -199,6 +220,7 @@ try {
   let internetEnabled = false;
   let executionMode: ExecutionMode = 'default';
   let mcpServersState: McpServerListUiState = { mcpEnabled: true, servers: [] };
+  let settingsData: any = null;
   let inputCompositionActive = false;
   if (internetBtn) {
     log('[INIT] Syncing Live web mode icon (enabled=' + internetEnabled + ')');
@@ -2109,21 +2131,91 @@ try {
     }
   }
 
-  function showMcpModal(): void {
-    if (!mcpModal) return;
-    mcpModal.classList.add('visible');
-    setMcpStatus('Loading MCP servers...');
+  function populateSettingsPanel(data: any): void {
+    if (!data) return;
+    // Populate engine select
+    if (settingsEngineSel && data.engines) {
+      settingsEngineSel.innerHTML = '';
+      data.engines.forEach(function(engine: string) {
+        const opt = document.createElement('option');
+        opt.value = engine;
+        opt.textContent = engine;
+        settingsEngineSel!.appendChild(opt);
+      });
+      if (data.activeEngine) settingsEngineSel.value = data.activeEngine;
+    }
+    // Populate model select
+    if (settingsModelSel && data.models) {
+      settingsModelSel.innerHTML = '';
+      data.models.forEach(function(model: string) {
+        const opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        settingsModelSel!.appendChild(opt);
+      });
+      if (data.activeModel) settingsModelSel.value = data.activeModel;
+    }
+    // Populate performance profile select
+    if (settingsPerfSel && data.performanceProfiles) {
+      settingsPerfSel.innerHTML = '';
+      data.performanceProfiles.forEach(function(profile: { id: string; label: string }) {
+        const opt = document.createElement('option');
+        opt.value = profile.id;
+        opt.textContent = profile.label;
+        settingsPerfSel!.appendChild(opt);
+      });
+      if (data.activePerformanceProfile) settingsPerfSel.value = data.activePerformanceProfile;
+    }
+    if (settingsPerfDesc && data.performanceProfileDescription) {
+      settingsPerfDesc.textContent = data.performanceProfileDescription;
+    }
+    // Populate sampling sliders
+    if (data.sampling) {
+      const s = data.sampling;
+      if (settingsTemp && typeof s.temperature === 'number') {
+        settingsTemp.value = String(s.temperature);
+        if (settingsTempVal) settingsTempVal.textContent = s.temperature.toFixed(2);
+      }
+      if (settingsTopP && typeof s.topP === 'number') {
+        settingsTopP.value = String(s.topP);
+        if (settingsTopPVal) settingsTopPVal.textContent = s.topP.toFixed(2);
+      }
+      if (settingsTopK && typeof s.topK === 'number') {
+        settingsTopK.value = String(s.topK);
+        if (settingsTopKVal) settingsTopKVal.textContent = String(s.topK);
+      }
+      if (settingsRepeatPenalty && typeof s.repeatPenalty === 'number') {
+        settingsRepeatPenalty.value = String(s.repeatPenalty);
+        if (settingsRepeatPenaltyVal) settingsRepeatPenaltyVal.textContent = s.repeatPenalty.toFixed(2);
+      }
+      if (settingsMaxTokens && typeof s.maxTokens === 'number') {
+        settingsMaxTokens.value = String(s.maxTokens);
+        if (settingsMaxTokensVal) settingsMaxTokensVal.textContent = String(s.maxTokens);
+      }
+    }
+    // Populate system prompt
+    if (settingsSystemPrompt && typeof data.systemPrompt === 'string') {
+      settingsSystemPrompt.value = data.systemPrompt;
+    }
+    log('[UI] Settings panel populated from extension data');
+  }
+
+  function showSettingsModal(): void {
+    if (!settingsModal) return;
+    settingsModal.classList.add('visible');
+    setSettingsMcpStatus('Loading MCP servers...');
     vscode.postMessage({ type: 'getMcpServers' });
+    vscode.postMessage({ type: 'getSettingsData' });
   }
 
-  function hideMcpModal(): void {
-    if (!mcpModal) return;
-    mcpModal.classList.remove('visible');
+  function hideSettingsModal(): void {
+    if (!settingsModal) return;
+    settingsModal.classList.remove('visible');
   }
 
-  function setMcpStatus(message: string): void {
-    if (!mcpStatus) return;
-    mcpStatus.textContent = message;
+  function setSettingsMcpStatus(message: string): void {
+    if (!settingsMcpStatus) return;
+    settingsMcpStatus.textContent = message;
   }
 
   function mcpServerCommand(server: McpServerUiState): string {
@@ -2133,15 +2225,15 @@ try {
     return server.url || server.transport || '';
   }
 
-  function renderMcpServers(state: McpServerListUiState): void {
+  function renderSettingsMcpServers(state: McpServerListUiState): void {
     mcpServersState = state || { mcpEnabled: true, servers: [] };
-    if (mcpGlobalToggle) {
-      mcpGlobalToggle.checked = Boolean(mcpServersState.mcpEnabled);
+    if (settingsMcpGlobalToggle) {
+      settingsMcpGlobalToggle.checked = Boolean(mcpServersState.mcpEnabled);
     }
-    if (!mcpServerList) return;
-    mcpServerList.innerHTML = '';
+    if (!settingsMcpServerList) return;
+    settingsMcpServerList.innerHTML = '';
     const servers = mcpServersState.servers || [];
-    setMcpStatus(servers.length > 0
+    setSettingsMcpStatus(servers.length > 0
       ? servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' found.'
       : 'No MCP servers configured.');
     servers.forEach(function(server) {
@@ -2176,7 +2268,7 @@ try {
       toggle.checked = Boolean(server.enabled);
       toggle.disabled = !server.editable;
       toggle.addEventListener('change', function() {
-        setMcpStatus((toggle.checked ? 'Enabling ' : 'Disabling ') + server.name + '...');
+        setSettingsMcpStatus((toggle.checked ? 'Enabling ' : 'Disabling ') + server.name + '...');
         vscode.postMessage({ type: 'setMcpServerEnabled', name: server.name, enabled: toggle.checked });
       });
       const visual = document.createElement('span');
@@ -2186,7 +2278,7 @@ try {
 
       row.appendChild(main);
       row.appendChild(toggleLabel);
-      mcpServerList.appendChild(row);
+      settingsMcpServerList.appendChild(row);
     });
   }
 
@@ -2465,36 +2557,104 @@ try {
   });
   safeListen(settingsBtn, 'click', function() {
     log('[UI] Settings button clicked');
-    showMcpModal();
+    showSettingsModal();
   });
-  safeListen(closeMcpModalBtn, 'click', hideMcpModal);
-  mcpModal?.addEventListener('click', function(event: MouseEvent) {
-    if (event.target === mcpModal) {
-      hideMcpModal();
+  safeListen(closeSettingsBtn, 'click', hideSettingsModal);
+  settingsModal?.addEventListener('click', function(event: MouseEvent) {
+    if (event.target === settingsModal) {
+      hideSettingsModal();
     }
   });
-  safeListen(refreshMcpBtn, 'click', function() {
-    setMcpStatus('Refreshing MCP servers...');
+  // Advanced collapse toggle
+  safeListen(settingsAdvancedToggle, 'click', function() {
+    if (!settingsAdvancedBody || !settingsAdvancedArrow) return;
+    const isOpen = !settingsAdvancedBody.hidden;
+    settingsAdvancedBody.hidden = isOpen;
+    settingsAdvancedArrow.classList.toggle('open', !isOpen);
+  });
+  // Slider value display update
+  function updateSliderDisplay(input: HTMLInputElement | null, display: HTMLElement | null, decimals?: number): void {
+    if (!input || !display) return;
+    const val = parseFloat(input.value);
+    display.textContent = decimals !== undefined ? val.toFixed(decimals) : String(val);
+  }
+  function onSliderChange(input: HTMLInputElement | null, display: HTMLElement | null, decimals?: number): void {
+    if (!input || !display) return;
+    input.addEventListener('input', function() {
+      updateSliderDisplay(input, display, decimals);
+    });
+  }
+  onSliderChange(settingsTemp, settingsTempVal, 2);
+  onSliderChange(settingsTopP, settingsTopPVal, 2);
+  onSliderChange(settingsTopK, settingsTopKVal, 0);
+  onSliderChange(settingsRepeatPenalty, settingsRepeatPenaltyVal, 2);
+  onSliderChange(settingsMaxTokens, settingsMaxTokensVal, 0);
+  // Slider change → post value to extension
+  function postSliderValue(input: HTMLInputElement | null, key: string): void {
+    if (!input) return;
+    input.addEventListener('change', function() {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) {
+        vscode.postMessage({ type: 'setSamplingParam', key: key, value: val });
+        log('[UI] Sampling param changed: ' + key + ' = ' + val);
+      }
+    });
+  }
+  postSliderValue(settingsTemp, 'temperature');
+  postSliderValue(settingsTopP, 'topP');
+  postSliderValue(settingsTopK, 'topK');
+  postSliderValue(settingsRepeatPenalty, 'repeatPenalty');
+  postSliderValue(settingsMaxTokens, 'maxTokens');
+  // Reset sampling params
+  safeListen(settingsResetSamplingBtn, 'click', function() {
+    vscode.postMessage({ type: 'resetRapidMlxParams' });
+    log('[UI] Reset sampling parameters to defaults');
+  });
+  // System prompt change → post value to extension
+  safeListen(settingsSystemPrompt, 'change', function() {
+    const value = settingsSystemPrompt?.value || '';
+    vscode.postMessage({ type: 'setSystemPrompt', value: value });
+    log('[UI] System prompt updated, length=' + value.length);
+  });
+  // Reset system prompt
+  safeListen(settingsResetPromptBtn, 'click', function() {
+    vscode.postMessage({ type: 'resetSystemPrompt' });
+    log('[UI] Reset system prompt to default');
+  });
+  // Engine select change
+  safeListen(settingsEngineSel, 'change', function() {
+    const nextEngine = settingsEngineSel?.value || '';
+    log('[UI] Settings engine changed: ' + nextEngine);
+    vscode.postMessage({ type: 'setEngine', engine: nextEngine });
+  });
+  // Model select change (settings)
+  safeListen(settingsModelSel, 'change', function() {
+    const nextModel = settingsModelSel?.value || '';
+    log('[UI] Settings model changed: ' + nextModel);
+    vscode.postMessage({ type: 'setDefaultModel', model: nextModel });
+  });
+  // Performance profile change
+  safeListen(settingsPerfSel, 'change', function() {
+    const nextProfile = settingsPerfSel?.value || '';
+    log('[UI] Settings performance profile changed: ' + nextProfile);
+    vscode.postMessage({ type: 'setPerformanceProfile', profile: nextProfile });
+  });
+  // MCP actions within settings
+  safeListen(settingsRefreshMcpBtn, 'click', function() {
+    setSettingsMcpStatus('Refreshing MCP servers...');
     vscode.postMessage({ type: 'getMcpServers' });
   });
-  safeListen(reloadMcpBtn, 'click', function() {
-    setMcpStatus('Reloading MCP runtime...');
-    vscode.postMessage({ type: 'reloadMcpServers' });
-  });
-  safeListen(syncMcpBtn, 'click', function() {
-    setMcpStatus('Syncing Codex MCP servers...');
+  safeListen(settingsSyncMcpBtn, 'click', function() {
+    setSettingsMcpStatus('Syncing Codex MCP servers...');
     vscode.postMessage({ type: 'syncCodexMcpServers' });
   });
-  safeListen(importMcpBtn, 'click', function() {
-    setMcpStatus('Opening MCP import flow...');
+  safeListen(settingsImportMcpBtn, 'click', function() {
+    setSettingsMcpStatus('Opening MCP import flow...');
     vscode.postMessage({ type: 'importMcpFromGitHub' });
   });
-  safeListen(moreSettingsBtn, 'click', function() {
-    vscode.postMessage({ type: 'openSettings' });
-  });
-  safeListen(mcpGlobalToggle, 'change', function() {
-    const enabled = Boolean(mcpGlobalToggle?.checked);
-    setMcpStatus((enabled ? 'Enabling' : 'Disabling') + ' MCP runtime...');
+  safeListen(settingsMcpGlobalToggle, 'change', function() {
+    const enabled = Boolean(settingsMcpGlobalToggle?.checked);
+    setSettingsMcpStatus((enabled ? 'Enabling' : 'Disabling') + ' MCP runtime...');
     vscode.postMessage({ type: 'setGlobalMcpEnabled', enabled: enabled });
   });
   safeListen(modeSel, 'change', function() {
@@ -2842,10 +3002,14 @@ try {
         }
         break;
       case 'mcpServersList':
-        renderMcpServers((msg.value || { mcpEnabled: true, servers: [] }) as McpServerListUiState);
+        renderSettingsMcpServers((msg.value || { mcpEnabled: true, servers: [] }) as McpServerListUiState);
         break;
       case 'mcpServersError':
-        setMcpStatus('Error: ' + (msg.value || 'Could not load MCP servers.'));
+        setSettingsMcpStatus('Error: ' + (msg.value || 'Could not load MCP servers.'));
+        break;
+      case 'settingsData':
+        settingsData = msg.value;
+        populateSettingsPanel(msg.value);
         break;
       default:
         log('[MSG←] Unhandled message type: ' + msg.type, 'error');

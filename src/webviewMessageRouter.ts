@@ -42,6 +42,13 @@ export interface WebviewMessageRouterHost {
     importMcpFromGitHub(): Promise<void>;
     setDefaultModel(modelName: string): Promise<void>;
     setExecutionMode(mode: 'default' | 'plan' | 'agent'): Promise<void>;
+    setEngine(engine: string): Promise<void>;
+    setPerformanceProfile(profile: string): Promise<void>;
+    setSamplingParam(key: string, value: number): Promise<void>;
+    setSystemPromptFromWebview(value: string): Promise<void>;
+    resetRapidMlxParams(): Promise<void>;
+    resetSystemPromptFromWebview(): Promise<void>;
+    getSettingsData(): Promise<void>;
     log(message: string, level: 'info' | 'error'): void;
 }
 
@@ -76,6 +83,27 @@ export async function routeWebviewMessage(message: any, host: WebviewMessageRout
             break;
         case 'setExecutionMode':
             await host.setExecutionMode(message.mode);
+            break;
+        case 'setEngine':
+            await host.setEngine(String(message.engine || ''));
+            break;
+        case 'setPerformanceProfile':
+            await host.setPerformanceProfile(String(message.profile || ''));
+            break;
+        case 'setSamplingParam':
+            await host.setSamplingParam(String(message.key || ''), Number(message.value));
+            break;
+        case 'setSystemPrompt':
+            await host.setSystemPromptFromWebview(String(message.value || ''));
+            break;
+        case 'resetRapidMlxParams':
+            await host.resetRapidMlxParams();
+            break;
+        case 'resetSystemPrompt':
+            await host.resetSystemPromptFromWebview();
+            break;
+        case 'getSettingsData':
+            await host.getSettingsData();
             break;
         case 'prompt':
             await host.enqueueRequest({

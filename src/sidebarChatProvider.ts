@@ -572,6 +572,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             importMcpFromGitHub: () => this.importMcpFromGitHub(),
             setDefaultModel: (modelName) => this._setDefaultModel(modelName),
             setExecutionMode: (mode) => this.setExecutionMode(mode),
+            setEngine: (engine) => this._setEngine(engine),
+            setPerformanceProfile: (profile) => this._setPerformanceProfile(profile),
+            setSamplingParam: (key, value) => this._setSamplingParam(key, value),
+            setSystemPromptFromWebview: (value) => this._setSystemPromptFromWebview(value),
+            resetRapidMlxParams: () => this._resetRapidMlxParams(),
+            resetSystemPromptFromWebview: () => this._resetSystemPromptFromWebview(),
+            getSettingsData: () => this._sendSettingsData(),
             log: (message, level) => {
                 if (level === 'error') logError(message, false);
                 else logInfo(message);
@@ -1285,6 +1292,150 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         
         this._lastModel = nextModel;
         logInfo('[MODELS] Default model updated from ' + currentModel + ' to ' + nextModel);
+    }
+
+    private async _setEngine(engine: string): Promise<void> {
+        if (!engine) return;
+        const engineUrlMap: Record<string, string> = {
+            'rapid-mlx': 'http://127.0.0.1:8000',
+            'ollama': 'http://127.0.0.1:11434',
+            'lmstudio': 'http://127.0.0.1:1234'
+        };
+        const targetUrl = engineUrlMap[engine] || engine;
+        const currentUrl = getConfig().ollamaBase;
+        if (currentUrl === targetUrl) {
+            return;
+        }
+        await getLlemSettings().update('engineUrl', targetUrl, vscode.ConfigurationTarget.Global);
+        logInfo('[SETTINGS] Engine updated from ' + currentUrl + ' to ' + targetUrl);
+        await this._sendModels();
+    }
+
+    private async _setPerformanceProfile(profile: string): Promise<void> {
+        const validProfiles = ['auto', 'balanced', 'large-local-26b'];
+        if (!validProfiles.includes(profile)) {
+            logError('[SETTINGS] Invalid performance profile: ' + profile);
+            return;
+        }
+        const currentProfile = getConfig().performancePreset;
+        if (currentProfile === profile) {
+            return;
+        }
+        await getLlemSettings().update('performancePreset', profile, vscode.ConfigurationTarget.Global);
+        logInfo('[SETTINGS] Performance profile updated from ' + currentProfile + ' to ' + profile);
+    }
+
+    private async _setSamplingParam(key: string, value: number): Promise<void> {
+        if (!Number.isFinite(value)) return;
+        switch (key) {
+            case 'temperature':
+                this._temperature = value;
+                await this._ctx.globalState.update('aiTemperature', value);
+                this._rapidMlxTextSampling.temperature = value;
+                break;
+            case 'topP':
+                this._topP = value;
+                await this._ctx.globalState.update('aiTopP', value);
+                this._rapidMlxTextSampling.topP = value;
+                break;
+            case 'topK':
+                this._topK = Math.round(value);
+                await this._ctx.globalState.update('aiTopK', this._topK);
+                this._rapidMlxTextSampling.topK = this._topK;
+                break;
+            case 'repeatPenalty':
+                this._rapidMlxTextSampling.repeatPenalty = value;
+                break;
+            case 'maxTokens':
+                this._rapidMlxTextSampling.maxTokens = Math.round(value);
+                break;
+            default:
+                logError('[SETTINGS] Unknown sampling param key: ' + key);
+                return;
+        }
+        this._rapidMlxTextSampling = normalizeRapidMlxTextSampling(this._rapidMlxTextSampling);
+        await this._ctx.globalState.update('rapidMlxTextSampling', this._rapidMlxTextSampling);
+        logInfo('[SETTINGS] Sampling param ' + key + ' set to ' + value);
+    }
+
+    private async _setSystemPromptFromWebview(value: string): Promise<void> {
+        const nextPrompt = value.trim() || SYSTEM_PROMPT;
+        if (this._systemPrompt === nextPrompt) {
+            return;
+        }
+        this._systemPrompt = nextPrompt;
+        await this._ctx.globalState.update('aiSystemPrompt', nextPrompt);
+        await this._resetQueueState({ abortActive: true });
+        this._chatSession.reset();
+        this._view?.webview.postMessage({ type: 'clearChat' });
+        this._syncQueueStateToWebview();
+        logInfo('[SETTINGS] System prompt updated, length=' + nextPrompt.length);
+    }
+
+    private async _resetRapidMlxParams(): Promise<void> {
+        this._rapidMlxTextSampling = { ...RAPID_MLX_TEXT_SAMPLING_DEFAULTS };
+        this._temperature = RAPID_MLX_TEXT_SAMPLING_DEFAULTS.temperature;
+        this._topP = RAPID_MLX_TEXT_SAMPLING_DEFAULTS.topP;
+        this._topK = RAPID_MLX_TEXT_SAMPLING_DEFAULTS.topK;
+        await this._ctx.globalState.update('rapidMlxTextSampling', this._rapidMlxTextSampling);
+        await this._ctx.globalState.update('aiTemperature', this._temperature);
+        await this._ctx.globalState.update('aiTopP', this._topP);
+        await this._ctx.globalState.update('aiTopK', this._topK);
+        logInfo('[SETTINGS] Sampling parameters reset to defaults');
+    }
+
+    private async _resetSystemPromptFromWebview(): Promise<void> {
+        if (this._systemPrompt === SYSTEM_PROMPT) {
+            return;
+        }
+        this._systemPrompt = SYSTEM_PROMPT;
+        await this._ctx.globalState.update('aiSystemPrompt', SYSTEM_PROMPT);
+        await this._resetQueueState({ abortActive: true });
+        this._chatSession.reset();
+        this._view?.webview.postMessage({ type: 'clearChat' });
+        this._syncQueueStateToWebview();
+        logInfo('[SETTINGS] System prompt reset to default');
+    }
+
+    private async _sendSettingsData(): Promise<void> {
+        if (!this._view) return;
+        const config = getConfig();
+        const engines = [
+            'http://127.0.0.1:8000',
+            'http://127.0.0.1:11434',
+            'http://127.0.0.1:1234'
+        ];
+        const performanceProfiles = [
+            { id: 'auto', label: 'Auto (detect large models)' },
+            { id: 'balanced', label: 'Balanced (wider context)' },
+            { id: 'large-local-26b', label: 'Large Local 26B (tight budget)' }
+        ];
+        const profileDescriptions: Record<string, string> = {
+            'auto': 'Automatically detects if the default model is a 26B-class model.',
+            'balanced': 'Keeps the current wider context and generation budget.',
+            'large-local-26b': 'Uses tighter prompt and context budgets for local 26B-class models.'
+        };
+        this._view.webview.postMessage({
+            type: 'settingsData',
+            value: {
+                engines,
+                activeEngine: config.ollamaBase,
+                models: await getInstalledModels(),
+                activeModel: config.defaultModel,
+                performanceProfiles,
+                activePerformanceProfile: config.performancePreset,
+                performanceProfileDescription: profileDescriptions[config.performancePreset] || '',
+                sampling: {
+                    temperature: this._temperature,
+                    topP: this._topP,
+                    topK: this._topK,
+                    repeatPenalty: this._rapidMlxTextSampling.repeatPenalty,
+                    maxTokens: this._rapidMlxTextSampling.maxTokens
+                },
+                systemPrompt: this._systemPrompt
+            }
+        });
+        logInfo('[SETTINGS] Settings data sent to webview');
     }
 
     private async _handleBrainMenu() {

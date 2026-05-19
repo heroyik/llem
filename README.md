@@ -697,6 +697,11 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.6.6
 
+- Settings panel Phase 3: backend handlers for engine, performance profile, sampling params, system prompt, and MCP settings
+- Packaged `release/llem-3.6.6.vsix`.
+
+### v3.6.6
+
 - Implemented the root-cause fix from [`plan/20260519_무한반복_fix.md`](plan/20260519_무한반복_fix.md): Rapid-MLX image requests were reaching the model, but repeated-token generation tails were being treated as retryable queue failures.
 - Structured watchdog loop metadata with `kind`, `repeatedToken`, `retryable`, and `cleanText`, then propagated that through `StreamOutcome`, `chatPipeline`, queue handling, logs, and tests.
 - Preserved clean partial answers after repetition stops while removing repeated token tails from the UI and saved history.

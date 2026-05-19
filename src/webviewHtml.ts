@@ -142,30 +142,111 @@ export function getChatWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Web
     </div>
   </div>
 
-  <div id="mcpModal" class="modal-overlay">
-    <div class="modal modal-wide">
-      <div class="modal-title-row">
-        <div>
-          <div class="modal-title">MCP Servers</div>
-          <div class="modal-subtitle">Enable or disable tool servers for the next request.</div>
-        </div>
-        <button id="closeMcpModalBtn" class="btn-secondary btn-compact" type="button">Close</button>
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal settings-modal">
+      <div class="settings-header">
+        <div class="settings-title">Settings</div>
+        <button id="closeSettingsBtn" class="settings-close-btn" type="button" title="Close settings">✕</button>
       </div>
-      <div class="mcp-toolbar">
-        <label class="mcp-global-toggle">
-          <input id="mcpGlobalToggle" type="checkbox">
-          <span>MCP runtime</span>
-        </label>
-        <div class="mcp-toolbar-actions">
-          <button id="refreshMcpBtn" class="btn-secondary btn-compact" type="button">Refresh</button>
-          <button id="reloadMcpBtn" class="btn-secondary btn-compact" type="button">Reload</button>
-          <button id="syncMcpBtn" class="btn-secondary btn-compact" type="button">Sync Codex</button>
-          <button id="importMcpBtn" class="btn-secondary btn-compact" type="button">Import</button>
-          <button id="moreSettingsBtn" class="btn-secondary btn-compact" type="button">More</button>
+
+      <div class="settings-scroll">
+        <!-- Engine -->
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-label-icon">⚡</span> Engine</div>
+          <div class="settings-field">
+            <label class="settings-field-label" for="settingsEngineSel">Engine</label>
+            <select id="settingsEngineSel" class="settings-select"></select>
+          </div>
+          <div class="settings-field">
+            <label class="settings-field-label" for="settingsModelSel">Model</label>
+            <select id="settingsModelSel" class="settings-select"></select>
+          </div>
+        </div>
+
+        <!-- Performance -->
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-label-icon">🚀</span> Performance</div>
+          <div class="settings-field">
+            <label class="settings-field-label" for="settingsPerfSel">Profile</label>
+            <select id="settingsPerfSel" class="settings-select">
+              <option value="auto">auto</option>
+              <option value="balanced">balanced</option>
+              <option value="large-local-26b">large-local-26b</option>
+            </select>
+          </div>
+          <div id="settingsPerfDesc" class="settings-field-desc">Recommended for most setups</div>
+        </div>
+
+        <!-- Advanced (collapsible) -->
+        <div class="settings-section settings-advanced">
+          <button id="settingsAdvancedToggle" class="settings-advanced-toggle" type="button">
+            <span id="settingsAdvancedArrow" class="settings-arrow">▶</span>
+            <span>Advanced</span>
+          </button>
+
+          <div id="settingsAdvancedBody" class="settings-advanced-body" hidden>
+            <!-- Sampling -->
+            <div class="settings-subsection">
+              <div class="settings-section-title"><span class="settings-label-icon">🎛</span> Sampling</div>
+              <div class="slider-row">
+                <label class="slider-label">Temperature</label>
+                <input type="range" id="settingsTemp" class="slider-input" min="0" max="2" step="0.01" value="0.7">
+                <span id="settingsTempVal" class="slider-value">0.70</span>
+              </div>
+              <div class="slider-row">
+                <label class="slider-label">Top P</label>
+                <input type="range" id="settingsTopP" class="slider-input" min="0" max="1" step="0.01" value="0.9">
+                <span id="settingsTopPVal" class="slider-value">0.90</span>
+              </div>
+              <div class="slider-row">
+                <label class="slider-label">Top K</label>
+                <input type="range" id="settingsTopK" class="slider-input" min="1" max="100" step="1" value="40">
+                <span id="settingsTopKVal" class="slider-value">40</span>
+              </div>
+              <div class="slider-row">
+                <label class="slider-label">Repeat Penalty</label>
+                <input type="range" id="settingsRepeatPenalty" class="slider-input" min="0.8" max="2" step="0.01" value="1.1">
+                <span id="settingsRepeatPenaltyVal" class="slider-value">1.10</span>
+              </div>
+              <div class="slider-row">
+                <label class="slider-label">Max Tokens</label>
+                <input type="range" id="settingsMaxTokens" class="slider-input" min="128" max="8192" step="128" value="2048">
+                <span id="settingsMaxTokensVal" class="slider-value">2048</span>
+              </div>
+              <div class="settings-reset-row">
+                <button id="settingsResetSamplingBtn" class="settings-reset-btn" type="button">Reset to defaults</button>
+              </div>
+            </div>
+
+            <!-- System Prompt -->
+            <div class="settings-subsection">
+              <div class="settings-section-title"><span class="settings-label-icon">📝</span> System Prompt</div>
+              <textarea id="settingsSystemPrompt" class="settings-textarea" rows="3" placeholder="System prompt for the AI..."></textarea>
+              <div class="settings-reset-row">
+                <button id="settingsResetPromptBtn" class="settings-reset-btn" type="button">Reset to default</button>
+              </div>
+            </div>
+
+            <!-- MCP Servers -->
+            <div class="settings-subsection">
+              <div class="settings-section-title"><span class="settings-label-icon">🔌</span> MCP Servers</div>
+              <div class="mcp-toolbar">
+                <label class="mcp-global-toggle">
+                  <input id="settingsMcpGlobalToggle" type="checkbox">
+                  <span>MCP runtime</span>
+                </label>
+                <div class="mcp-toolbar-actions">
+                  <button id="settingsRefreshMcpBtn" class="btn-secondary btn-compact" type="button">Refresh</button>
+                  <button id="settingsSyncMcpBtn" class="btn-secondary btn-compact" type="button">Sync Codex</button>
+                  <button id="settingsImportMcpBtn" class="btn-secondary btn-compact" type="button">Import</button>
+                </div>
+              </div>
+              <div id="settingsMcpStatus" class="mcp-status"></div>
+              <div id="settingsMcpServerList" class="mcp-server-list"></div>
+            </div>
+          </div>
         </div>
       </div>
-      <div id="mcpStatus" class="mcp-status"></div>
-      <div id="mcpServerList" class="mcp-server-list"></div>
     </div>
   </div>
 
