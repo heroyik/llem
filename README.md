@@ -35,6 +35,7 @@ The fix changes LLeM's behavior from "try the same generation again" to "preserv
 - Added Rapid-MLX image/OCR safe sampling for requests with attached images: `temperature=0.2`, `top_p=0.85`, `top_k=20`, `repeatPenalty=1.12`, and `max_tokens=2048`. This profile is intentionally conservative because image transcription and analysis should prioritize stability over creative variation.
 - Added Rapid-MLX plain-text safe sampling for requests without images: `temperature=0.35`, `top_p=0.85`, `top_k=30`, `repeatPenalty=1.12`, and `max_tokens=3072`. This reduces runaway repetition in normal chat/code requests while still leaving enough room for longer answers.
 - Extended OpenAI-compatible/Rapid-MLX request bodies so LLeM sends `top_k` and `repetition_penalty` along with `temperature`, `top_p`, and `max_tokens`. Previously, some local OpenAI-compatible paths did not receive the repeat-control parameters needed to reduce loops.
+- Sanitized outgoing local-engine request bodies to remove invalid lone Unicode surrogate code units before they reach Rapid-MLX. This prevents pasted-image prompts or attachment metadata from tripping server-side UTF-8 failures such as `surrogates not allowed`.
 - Added detailed diagnostics to make future loop reports easier to understand from logs. Request-start logs now include `samplingProfile`, `hasImages`, `repeatPenalty`, and `maxTokens`; watchdog stops log `repeatedKind`, `repeatedToken`, `cleanChars`, and `retryable=false`; queue handling logs when a repetition stop is non-retryable and therefore not scheduled again.
 - Added Settings -> Tune generation controls for the Rapid-MLX text profile, so users can change `temperature`, `top_p`, `top_k`, `repeatPenalty`, and `max_tokens` without editing source code.
 - Added input validation for each generation parameter. LLeM rejects out-of-range values before saving them, including invalid nucleus sampling values, negative token budgets, and non-integer `top_k` or `max_tokens`.
@@ -704,6 +705,7 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Added conservative Rapid-MLX image/OCR sampling: `temperature=0.2`, `top_p=0.85`, `top_k=20`, `repeatPenalty=1.12`, `max_tokens=2048`.
 - Added safer Rapid-MLX text sampling: `temperature=0.35`, `top_p=0.85`, `top_k=30`, `repeatPenalty=1.12`, `max_tokens=3072`.
 - Extended OpenAI-compatible/Rapid-MLX request bodies with `top_k` and `repetition_penalty`, plus richer request/watchdog/queue diagnostics.
+- Sanitized outgoing request strings to strip invalid lone Unicode surrogate code units before they can trigger Rapid-MLX UTF-8 encoding errors.
 - Added Settings -> Tune generation controls for Rapid-MLX text `temperature`, `top_p`, `top_k`, `repeatPenalty`, and `max_tokens`.
 - Added parameter help through a `? Explain parameters` entry, input validation, shared sampling-profile defaults, and one-click reset to the stable anti-repeat defaults.
 - Added regression tests for watchdog trimming, non-retryable repetition outcomes, hint-free fingerprints, request body controls, sampling defaults, normalization, and max-token mapping.

@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { extractStreamToken, parseStreamBuffer } = require('../out-test/streamParsing.js');
-const { buildStreamBody } = require('../out-test/streamBody.js');
+const { buildStreamBody, stripInvalidUnicodeSurrogates } = require('../out-test/streamBody.js');
 
 test('extractStreamToken reads LM Studio delta arrays and message fallback', () => {
   const deltaToken = extractStreamToken(
@@ -90,4 +90,30 @@ test('buildStreamBody sends Rapid-MLX/OpenAI-compatible repetition controls', ()
   assert.equal(body.top_p, 0.85);
   assert.equal(body.top_k, 20);
   assert.equal(body.repetition_penalty, 1.12);
+});
+
+test('buildStreamBody strips invalid unicode surrogates before sending local-engine requests', () => {
+  assert.equal(stripInvalidUnicodeSurrogates('ok\udcc4bad\ud83d\ude00done\ud83d'), 'okbad😀done');
+
+  const body = buildStreamBody(
+    'gemma-4-26b\udcc4',
+    [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Analyze this\udcc4 image' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc\udcc4def' } }
+      ]
+    }],
+    true,
+    0.2,
+    0.85,
+    20,
+    undefined,
+    2048,
+    1.12
+  );
+
+  assert.equal(body.model, 'gemma-4-26b');
+  assert.equal(body.messages[0].content[0].text, 'Analyze this image');
+  assert.equal(body.messages[0].content[1].image_url.url, 'data:image/png;base64,abcdef');
 });
