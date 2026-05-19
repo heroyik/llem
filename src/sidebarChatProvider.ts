@@ -401,10 +401,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     public async deleteAllHistory() {
         logInfo('[HISTORY] deleteAllHistory() requested');
         try {
+            // resetChat first: saves current session, then resets state
+            await this.resetChat();
+            // clearAll after: wipes everything including the just-saved session
             await this._historyManager.clearAll();
             logInfo('[HISTORY] All sessions deleted from disk');
-            await this.resetChat();
-            logInfo('[HISTORY] Refreshing history list after bulk deletion');
             await this.getHistory();
         } catch (err) {
             logError('[HISTORY] Failed to clear all history: ' + (err instanceof Error ? err.message : String(err)));

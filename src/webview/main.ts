@@ -215,6 +215,10 @@ try {
   let pendingFiles: FileAttachment[] = [];
   let editingMessageIndex = -1;
   let displayMessages: Message[] = [];
+  let userMessageHistory: string[] = [];
+  let historyIndex = -1;
+  let draftBuffer = '';
+  let historyCounterEl: HTMLElement | null = null;
   let queueState: QueueStatePayload = { running: false, paused: false, pendingRequests: [] };
   let lastQueuePaused = false;
   let internetEnabled = false;
@@ -2313,6 +2317,13 @@ try {
     document.body.classList.remove('init');
     const welcome = document.querySelector('.welcome');
     if (welcome) welcome.remove();
+    // Track sent message in history (skip edit-mode sends)
+    if (editingMessageIndex < 0 && text) {
+      userMessageHistory.push(text);
+      historyIndex = -1;
+      draftBuffer = '';
+      updateHistoryCounter();
+    }
     if (editingMessageIndex >= 0) {
       if (input) {
         input.value = '';
@@ -2356,6 +2367,57 @@ try {
     });
     pendingFiles = [];
     renderPreview();
+  }
+
+  function navigateHistory(direction: number): void {
+    if (!input) return;
+    if (userMessageHistory.length === 0) return;
+
+    if (direction === -1) {
+      // Arrow Up: go back in history
+      if (historyIndex === -1) {
+        // Save current draft
+        draftBuffer = input.value;
+        historyIndex = userMessageHistory.length - 1;
+      } else if (historyIndex > 0) {
+        historyIndex--;
+      } else {
+        // Already at oldest message
+        return;
+      }
+    } else {
+      // Arrow Down: go forward in history
+      if (historyIndex === -1) return; // Already at draft
+      if (historyIndex >= userMessageHistory.length - 1) {
+        // Restore draft buffer
+        historyIndex = -1;
+        input.value = draftBuffer;
+        input.selectionStart = input.selectionEnd = input.value.length;
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+        updateHistoryCounter();
+        return;
+      }
+      historyIndex++;
+    }
+
+    if (historyIndex >= 0 && historyIndex < userMessageHistory.length) {
+      input.value = userMessageHistory[historyIndex];
+      input.selectionStart = input.selectionEnd = input.value.length;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    }
+    updateHistoryCounter();
+  }
+
+  function updateHistoryCounter(): void {
+    if (!historyCounterEl) return;
+    if (historyIndex >= 0 && historyIndex < userMessageHistory.length) {
+      historyCounterEl.textContent = '(' + (historyIndex + 1) + '/' + userMessageHistory.length + ')';
+      historyCounterEl.style.display = '';
+    } else {
+      historyCounterEl.style.display = 'none';
+    }
   }
 
   // Internet toggle is handled below via safeListen.
@@ -2520,6 +2582,17 @@ try {
         return;
       }
     }
+    // Arrow Up/Down history navigation (when suggestions are not active)
+    if (keyboardEvent.key === 'ArrowUp' && !inputCompositionActive && userMessageHistory.length > 0) {
+      event.preventDefault();
+      navigateHistory(-1);
+      return;
+    }
+    if (keyboardEvent.key === 'ArrowDown' && !inputCompositionActive && historyIndex >= 0) {
+      event.preventDefault();
+      navigateHistory(1);
+      return;
+    }
     if (!shouldSubmitOnEnter({
       key: keyboardEvent.key,
       shiftKey: keyboardEvent.shiftKey,
@@ -2530,6 +2603,16 @@ try {
     log('[UI] Enter key pressed to send');
     send();
   });
+  // Create history counter element
+  if (input) {
+    historyCounterEl = document.createElement('span');
+    historyCounterEl.className = 'history-counter';
+    historyCounterEl.style.display = 'none';
+    const inputBtns = document.querySelector('.input-btns');
+    if (inputBtns) {
+      inputBtns.prepend(historyCounterEl);
+    }
+  }
   safeListen(newChatHistoryBtn, 'click', function() {
     log('[UI] New chat (from history) button clicked → posting newChat');
     vscode.postMessage({ type: 'newChat' });
@@ -2855,6 +2938,10 @@ try {
         if (chat) chat.innerHTML = welcomeMarkup();
         displayMessages = [];
         pendingFiles = [];
+        userMessageHistory = [];
+        historyIndex = -1;
+        draftBuffer = "";
+        updateHistoryCounter();
         exitEditMode(true);
         renderPreview();
         renderQueuePanel();
@@ -2873,6 +2960,10 @@ try {
       case 'restoreMessages':
         if (chat) chat.innerHTML = '';
         exitEditMode(true);
+        userMessageHistory = [];
+        historyIndex = -1;
+        draftBuffer = "";
+        updateHistoryCounter();
         displayMessages = msg.value || [];
         if (msg.value && msg.value.length > 0) {
           log('[RESTORE] Restoring ' + msg.value.length + ' display message(s)');
