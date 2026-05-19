@@ -695,6 +695,20 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ## Release Notes
 
+### v3.6.8
+
+- feat: automatic chunked file reading for large workspace files\n\n- Large files (>20KB) now automatically split into 4KB chunks when using <read_file>\n- Use <read_file>path:2</read_file>, <read_file>path:3</read_file> etc. to read subsequent chunks\n- Key files preview in context increased to 4,000 chars to match chunk boundary\n- AI reads only as many chunks as needed to answer
+- Packaged `release/llem-3.6.8.vsix`.
+
+### v3.6.7
+
+- @ mention file attachment: select a workspace file from suggestions and it gets attached as a file chip
+- Drag and drop improvements: removed Shift key requirement, fixed text-selection interference
+- Rapid-MLX image format fix for non-Ollama endpoints
+- Expanded attachable file extensions (C/C++, Ruby, PHP, Swift, Kotlin, Svelte, Vue, JSX/TSX, etc.)
+- Input keyboard navigation fixes: ArrowUp/Down history no longer conflicts with cursor movement or scrolls the page
+- Packaged `release/llem-3.6.7.vsix`.
+
 ### v3.6.6
 
 - Settings panel Phase 3: backend handlers for engine, performance profile, sampling params, system prompt, and MCP settings
