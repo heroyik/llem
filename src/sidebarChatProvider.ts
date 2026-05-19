@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { getLlemSettings, getVaultDir, getConfig } from './config';
 import { executeActions } from './actionExecutor';
 import { parseMcpSlashCommandActions } from './actionParser';
@@ -293,6 +294,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getTopP: () => this._topP,
             postWebviewMessage: (message) => this._view?.webview.postMessage(message),
             readBrainFile: (filename) => this._contextBuilder.readBrainFile(filename),
+            readWorkspaceFile: (filepath) => this._readWorkspaceFile(filepath),
             saveHistory: async () => this.saveHistory(),
             setAbortController: (controller) => { this._abortController = controller; },
             setLastPrompt: (prompt, modelName, files, internetEnabled) => {
@@ -1169,6 +1171,55 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             void vscode.window.showErrorMessage(`Could not open link: ${value}`);
             logError('[LINK] Failed to open external URL: ' + (err instanceof Error ? err.message : String(err)));
+        }
+    }
+
+    private _readWorkspaceFile(filepath: string): string {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) {
+            return `[WORKSPACE FILE: ${filepath}] (no workspace open)`;
+        }
+
+        // Parse chunk index suffix (e.g., "README.md:2" => path=README.md, chunk=2)
+        let actualPath = filepath;
+        let chunkIndex = 1;
+        const chunkMatch = filepath.match(/^(.+?):(\d+)$/);
+        if (chunkMatch) {
+            actualPath = chunkMatch[1].trim();
+            chunkIndex = parseInt(chunkMatch[2], 10);
+        }
+
+        let absPath: string;
+        if (path.isAbsolute(actualPath)) {
+            absPath = actualPath;
+        } else {
+            absPath = path.join(workspaceRoot, actualPath);
+        }
+
+        try {
+            const content = fs.readFileSync(absPath, 'utf-8');
+            const CHUNK_SIZE = 4000;
+            const totalChars = content.length;
+            const totalChunks = Math.ceil(totalChars / CHUNK_SIZE);
+
+            // Clamp chunk index to valid range
+            if (chunkIndex < 1) chunkIndex = 1;
+            if (chunkIndex > totalChunks) chunkIndex = totalChunks;
+
+            const start = (chunkIndex - 1) * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, totalChars);
+            const chunkContent = content.slice(start, end);
+
+            let result = `\`\`\`\n${chunkContent}\n\`\`\``;
+            result += `\n[CHUNK ${chunkIndex}/${totalChunks} - ${start + 1}–${end} of ${totalChars} chars]`;
+
+            if (chunkIndex < totalChunks) {
+                result += `\n[MORE CHUNKS AVAILABLE: use <read_file>${actualPath}:${chunkIndex + 1}</read_file> for next chunk]`;
+            }
+
+            return result;
+        } catch (err: any) {
+            return `[WORKSPACE FILE: ${filepath}] (FAILED: ${err.message})`;
         }
     }
 

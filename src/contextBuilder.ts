@@ -432,18 +432,18 @@ export class ContextBuilder {
             'src/index.ts', 'src/index.js', 'src/App.tsx', 'src/App.jsx',
             'src/main.ts', 'src/main.js'
         ];
-        let totalRead = 0;
-        const maxAutoRead = 6_000;
+        const CHUNK_LIMIT = 20_000;
+        const SUMMARY_PREVIEW = 4_000; // Must match CHUNK_SIZE in _readWorkspaceFile (sidebarChatProvider.ts)
 
         for (const keyFile of keyFiles) {
-            if (totalRead >= maxAutoRead) { break; }
             const abs = path.join(root, keyFile);
             if (fs.existsSync(abs)) {
                 try {
                     const content = fs.readFileSync(abs, 'utf-8');
-                    if (content.length < 5000) {
+                    if (content.length < CHUNK_LIMIT) {
                         result += `\n\n[FILE CONTENT: ${keyFile}]\n\`\`\`\n${content}\n\`\`\``;
-                        totalRead += content.length;
+                    } else {
+                        result += `\n\n[FILE PREVIEW: ${keyFile} (${content.length} chars - preview)]\n\`\`\`\n${content.slice(0, SUMMARY_PREVIEW)}...\n\`\`\`\nTo read the full file, use: <read_file>${keyFile}</read_file>`;
                     }
                 } catch {
                     // skip unreadable key files

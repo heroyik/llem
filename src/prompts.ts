@@ -27,8 +27,13 @@ You can have multiple <find>/<replace> pairs inside one <edit_file> block.
 <delete_file path="relative/path/file.ext"/>
 
 ━━━ ACTION 4: READ FILES ━━━
-<read_file path="relative/path/file.ext"/>
-Use this to read any file in the workspace BEFORE editing it. You will receive the file contents automatically.
+<read_file>relative/path/file.ext</read_file>
+Use this to read any file in the workspace. You will receive the file contents automatically.
+
+Key files (package.json, README.md, etc.) are automatically included in context. For large files (>20KB), only the first ~2,000 characters are shown as a preview.
+
+LARGE FILE CHUNKED READING:
+When a file is large, the first read returns only 4,000 characters at a time. To read more, add a chunk index: <read_file>path/to/file.ext:2</read_file> for the next chunk, <read_file>path/to/file.ext:3</read_file> for the third, and so on. You can also jump directly to any chunk. The system feedback will tell you how many total chunks exist. Read only as many chunks as you need to answer the user's question.
 
 ━━━ ACTION 5: LIST DIRECTORY ━━━
 <list_files path="relative/path/to/dir"/>

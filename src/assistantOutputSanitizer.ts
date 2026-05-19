@@ -1,8 +1,8 @@
-const ACTION_BLOCK_PATTERN = /<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)\b[\s\S]*?<\/(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)>/gi;
+const ACTION_BLOCK_PATTERN = /<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|read_file|call_mcp_tool|call:[a-z_]+)\b[\s\S]*?<\/(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|read_file|call_mcp_tool|call:[a-z_]+)>/gi;
 const SELF_CLOSING_ACTION_PATTERN = /<(?:delete_file|delete|read_file|read|list_files|list_dir|ls|list_mcp_tools|call:delete_file|call:delete|call:read_file|call:read|call:list_files|call:list_dir|call:ls)\b[^>]*\/?>/gi;
 const ACTION_TAG_FRAGMENT_PATTERN = /<\/?(?:create_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|list_mcp_tools|call_mcp_tool|call:[a-z_]+)\b[^>]*>/gi;
 const ACTION_HELPER_TAG_PATTERN = /<\/?(?:find|replace)\b[^>]*>/gi;
-const DANGLING_OPEN_ACTION_PATTERN = /<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|call_mcp_tool|call:[a-z_]+)\b[^>]*>[\s\S]*$/gi;
+const DANGLING_OPEN_ACTION_PATTERN = /<(?:create_file|file|edit_file|edit|run_command|command|bash|terminal|read_url|url|fetch_url|read_brain|read_vault|read_file|call_mcp_tool|call:[a-z_]+)\b[^>]*>[\s\S]*$/gi;
 const SCRATCHPAD_LINE_PATTERN = /^\s*\(?\s*(?:wait(?:[,!]|)|let(?:'|’)?s)\s+.*(?:\brefine\b|\breplace block\b|\bclean pass\b|\bworks perfectly\b|\bdynamic mapping\b|\buser(?:'|’)?s environment\b|provided\s+\w+\s+structure|[a-z0-9_/.-]+\.(?:ts|tsx|js|jsx|py|java|go|rs|rb|php|cs|json|md))[\s\S]*\)?\s*$/i;
 
 export function sanitizeAssistantOutput(text: string): string {

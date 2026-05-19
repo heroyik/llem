@@ -32,6 +32,7 @@ export interface ChatPipelineHost {
         executionMode?: ExecutionMode;
     }): ChatMessage[];
     executeActions(aiMessage: string): Promise<string[]>;
+    readWorkspaceFile(filepath: string): string;
     getChatHistory(): ChatMessage[];
     getDisplayMessages(): DisplayMessage[];
     getExecutionMode?(): ExecutionMode;
@@ -627,8 +628,9 @@ export class ChatPipeline {
     ): Promise<{ cleanedResponse: string; uiFeedback: string; systemFeedback: string; executed: boolean }> {
         const brainReads = [...aiMessage.matchAll(/<read_(?:brain|vault)>([\s\S]*?)<\/read_(?:brain|vault)>/g)];
         const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
+        const fileReads = [...aiMessage.matchAll(/<read_file>([\s\S]*?)<\/read_file>/gi)];
 
-        if (brainReads.length === 0 && urlReads.length === 0) {
+        if (brainReads.length === 0 && urlReads.length === 0 && fileReads.length === 0) {
             return { cleanedResponse: aiMessage, uiFeedback: '', systemFeedback: '', executed: false };
         }
 
@@ -639,6 +641,12 @@ export class ChatPipeline {
             const requestedFile = match[1].trim();
             const fileContent = this.host.readBrainFile(requestedFile);
             fetchedContent += `\n\n[BRAIN DOCUMENT: ${requestedFile}]\n${fileContent}\n`;
+        }
+
+        for (const match of fileReads) {
+            const requestedPath = match[1].trim();
+            const fileContent = this.host.readWorkspaceFile(requestedPath);
+            fetchedContent += `\n\n[WORKSPACE FILE: ${requestedPath}]\n${fileContent}\n`;
         }
 
         for (const match of urlReads) {
@@ -660,6 +668,7 @@ export class ChatPipeline {
 
         const cleanedResponse = aiMessage.replace(/<read_(?:brain|vault)>[\s\S]*?<\/read_(?:brain|vault)>/g, '')
             .replace(/<read_url>[\s\S]*?<\/read_url>/gi, '')
+            .replace(/<read_file>[\s\S]*?<\/read_file>/gi, '')
             .trim();
 
         if (brainReads.length > 0) {
@@ -668,10 +677,21 @@ export class ChatPipeline {
             this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
         }
 
+        if (fileReads.length > 0) {
+            const msg = `\n\n> 📄 **[File read complete]** Reading workspace file(s) to answer your question.\n\n`;
+            uiFeedbackStr += msg;
+            this.host.postWebviewMessage({ type: 'streamChunk', value: msg });
+        }
+
+        const hasMoreChunks = fetchedContent.includes('MORE CHUNKS AVAILABLE');
+        const systemFeedback = hasMoreChunks
+            ? `[SYSTEM: The following content was retrieved based on your actions.]\n${fetchedContent}\n\nThe file above has more chunks available. You can continue reading additional chunks with <read_file>filename:N</read_file> (e.g., <read_file>${extractChunkHint(fetchedContent)}</read_file>) if needed. Do NOT output <read_vault>, <read_brain>, or <read_url> again. Answer directly using what you have read so far, and request more chunks only if necessary.`
+            : `[SYSTEM: The following vault notes, web contents, and workspace files were retrieved based on your actions. Use them to answer the user's original question accurately.]\n${fetchedContent}\n\nNow answer the user's question using the knowledge above. Do NOT output <read_vault>, <read_brain>, <read_url>, or <read_file> again. Answer directly.`;
+
         return {
             cleanedResponse,
             uiFeedback: uiFeedbackStr,
-            systemFeedback: `[SYSTEM: The following vault notes and web contents were retrieved based on your actions. Use them to answer the user's original question accurately.]\n${fetchedContent}\n\nNow answer the user's question using the knowledge above. Do NOT output <read_vault>, <read_brain>, or <read_url> again. Answer directly.`,
+            systemFeedback,
             executed: true
         };
     }
@@ -1076,6 +1096,11 @@ function cleanHtmlText(html: string): string {
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function extractChunkHint(fetchedContent: string): string {
+    const match = fetchedContent.match(/use <read_file>([^<]+)<\/read_file>/i);
+    return match ? match[1] : '';
 }
 
 function isAbortError(error: any): boolean {
