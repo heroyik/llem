@@ -64,7 +64,7 @@ export interface MessageHandlerDeps {
     startStream(): void;
     handleStreamChunk(chunk: string): void;
     setMcpToolStatus(msg: any): void;
-    finalizeStream(status: string, message?: any, messageIndex?: number): void;
+    finalizeStream(status: string, message?: any, messageIndex?: number, stopReason?: string): void;
     resetStreamRefs(): void;
     showLoader(): void;
   };
@@ -149,7 +149,7 @@ export function createMessageHandler(deps: MessageHandlerDeps): (event: MessageE
         break;
       case 'streamAbort':
         log('[STREAM] Stream aborted');
-        streamHandler.finalizeStream('stopped', undefined, -1);
+        streamHandler.finalizeStream('stopped', undefined, -1, typeof msg.stopReason === 'string' ? msg.stopReason : undefined);
         break;
       case 'modelsList':
         if (els.modelSel) {

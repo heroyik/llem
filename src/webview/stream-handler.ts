@@ -397,7 +397,7 @@ export function createStreamHandler(deps: StreamHandlerDeps) {
 
   // ── Finalization ──
 
-  function finalizeStream(streamState: 'done' | 'stopped', message?: Message, messageIndex?: number): void {
+  function finalizeStream(streamState: 'done' | 'stopped', message?: Message, messageIndex?: number, stopReason?: string): void {
     hideLoader();
     if (!streamEl) {
       setSending(false);
@@ -412,13 +412,14 @@ export function createStreamHandler(deps: StreamHandlerDeps) {
     }
     renderStreamActionLines();
     renderHeadlineStream();
+    if (stopReason) streamStopReason = stopReason;
     if (streamStatusEl) streamStatusEl.className = 'stream-status ' + streamState;
     if (streamStatusTitleEl) {
       if (streamState === 'done') {
         const summary = generateCompletionSummary(streamRaw);
         streamStatusTitleEl.innerHTML = summary + ' <span class="disclosure">▶</span>';
       } else {
-        if (streamStopReason === 'repetition_detected') {
+        if (streamStopReason === 'repetition_detected' || streamStopReason === 'watchdog_loop') {
           streamStatusTitleEl.innerHTML = '⚠️ 반복 출력 감지, 중단됨 <span class="disclosure">▶</span>';
         } else {
           streamStatusTitleEl.innerHTML = '⏹ Generation stopped <span class="disclosure">▶</span>';

@@ -272,7 +272,7 @@ export class ChatPipeline {
                 repeatedKind = currentAiResponse.repeatedKind;
                 repeatedToken = currentAiResponse.repeatedToken;
                 retryable = currentAiResponse.retryable;
-                this.host.postWebviewMessage({ type: 'streamAbort', stopReason: 'repetition_detected' });
+                this.host.postWebviewMessage({ type: 'streamAbort', stopReason: currentAiResponse.stopReason || 'repetition_detected' });
                 // B-1: 반복 꼬리는 제거하고 깨끗한 부분 응답만 보존한다.
                 logInfo('[PIPELINE] Initial response repeated — preserving clean partial response without repeated tail.');
                 const cleanText = (currentAiResponse.cleanText || currentAiResponse.text || '').trim();
@@ -416,7 +416,7 @@ export class ChatPipeline {
                         repeatedKind = currentAiResponse.repeatedKind;
                         repeatedToken = currentAiResponse.repeatedToken;
                         retryable = currentAiResponse.retryable;
-                        this.host.postWebviewMessage({ type: 'streamAbort', stopReason: 'repetition_detected' });
+                        this.host.postWebviewMessage({ type: 'streamAbort', stopReason: currentAiResponse.stopReason || 'repetition_detected' });
                         fullAiMessage += (currentAiResponse.cleanText || currentAiResponse.text);
                         // B-1: followup 반복 감지 시 마지막 오염 assistant 메시지 제거
                         const hist = this.host.getChatHistory();

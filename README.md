@@ -43,6 +43,7 @@ This release systematically decomposes the monolithic `sidebarChatProvider.ts` a
 - **Slider Setup (`slider-setup.ts`)**: Extracted slider value display wiring for all 5 sliders into a `setupSliderDisplays()` function with typed deps interfaces.
 - **File Changes Renderer (`render-file-changes.ts`)**: Extracted `renderFileChangesSummary` as an exported function with its own imports.
 - **Fixed a pre-existing bug** during extraction: changed `key === 'Tab'` to `keyboardEvent.key === 'Tab'` in the keydown handler. The original code referenced an undefined variable, meaning Tab key handling was silently broken.
+- **Watchdog stop reason visibility**: Preserved `watchdog_loop` / `repetition_detected` abort reasons from the pipeline through the webview stream finalizer, so automatic repetition stops now show the Korean repetition warning instead of looking like a manual `Generation stopped`.
 - All 134 tests pass and TypeScript compiles with zero errors.
 
 ### v3.6.6 — Rapid-MLX repetition-loop fix, safer sampling, and full generation controls
@@ -729,6 +730,7 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Extracted settings command host into settings-command-host.ts with factory handling globalState persistence
 - Fixed pre-existing Tab key handling bug in keydown event (was checking undefined variable)
 - Removed _stopGeneration() dead code after delegating directly to _queueManager
+- Preserved watchdog/repetition abort reasons in the webview so loop watchdog stops display as repetition-detected stops instead of generic manual stops
 - No class logic or behavior changes
 - Packaged `release/llem-3.7.0.vsix`.
 
