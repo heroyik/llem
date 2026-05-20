@@ -711,45 +711,6 @@ select {
   white-space: nowrap;
 }
 
-.stream-action-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 10px 0;
-  padding: 12px 14px;
-  background: var(--panel-2);
-  border: 1px solid var(--accent-glow);
-  border-radius: 12px;
-  animation: pulseProgress 2s infinite ease-in-out;
-}
-
-.action-step-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-.action-step-badge svg {
-  width: 14px;
-  height: 14px;
-}
-
-.action-step-detail {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-family: 'SF Mono', monospace;
-  padding-left: 22px;
-}
-
-@keyframes pulseProgress {
-  0% { border-color: rgba(255, 158, 88, 0.1); box-shadow: 0 0 0 rgba(255, 158, 88, 0); }
-  50% { border-color: rgba(255, 158, 88, 0.3); box-shadow: 0 0 12px rgba(255, 158, 88, 0.1); }
-  100% { border-color: rgba(255, 158, 88, 0.1); box-shadow: 0 0 0 rgba(255, 158, 88, 0); }
-}
-
 .input-box {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1250,8 +1211,7 @@ textarea::placeholder {
   border-color: rgba(104, 225, 253, 0.42);
   background: linear-gradient(180deg, var(--panel), rgba(104, 225, 253, 0.08));
 }
-.stream-status.done { border-color: rgba(141, 224, 159, 0.28); }
-.stream-status.stopped { border-color: rgba(255, 107, 122, 0.28); }
+
 .stream-dot {
   width: 8px;
   height: 8px;
@@ -1285,54 +1245,178 @@ textarea::placeholder {
   font-size: 11px;
   font-weight: 700;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
-.stream-meta {
+.stream-elapsed {
   margin-left: auto;
   font-size: 10px;
   color: var(--text-faint);
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.stream-preview {
+.stream-status {
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.stream-status:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.stream-status.pending .stream-title {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.stream-status.done {
+  border-color: rgba(141, 224, 159, 0.28);
+  background: linear-gradient(180deg, rgba(141, 224, 159, 0.06), transparent);
+}
+.stream-status.stopped {
+  border-color: rgba(255, 107, 122, 0.28);
+  background: linear-gradient(180deg, rgba(255, 107, 122, 0.04), transparent);
+}
+
+/* Disclosure triangle on stream-title */
+.stream-title .disclosure {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px;
+  color: var(--text-faint);
+  transition: transform .2s ease;
+  line-height: 1;
+}
+.stream-title .disclosure.open {
+  transform: rotate(90deg);
+}
+
+/* Expandable details panel */
+.stream-details {
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--panel);
   padding: 12px 14px;
-  min-height: 64px;
   max-height: min(48vh, 460px);
   overflow: auto;
   line-height: 1.7;
+  transition: max-height .3s ease, opacity .2s ease, padding .2s ease;
+  opacity: 1;
 }
-.stream-preview-empty {
-  color: var(--text-faint);
-  font-style: italic;
+.stream-details.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+  padding: 0 14px;
+  overflow: hidden;
 }
-.stream-preview-live {
-  white-space: pre-wrap;
-  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
-  font-size: 11.5px;
-  color: var(--text);
-  position: relative;
+.stream-details::-webkit-scrollbar {
+  width: 6px;
 }
-.stream-preview-live::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  background: var(--accent);
-  margin-left: 2px;
+.stream-details::-webkit-scrollbar-thumb {
+  background: var(--panel-3);
   border-radius: 999px;
-  animation: blink .8s step-end infinite;
 }
-@keyframes blink {
-  from, to { opacity: 1; }
-  50% { opacity: 0; }
+
+/* Action lines timeline inside stream body */
+.stream-action-lines {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: fadeIn .2s ease;
 }
-.stream-preview-final {
-  padding: 0;
-  border: none;
-  background: transparent;
-  max-height: none;
-  overflow: visible;
+.stream-action-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  border-left: 2px solid transparent;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.stream-action-line .sal-icon {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.stream-action-line .sal-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.stream-action-line.live {
+  color: var(--text);
+  border-left-color: var(--accent-2);
+  background: linear-gradient(90deg, rgba(104, 225, 253, 0.06), transparent);
+}
+.stream-action-line.done {
+  color: var(--text-faint);
+  border-left-color: rgba(141, 224, 159, 0.3);
+}
+.stream-action-line.done .sal-icon {
+  font-size: 10px;
+}
+.stream-action-line.pending {
+  color: var(--text-dim);
+  border-left-color: var(--border);
+  opacity: 0.7;
+}
+
+/* Collapsible header for action lines */
+.sal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background .12s ease;
+}
+.sal-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.sal-chevron {
+  font-size: 8px;
+  color: var(--text-faint);
+  width: 14px;
+  flex-shrink: 0;
+  transition: transform .15s ease;
+}
+.sal-head-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sal-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.sal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  max-height: 5000px;
+  transition: max-height .25s ease, opacity .2s ease;
+  opacity: 1;
+}
+.sal-body.collapsed {
+  max-height: 0;
+  opacity: 0;
 }
 .regen-btn {
   margin-top: 8px;
@@ -1559,32 +1643,6 @@ body.init .input-wrap {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.action-step-detail {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    opacity: 0.8;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.action-step-meta {
-    margin-top: 8px;
-    font-size: 10px;
-    font-family: var(--vscode-editor-font-family);
-    color: var(--vscode-descriptionForeground);
-    opacity: 0.6;
-    display: flex;
-    gap: 8px;
-    border-top: 1px solid var(--vscode-widget-border);
-    padding-top: 6px;
-}
-
-.action-step-meta span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
 }
 .history-item-meta {
   font-size: 11px;

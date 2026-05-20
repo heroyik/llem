@@ -20,6 +20,31 @@ This extension was built because I was tired of being ghosted by AI every time I
 
 ## 🚀 What's New
 
+### v3.7.0 — Major sidebarChatProvider and webview codebase refactoring
+
+This release systematically decomposes the monolithic `sidebarChatProvider.ts` and `main.ts` into focused, single-responsibility modules following a consistent factory-with-deps pattern. The class itself now primarily orchestrates dependencies and delegates to extracted modules, making the codebase easier to maintain, test, and extend.
+
+#### sidebarChatProvider.ts → extracted modules
+
+- **Queue Manager (`queue-manager.ts`)**: Extracted all queue state management (~260 lines) — `_enqueueRequest`, `_executeQueuedRequest`, `_runNextRequestIfIdle`, `_handleExecutionResult`, retry with backoff, pause/resume, cancel, edit, move, and reset — into a `createQueueManager(deps)` factory. Manages internal state (`queueState`, `abortController`, `activeRequestPromise`, `isProcessingQueue`, `queueCheckTimer`) and exposes a `QueueManager` interface with 10 clean methods. The factory handles retry debouncing (3s/10s/30s), queue state diffing, and webview sync notifications.
+- **Webview Router Host (`webview-router-host.ts`)**: Extracted the `_webviewMessageRouterHost()` factory method (~120 lines) that maps all ~45 webview message handlers to their private class methods. Uses a typed `RouterHostDeps` interface. Two methods (`showBrainNetwork` and `log`) are implemented directly in the factory since they don't need class state.
+- **Settings Command Host (`settings-command-host.ts`)**: Extracted the `_settingsCommandHost()` factory that wires all settings UI commands (system prompt, Rapid-MLX sampling params, temperature/topK/topP, performance profiles, MCP controls) into a `SettingsCommandsHost`. Global state persistence is handled by the factory rather than inline in the class.
+- **Drop/Attachment Utilities (`drop-utils.ts`)**: Extracted 10 pure functions and 5 constants for drag-drop and file attachment parsing (`cleanDroppedUriString`, `parseDroppedUri`, `droppedUriKey`, `basenameFromUri`, `extensionFromName`, `attachmentTypeFromName`, `isSupportedDroppedAttachment`, `droppedAttachmentLimit`, `summarizeDropError`, `isSafeAttachmentLookupName`).
+- **MCP Slash Utils (`mcp-slash-utils.ts`)**: Extracted MCP slash command parsing helpers (`extractMcpTextParts`, `renderMcpSlashResultMessage`, `collectMcpSlashResultMessages`).
+- **Format Utils (`format-utils.ts`)**: Extracted standalone formatting utilities (`formatApproxKb`, `formatMs`, `countRole`).
+
+#### main.ts → extracted modules
+
+- **Reactive State Store (`state-store.ts`)**: Introduced a generic `createStateStore<T>` factory providing `get()`, `set()`, and `subscribe()` for type-safe reactive state management. All webview state is now accessed through the store with subscribers receiving notifications on every change, replacing the previous pattern of in-place object mutation where consumers had no way to observe state transitions.
+- **Reactive workspaceFiles updates**: The `workspaceFilesList` message handler now calls `store.set('workspaceFiles', wf)` after mutating the Set in-place, ensuring subscribers are notified. A dedicated subscription triggers `inputSuggest` re-render and message re-render whenever workspace files change.
+- **DOM Elements (`dom-elements.ts`)**: Moved all 61 `document.getElementById()` calls into a typed `DomElements` interface with `getDomElements()` factory. Destructuring is now a single clean line instead of ~70 lines of repetitive lookups.
+- **Event Registrations (`event-registrations.ts`)**: Extracted `safeListen` and all ~30 event listener registrations (input handlers, button clicks, select changes, toggle controls, history navigation) into a `registerEventHandlers` factory with typed `EventRegistrationDeps` interface.
+- **Error Overlay (`error-overlay.ts`)**: Extracted `window.onerror` and `unhandledrejection` global handlers into a clean `setupErrorOverlays()` function.
+- **Slider Setup (`slider-setup.ts`)**: Extracted slider value display wiring for all 5 sliders into a `setupSliderDisplays()` function with typed deps interfaces.
+- **File Changes Renderer (`render-file-changes.ts`)**: Extracted `renderFileChangesSummary` as an exported function with its own imports.
+- **Fixed a pre-existing bug** during extraction: changed `key === 'Tab'` to `keyboardEvent.key === 'Tab'` in the keydown handler. The original code referenced an undefined variable, meaning Tab key handling was silently broken.
+- All 134 tests pass and TypeScript compiles with zero errors.
+
 ### v3.6.6 — Rapid-MLX repetition-loop fix, safer sampling, and full generation controls
 
 This release implements the root-cause fix described in [`plan/20260519_무한반복_fix.md`](plan/20260519_무한반복_fix.md). The investigation showed that pasted/attached images were already reaching Rapid-MLX correctly, and Rapid-MLX was able to read the image and begin producing a useful answer. The real failure happened later: the model fell into a repeated-token tail such as `stone stone stone...`, LLeM's watchdog stopped the stream, and the queue layer treated the stop as retryable by replaying the same edited request with an internal `[SYSTEM HINT]`. That created a visible repeat loop instead of a clean stop.
@@ -694,6 +719,36 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 - Packaged `release/llem-3.1.2.vsix`.
 
 ## Release Notes
+
+### v3.7.0
+
+- Extracted queue manager from sidebarChatProvider.ts into queue-manager.ts with createQueueManager(deps) factory managing all queue state, retry backoff, and webview sync
+- Extracted webview message router host into webview-router-host.ts with typed RouterHostDeps interface
+- Extracted settings command host into settings-command-host.ts with factory handling globalState persistence
+- Extracted drop/attachment utility functions into drop-utils.ts
+- Extracted MCP slash command helpers into mcp-slash-utils.ts
+- Extracted formatting helpers into format-utils.ts
+- Removed _stopGeneration() dead code after delegating directly to _queueManager
+- No class logic or behavior changes in sidebarChatProvider
+- Packaged `release/llem-3.7.0.vsix`.
+
+### v3.7.0
+
+- Refactored sidebarChatProvider.ts by extracting module-level pure functions into three focused modules: drop-utils.ts (attachment/drop utilities), mcp-slash-utils.ts (MCP slash command parsing helpers), and format-utils.ts (formatting utilities)
+- No class logic or behavior changes
+- Packaged `release/llem-3.7.0.vsix`.
+
+### v3.7.0
+
+- Refactored webview main.ts into seven focused modules with reactive state management
+- Added generic createStateStore factory with get/set/subscribe for type-safe reactive state
+- Extracted 61 DOM queries into dom-elements.ts with typed DomElements interface
+- Extracted safeListen and all event registrations into event-registrations.ts
+- Extracted error overlays into error-overlay.ts
+- Extracted slider displays into slider-setup.ts
+- Extracted renderFileChangesSummary into render-file-changes.ts
+- Fixed pre-existing Tab key handling bug in keydown event
+- Packaged `release/llem-3.7.0.vsix`.
 
 ### v3.6.9
 

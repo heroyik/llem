@@ -276,7 +276,7 @@ export class ChatPipeline {
                 repeatedKind = currentAiResponse.repeatedKind;
                 repeatedToken = currentAiResponse.repeatedToken;
                 retryable = currentAiResponse.retryable;
-                this.postSingleLoopStopNotice(currentAiResponse);
+                this.host.postWebviewMessage({ type: 'streamAbort', stopReason: 'repetition_detected' });
                 // B-1: 반복 꼬리는 제거하고 깨끗한 부분 응답만 보존한다.
                 logInfo('[PIPELINE] Initial response repeated — preserving clean partial response without repeated tail.');
                 const cleanText = (currentAiResponse.cleanText || currentAiResponse.text || '').trim();
@@ -292,6 +292,7 @@ export class ChatPipeline {
                 this.saveHistoryInBackground('initial_repeated');
                 this.host.postWebviewMessage({
                     type: 'streamEnd',
+                    stopReason: 'repetition_detected',
                     message: emptyFinalDisplay,
                     messageIndex: this.host.getDisplayMessages().length - 1
                 });
@@ -419,7 +420,7 @@ export class ChatPipeline {
                         repeatedKind = currentAiResponse.repeatedKind;
                         repeatedToken = currentAiResponse.repeatedToken;
                         retryable = currentAiResponse.retryable;
-                        this.postSingleLoopStopNotice(currentAiResponse);
+                        this.host.postWebviewMessage({ type: 'streamAbort', stopReason: 'repetition_detected' });
                         fullAiMessage += (currentAiResponse.cleanText || currentAiResponse.text);
                         // B-1: followup 반복 감지 시 마지막 오염 assistant 메시지 제거
                         const hist = this.host.getChatHistory();
@@ -445,7 +446,7 @@ export class ChatPipeline {
                         repeatedStopReason = 'turn_to_turn_loop';
                         repeatedKind = 'turn-to-turn-loop';
                         retryable = false;
-                        this.postSingleLoopStopNotice({ stopReason: 'repetition_detected' });
+                        this.host.postWebviewMessage({ type: 'streamAbort', stopReason: 'repetition_detected' });
                         fullAiMessage += currentAiResponse.text;
                         break;
                     }
@@ -868,16 +869,6 @@ export class ChatPipeline {
             }
             throw err;
         }
-    }
-
-    private postSingleLoopStopNotice(outcome: Pick<StreamOutcome, 'stopReason' | 'repeatedToken'>): void {
-        const label = isLoopStopReason(outcome.stopReason as any)
-            ? `Repeating output detected${outcome.repeatedToken ? ` (${outcome.repeatedToken.trim()})` : ''}. Stopping this run without automatic retry.`
-            : 'This run was stopped before continuing.';
-        this.host.postWebviewMessage({
-            type: 'streamChunk',
-            value: `\n\n> ⚠️ **${label}**\n\n`
-        });
     }
 
     private createCombinedSignal(s1: AbortSignal, s2: AbortSignal): AbortSignal {
