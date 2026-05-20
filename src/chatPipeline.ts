@@ -4,19 +4,25 @@ import { sanitizeAssistantOutput } from './assistantOutputSanitizer';
 import { getConfig } from './config';
 import { findInstalledModelInfo, buildModelProfile } from './performanceProfiles';
 import { PerfLogger } from './perfLogger';
-import { getEngineDisplayName, resolveAIEndpoint, streamCompletion } from './aiClient';
-import { buildContinuationSystemMessage, normalizeChatMessages } from './chatPipelineHelpers';
-import { attachImagesToChatMessages } from './imageRequestPayload';
-import { getInstalledModelCatalog, getModelCapabilities } from './modelDiscovery';
-import { allocateAttachmentPreview, getAttachmentBudgetLimits } from './promptBudgeting';
+import { getEngineDisplayName, resolveAIEndpoint } from './aiClient';
+import { buildContinuationSystemMessage } from './chatPipelineHelpers';
+import { getInstalledModelCatalog } from './modelDiscovery';
 import { logInfo, logStreamEvent } from './logger';
-import { RepetitionWatchdog } from './repetitionWatchdog';
-import { RAPID_MLX_IMAGE_SAMPLING, buildRapidMlxTextSamplingProfile, type RapidMlxTextSamplingSettings } from './samplingProfiles';
 import type { AIEndpoint, AttachedFile, ChatMessage, DisplayMessage, ModelProfile } from './types';
 import { shouldUseDesignPlanningMode } from './designPlanningMode';
-import { isLoopStopReason, type StreamOutcome } from './streamOutcome';
 import type { RequestExecutionPhase } from './designPlanningMode';
 import type { ExecutionMode } from './executionMode';
+import type { RapidMlxTextSamplingSettings } from './samplingProfiles';
+import { prepareAttachments, compactFilesForReuse, attachImagesToRequest } from './pipeline-attachments';
+import { modelSupportsVision } from './pipeline-vision';
+import { createStreamManager, type StreamManager } from './pipeline-stream';
+import {
+    isAbortError,
+    formatPromptWithFileError,
+    formatPromptError,
+    cleanHtmlText,
+    extractChunkHint
+} from './pipeline-utils';
 
 export interface ChatPipelineHost {
     buildRequestMessages(options?: {
@@ -63,28 +69,19 @@ interface PromptRunOptions {
     internetEnabled?: boolean;
 }
 
-interface PreparedAttachments {
-    fileContext: string;
-    imageFiles: AttachedFile[];
-    displayFiles: Pick<AttachedFile, 'name' | 'type' | 'data'>[];
-    notices: string[];
-    textAttachmentNames: string[];
-    includedChars: number;
-    prunedChars: number;
-}
-
-function normalizeImageData(data: unknown): string {
-    const raw = String(data || '').trim();
-    const dataUrlMatch = raw.match(/^data:[^;]+;base64,(.*)$/i);
-    return dataUrlMatch ? dataUrlMatch[1].trim() : raw;
-}
-
 const DEFAULT_BACKGROUND_LABEL = 'BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED';
-const MAX_TEXT_ATTACHMENT_CHARS = 20000;
-const MAX_TEXT_ATTACHMENT_DECODE_BYTES = 96 * 1024;
-const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 export class ChatPipeline {
-    constructor(private readonly host: ChatPipelineHost) {}
+    private readonly _streamManager: StreamManager;
+
+    constructor(private readonly host: ChatPipelineHost) {
+        this._streamManager = createStreamManager({
+            postWebviewMessage: (msg) => this.host.postWebviewMessage(msg),
+            getTemperature: () => this.host.getTemperature(),
+            getTopK: () => this.host.getTopK(),
+            getTopP: () => this.host.getTopP(),
+            getRapidMlxTextSampling: () => this.host.getRapidMlxTextSampling()
+        });
+    }
 
     public async handlePromptWithFile(
         prompt: string,
@@ -126,9 +123,9 @@ export class ChatPipeline {
                 family: installedModel?.family
             });
             const attachmentStart = performance.now();
-            const attachments = this.prepareAttachments(files, modelProfile);
+            const attachments = prepareAttachments(files, modelProfile);
             const attachmentPrepMs = performance.now() - attachmentStart;
-            const reusableFiles = this.compactFilesForReuse(files);
+            const reusableFiles = compactFilesForReuse(files);
             const planningOnlyInitialTurn = shouldUseDesignPlanningMode(
                 options.prompt,
                 files.map(file => file.name)
@@ -175,11 +172,11 @@ export class ChatPipeline {
             PerfLogger.log(`[PREP] model=${selectedModel} endpoint=${endpointMs.toFixed(1)}ms catalog=${catalogMs.toFixed(1)}ms attachments=${attachmentPrepMs.toFixed(1)}ms request=${requestBuildMs.toFixed(1)}ms total_pre_stream=${(performance.now() - runStart).toFixed(1)}ms`);
 
             // B-3: Ollama API에서 vision capability를 확인하여 이미지 전달 여부 결정
-            const visionCheck = await this.modelSupportsVision(selectedModel, endpoint, installedModel);
-            const modelSupportsVision = visionCheck.supportsVision;
-            logInfo(`[PIPELINE] Vision check for '${selectedModel}': ${modelSupportsVision ? 'supported' : 'not supported'} (${visionCheck.reason})`);
+            const visionCheck = await modelSupportsVision(selectedModel, endpoint, installedModel);
+            const visionSupported = visionCheck.supportsVision;
+            logInfo(`[PIPELINE] Vision check for '${selectedModel}': ${visionSupported ? 'supported' : 'not supported'} (${visionCheck.reason})`);
             const imagesToSend = attachments.imageFiles;
-            if (!modelSupportsVision && attachments.imageFiles.length > 0) {
+            if (!visionSupported && attachments.imageFiles.length > 0) {
                 logInfo(`[PIPELINE] Sending ${attachments.imageFiles.length} image(s) anyway: vision support for '${selectedModel}' was not confirmed (${visionCheck.reason}).`);
             }
 
@@ -244,12 +241,11 @@ export class ChatPipeline {
                 logInfo(`[PIPELINE] MLLM token-aware trim: ${before} → ${reqMessages.length} msgs, est. ${systemTokens + usedTokens}/${MLLM_TOKEN_HARD_CAP} tokens (rapid-mlx vision safe limit)`);
             }
 
-            this.attachImagesToRequest(endpoint, reqMessages, imagesToSend);
+            attachImagesToRequest(endpoint, reqMessages, imagesToSend);
             if (imagesToSend.length > 0) {
                 const totalImageChars = imagesToSend.reduce((sum, image) => sum + String(image.data || '').length, 0);
                 logInfo(`[PIPELINE] Attached ${imagesToSend.length} image(s) to request for ${endpoint.engineKind || 'unknown'} (${totalImageChars} base64 chars).`);
             }
-
 
             this.host.postWebviewMessage({ type: 'streamStart' });
 
@@ -257,12 +253,12 @@ export class ChatPipeline {
                 this.host.postWebviewMessage({ type: 'streamChunk', value: notice });
             }
 
-            this.host.setLastPrompt(options.prompt, options.modelName, this.compactFilesForReuse(files), options.internetEnabled);
+            this.host.setLastPrompt(options.prompt, options.modelName, compactFilesForReuse(files), options.internetEnabled);
             abortController = new AbortController();
             this.host.setAbortController(abortController);
 
             let fullAiMessage = '';
-            let currentAiResponse = await this.streamMessages(
+            let currentAiResponse = await this._streamManager.streamMessages(
                 endpoint,
                 reqMessages,
                 selectedModel,
@@ -414,7 +410,7 @@ export class ChatPipeline {
                         executionPhase: 'followup',
                         executionMode: this.host.getExecutionMode?.()
                     });
-                    currentAiResponse = await this.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
+                    currentAiResponse = await this._streamManager.streamMessages(endpoint, nextReqMessages, selectedModel, config.timeout, abortController.signal, modelProfile, 'followup');
                     if (currentAiResponse.repeated) {
                         repeatedStopReason = currentAiResponse.stopReason;
                         repeatedKind = currentAiResponse.repeatedKind;
@@ -507,9 +503,9 @@ export class ChatPipeline {
                 value: hasFiles ? formatPromptWithFileError(error, ollamaBase) : formatPromptError(error, ollamaBase)
             });
             if (hasFiles) {
-                this.postStreamErrorDetail(error, detail => `⚠️ API detail: ${detail}`);
+                this._streamManager.postStreamErrorDetail(error, detail => `⚠️ API detail: ${detail}`);
             } else {
-                this.postStreamErrorDetail(error, detail => {
+                this._streamManager.postStreamErrorDetail(error, detail => {
                     const refined = detail.includes('greater than the context length')
                         ? 'Your project context is bigger than the model can hold.\nTip: in LM Studio, raise the Context Length slider to 8192 and reload the model.'
                         : detail;
@@ -524,113 +520,6 @@ export class ChatPipeline {
                 this.host.setAbortController(undefined);
             }
         }
-    }
-
-    private prepareAttachments(files: AttachedFile[], modelProfile: ModelProfile): PreparedAttachments {
-        const prepared: PreparedAttachments = {
-            fileContext: '',
-            imageFiles: [],
-            displayFiles: [],
-            notices: [],
-            textAttachmentNames: [],
-            includedChars: 0,
-            prunedChars: 0
-        };
-        const attachmentBudget = getAttachmentBudgetLimits(modelProfile.contextBudget);
-        let remainingAttachmentChars = attachmentBudget.totalChars;
-
-        for (const file of files) {
-            const type = file.type || 'application/octet-stream';
-            const size = file.originalSize ?? estimateBase64Bytes(file.data);
-
-            if (type.startsWith('image/')) {
-                const imageData = normalizeImageData(file.data);
-                if (!imageData) {
-                    prepared.displayFiles.push({ name: file.name, type, data: '' });
-                    prepared.notices.push(`\n\n> 📎 **[Image skipped]** ${file.name}: the pasted image data was empty before the model request.\n\n`);
-                    logInfo(`[PIPELINE] Skipped image attachment '${file.name}' because data was empty.`);
-                    continue;
-                }
-                if (size > MAX_IMAGE_ATTACHMENT_BYTES) {
-                    prepared.displayFiles.push({ name: file.name, type, data: '' });
-                    prepared.notices.push(`\n\n> 📎 **[Image skipped]** ${file.name}: ${formatBytes(size)} is too large for the model request. Max supported size is ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}.\n\n`);
-                    logInfo(`[PIPELINE] Skipped image attachment '${file.name}' because ${formatBytes(size)} exceeds ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}.`);
-                    continue;
-                }
-
-                prepared.imageFiles.push({ ...file, type, data: imageData });
-                prepared.displayFiles.push({ name: file.name, type, data: imageData });
-                continue;
-            }
-
-            const decoded = decodeBase64TextPrefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES);
-            const preview = decoded.slice(0, MAX_TEXT_ATTACHMENT_CHARS);
-            const budgetedPreview = allocateAttachmentPreview(preview, remainingAttachmentChars, attachmentBudget.perFileChars);
-            logInfo(`[PIPELINE] Prepared text attachment '${file.name}' type=${type} originalBytes=${size} encodedChars=${String(file.data || '').length} decodedChars=${decoded.length} previewChars=${preview.length} includedChars=${budgetedPreview.included.length} prunedChars=${budgetedPreview.prunedChars} remainingAttachmentChars=${Number.isFinite(budgetedPreview.remainingChars) ? budgetedPreview.remainingChars : 'unlimited'} truncated=${Boolean(file.truncated)}`);
-            const wasTruncated = Boolean(file.truncated)
-                || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
-                || decoded.length > MAX_TEXT_ATTACHMENT_CHARS
-                || budgetedPreview.prunedChars > 0;
-            const note = wasTruncated
-                ? ` (partial preview only: up to ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} of ${formatBytes(size)})`
-                : '';
-
-            if (budgetedPreview.included.length === 0) {
-                prepared.displayFiles.push({ name: file.name, type, data: '' });
-                prepared.notices.push(`\n\n> 📎 **[Attachment budget reached]** ${file.name}: skipped to keep the 26B prompt lean.\n\n`);
-                prepared.prunedChars += preview.length;
-                continue;
-            }
-
-            remainingAttachmentChars = budgetedPreview.remainingChars;
-            prepared.textAttachmentNames.push(file.name);
-            prepared.includedChars += budgetedPreview.included.length;
-            prepared.prunedChars += budgetedPreview.prunedChars;
-            prepared.fileContext += `\n\n[ATTACHED FILE: ${file.name}${note}]\n\`\`\`\n${budgetedPreview.included}\n\`\`\``;
-            prepared.displayFiles.push({ name: file.name, type, data: '' });
-
-            if (wasTruncated) {
-                prepared.notices.push(`\n\n> 📎 **[Partial file preview]** ${file.name}: only the first ${formatBytes(MAX_TEXT_ATTACHMENT_DECODE_BYTES)} made it into model context. Full size: ${formatBytes(size)}.\n\n`);
-            }
-        }
-
-        return prepared;
-    }
-
-    private compactFilesForReuse(files: AttachedFile[]): AttachedFile[] | undefined {
-        if (files.length === 0) {
-            return undefined;
-        }
-
-        const reusableFiles: AttachedFile[] = [];
-
-        for (const file of files) {
-            const type = file.type || 'application/octet-stream';
-            const size = file.originalSize ?? estimateBase64Bytes(file.data);
-
-            if (type.startsWith('image/')) {
-                if (size <= MAX_IMAGE_ATTACHMENT_BYTES) {
-                    reusableFiles.push({ ...file, type });
-                }
-                continue;
-            }
-
-            reusableFiles.push({
-                ...file,
-                type,
-                data: size > MAX_TEXT_ATTACHMENT_DECODE_BYTES
-                    ? sliceBase64Prefix(file.data, MAX_TEXT_ATTACHMENT_DECODE_BYTES)
-                    : file.data,
-                truncated: file.truncated || size > MAX_TEXT_ATTACHMENT_DECODE_BYTES,
-                originalSize: size
-            });
-        }
-
-        return reusableFiles.length > 0 ? reusableFiles : undefined;
-    }
-
-    private attachImagesToRequest(endpoint: AIEndpoint, reqMessages: ChatMessage[], imageFiles: AttachedFile[]): void {
-        attachImagesToChatMessages(endpoint, reqMessages, imageFiles);
     }
 
     private async resolveInternalActions(
@@ -710,185 +599,6 @@ export class ChatPipeline {
         };
     }
 
-    private async streamMessages(
-        endpoint: AIEndpoint,
-        messages: ChatMessage[],
-        modelName: string,
-        timeout: number,
-        signal?: AbortSignal,
-        modelProfile?: ModelProfile,
-        phase: 'initial' | 'followup' = 'initial'
-    ): Promise<StreamOutcome> {
-        const streamStart = performance.now();
-        let firstTokenTime = 0;
-        let tokenCount = 0;
-
-        const normalizedMessages = normalizeChatMessages(messages);
-        const roles = normalizedMessages.map(m => m.role);
-        logInfo(`[PIPELINE] Normalized messages for stream: roles=${JSON.stringify(roles)}`);
-        const hasImages = normalizedMessages.some(message => Array.isArray(message.content)
-            && message.content.some((part: any) => part?.type === 'image_url'));
-        const useRapidMlxImageSafeProfile = endpoint.engineKind === 'rapid-mlx' && hasImages;
-        const useRapidMlxTextSafeProfile = endpoint.engineKind === 'rapid-mlx' && !hasImages;
-        const sampling = useRapidMlxImageSafeProfile
-            ? RAPID_MLX_IMAGE_SAMPLING
-            : useRapidMlxTextSafeProfile
-                ? buildRapidMlxTextSamplingProfile(this.host.getRapidMlxTextSampling())
-                : undefined;
-
-        // Repetition Watchdog
-        const watchdog = new RepetitionWatchdog();
-        let loopDetected = false;
-        let loopResult = watchdog.getResult();
-        let streamedText = '';
-
-        const abortController = new AbortController();
-        const combinedSignal = signal 
-            ? this.createCombinedSignal(signal, abortController.signal)
-            : abortController.signal;
-
-        let buffer = '';
-        const flushBuffer = () => {
-            if (buffer) {
-                this.host.postWebviewMessage({
-                    type: 'streamChunk',
-                    value: buffer,
-                    preview: this.buildLivePreview(streamedText)
-                });
-                buffer = '';
-            }
-        };
-
-        const flushInterval = setInterval(flushBuffer, 50);
-
-        try {
-            const result = await streamCompletion({
-                endpoint,
-                messages: normalizedMessages,
-                modelName,
-                timeout,
-                temperature: sampling ? sampling.temperature : this.host.getTemperature(),
-                topP: sampling ? sampling.topP : this.host.getTopP(),
-                topK: sampling ? sampling.topK : this.host.getTopK(),
-                contextWindow: !endpoint.isLMStudio ? modelProfile?.requestTuning.numCtx : undefined,
-                predictTokens: sampling
-                    ? sampling.predictTokens
-                    : !endpoint.isLMStudio
-                    ? (phase === 'followup'
-                        ? modelProfile?.requestTuning.followupPredict
-                        : modelProfile?.requestTuning.initialPredict)
-                    : undefined,
-                repeatPenalty: sampling
-                    ? sampling.repeatPenalty
-                    : modelProfile?.requestTuning.repeatPenalty,
-                samplingProfile: sampling?.profile,
-                signal: combinedSignal
-            }, token => {
-                if (firstTokenTime === 0) {
-                    firstTokenTime = performance.now();
-                    PerfLogger.update({ streamFirstTokenMs: firstTokenTime - streamStart });
-                }
-                tokenCount++;
-                buffer += token;
-                streamedText += token;
-
-                // Watchdog Logic
-                if (!loopDetected && token.trim().length > 0) {
-                    if (watchdog.addToken(token)) {
-                        loopDetected = true;
-                        loopResult = watchdog.getResult();
-                        loopResult = {
-                            ...loopResult,
-                            cleanText: watchdog.cleanText(streamedText)
-                        };
-                        const reason = loopResult.reason || watchdog.getAbortedReason();
-                        const recentPreview = streamedText.slice(-240).replace(/\s+/g, ' ').trim();
-                        logInfo(`[WATCHDOG] Loop detected (${reason}). Aborting stream. Recent output: ${recentPreview}`);
-                        logStreamEvent('watchdog', 'repetition_stop', {
-                            repeatedKind: loopResult.kind,
-                            repeatedToken: loopResult.repeatedToken,
-                            cleanChars: loopResult.cleanText.length,
-                            retryable: loopResult.retryable,
-                            reason
-                        });
-                        abortController.abort();
-                    }
-                }
-            });
-
-            clearInterval(flushInterval);
-            flushBuffer();
-
-            const totalSeconds = (performance.now() - firstTokenTime) / 1000;
-            const totalMs = performance.now() - streamStart;
-            PerfLogger.update({
-                streamTotalMs: totalMs,
-                streamTotalTokens: tokenCount,
-                streamTokensPerSecond: firstTokenTime > 0 && totalSeconds > 0 ? tokenCount / totalSeconds : 0
-            });
-
-            if (loopDetected && !result.repeated) {
-                let text = loopResult.cleanText || streamedText || result.text;
-                // 태그 보정
-                if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
-                if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
-                if (text.includes('<run_command') && !text.includes('</run_command>')) text += '\n</run_command>';
-
-                return {
-                    text,
-                    stopReason: 'watchdog_loop',
-                    repeated: true,
-                    aborted: true,
-                    repeatedKind: loopResult.kind,
-                    repeatedToken: loopResult.repeatedToken,
-                    retryable: loopResult.retryable,
-                    cleanText: text
-                };
-            }
-            return result;
-        } catch (err: any) {
-            clearInterval(flushInterval);
-            flushBuffer();
-            if (loopDetected || err?.name === 'AbortError' || axios.isCancel(err)) {
-                let text = loopDetected ? (loopResult.cleanText || streamedText) : streamedText;
-                // 태그 보정
-                if (text.includes('<edit_file') && !text.includes('</edit_file>')) text += '\n</edit_file>';
-                if (text.includes('<create_file') && !text.includes('</create_file>')) text += '\n</create_file>';
-                if (text.includes('<run_command') && !text.includes('</run_command>')) text += '\n</run_command>';
-
-                return {
-                    text,
-                    stopReason: loopDetected ? 'watchdog_loop' : 'manual_abort',
-                    repeated: loopDetected,
-                    aborted: true,
-                    repeatedKind: loopDetected ? loopResult.kind : undefined,
-                    repeatedToken: loopDetected ? loopResult.repeatedToken : undefined,
-                    retryable: loopDetected ? loopResult.retryable : undefined,
-                    cleanText: loopDetected ? text : undefined
-                };
-            }
-            throw err;
-        }
-    }
-
-    private createCombinedSignal(s1: AbortSignal, s2: AbortSignal): AbortSignal {
-        const controller = new AbortController();
-        const onAbort = () => controller.abort();
-        s1.addEventListener('abort', onAbort);
-        s2.addEventListener('abort', onAbort);
-        return controller.signal;
-    }
-
-    private appendAgentReport(aiMessage: string, report: string[]): string {
-        if (report.length === 0) {
-            return aiMessage;
-        }
-
-        this.postActionReport(report);
-        const reportMsg = this.formatActionReport(report);
-        return aiMessage + reportMsg;
-    }
-
     private postActionReport(report: string[]): void {
         this.host.postWebviewMessage({ type: 'streamChunk', value: this.formatActionReport(report) });
     }
@@ -914,103 +624,6 @@ export class ChatPipeline {
             });
     }
 
-    private buildLivePreview(text: string): string {
-        if (!text) {
-            return '';
-        }
-
-        return text
-            .replace(/(?:<|call:)\s*create_file\s+path="([^"]+)"[^>]*>[\s\S]*?<\/create_file>/gi, '\n📁 Creating file: $1\n')
-            .replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)"[^>]*>[\s\S]*?<\/edit_file>/gi, '\n✏️ Editing file: $1\n')
-            .replace(/(?:<|call:)\s*create_file\s+path="([^"]+)"[^>]*>[\s\S]*$/gi, '\n📁 Creating file: $1\n')
-            .replace(/(?:<|call:)\s*edit_file\s+path="([^"]+)"[^>]*>[\s\S]*$/gi, '\n✏️ Editing file: $1\n')
-            .replace(/<\/?(?:find|replace)\b[^>]*>/gi, '')
-            .replace(/\n{3,}/g, '\n\n');
-    }
-
-    /**
-     * 모델이 이미지 입력을 지원하는지 판단.
-     * Ollama의 newer Gemma 계열은 capability가 비어 있어도 any-to-any/멀티모달로
-     * 동작할 수 있으므로 이름, family, 로컬 manifest, /api/show를 모두 OR로 본다.
-     */
-    private async modelSupportsVision(
-        modelName: string,
-        endpoint: AIEndpoint,
-        installedModel?: { capabilities?: string[]; family?: string }
-    ): Promise<{ supportsVision: boolean; reason: string }> {
-        if (!modelName) {
-            return { supportsVision: false, reason: 'empty model name' };
-        }
-
-        // 이름 기반 휴리스틱: Modelfile에 capability 미선언된 모델도 커버
-        const lower = modelName.toLowerCase();
-        const nameMatch = (
-            /gemma\s*3/.test(lower) ||
-            /gemma\s*4/.test(lower) ||
-            lower.includes('e4b') ||
-            lower.includes('26b') ||
-            lower.includes('gemma4') ||
-            lower.includes('gemma3') ||
-            lower.includes('supergemma4') ||
-            lower.includes('multimodal') ||
-            lower.includes('multi-modal') ||
-            lower.includes('any-to-any') ||
-            lower.includes('any2any') ||
-            lower.includes('mmproj') ||
-            lower.includes('llava') ||
-            lower.includes('vision') ||
-            lower.includes(':vl') ||
-            lower.includes('-vl') ||
-            lower.includes('_vl') ||
-            lower.includes('bakllava') ||
-            lower.includes('moondream') ||
-            lower.includes('minicpm-v') ||
-            lower.includes('cogvlm') ||
-            lower.includes('qwen-vl') ||
-            lower.includes('internvl')
-        );
-
-        if (nameMatch) {
-            return { supportsVision: true, reason: 'matched model name heuristic' };
-        }
-
-        if (installedModel?.capabilities?.includes('vision')) {
-            return { supportsVision: true, reason: 'installed model metadata includes vision capability' };
-        }
-
-        if (typeof installedModel?.family === 'string') {
-            const family = installedModel.family.toLowerCase();
-            if (
-                family.includes('vision') ||
-                family.includes('gemma4') ||
-                family.includes('gemma3') ||
-                /gemma\s*4/.test(family) ||
-                /gemma\s*3/.test(family) ||
-                family.includes('multimodal') ||
-                family.includes('multi-modal') ||
-                family.includes('any-to-any') ||
-                family.includes('any2any') ||
-                family.includes('mmproj') ||
-                family.includes('llava') ||
-                family.includes('moondream')
-            ) {
-                return { supportsVision: true, reason: `installed model family matched '${installedModel.family}'` };
-            }
-        }
-
-        // API 확인: 이름으로 못 잡은 모델도 Ollama capabilities로 판단
-        if (!endpoint.isLMStudio) {
-            const endpointBaseUrl = endpoint.apiUrl.replace(/\/api\/chat$/, '');
-            const caps = await getModelCapabilities(modelName, endpointBaseUrl);
-            if (caps.includes('vision')) {
-                return { supportsVision: true, reason: 'ollama show/api capabilities include vision' };
-            }
-            return { supportsVision: false, reason: `no vision signal from name, metadata, or ollama capabilities (${caps.join(', ') || 'empty'})` };
-        }
-
-        return { supportsVision: false, reason: 'no vision signal from name or installed metadata under LM Studio mode' };
-    }
-
     private trimHistory(maxHistory = 50): void {
         const chatHistory = this.host.getChatHistory();
         const displayMessages = this.host.getDisplayMessages();
@@ -1026,131 +639,4 @@ export class ChatPipeline {
     private stripActionTags(text: string): string {
         return sanitizeAssistantOutput(text);
     }
-
-    private postStreamErrorDetail(error: any, formatDetail: (detail: string) => string): void {
-        if (!error.response?.data?.on) {
-            return;
-        }
-
-        let buf = '';
-        error.response.data.on('data', (chunk: any) => buf += chunk.toString());
-        error.response.data.on('end', () => {
-            try {
-                const parsed = JSON.parse(buf);
-                const detail = parsed.error?.message || parsed.error || '';
-                if (detail) {
-                    this.host.postWebviewMessage({ type: 'error', value: formatDetail(detail) });
-                }
-            } catch {
-                // ignore parsing errors
-            }
-        });
-    }
-}
-
-function decodeBase64TextPrefix(base64: string, maxBytes: number): string {
-    const prefix = sliceBase64Prefix(base64, maxBytes);
-
-    if (!prefix) {
-        return '';
-    }
-
-    return Buffer.from(prefix, 'base64')
-        .toString('utf-8')
-        .replace(/\uFFFD$/, '');
-}
-
-function sliceBase64Prefix(base64: string, maxBytes: number): string {
-    const encodedLimit = Math.max(4, Math.floor(maxBytes / 3) * 4);
-    const end = Math.min(base64.length, encodedLimit);
-    const alignedEnd = end - (end % 4);
-
-    if (alignedEnd <= 0) {
-        return '';
-    }
-
-    return base64.slice(0, alignedEnd);
-}
-
-function estimateBase64Bytes(base64: string): number {
-    if (!base64) {
-        return 0;
-    }
-
-    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-    return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
-}
-
-function formatBytes(bytes: number): string {
-    if (bytes < 1024) {
-        return `${bytes}B`;
-    }
-
-    if (bytes < 1024 * 1024) {
-        return `${(bytes / 1024).toFixed(1)}KB`;
-    }
-
-    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
-
-function cleanHtmlText(html: string): string {
-    return html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function extractChunkHint(fetchedContent: string): string {
-    const match = fetchedContent.match(/use <read_file>([^<]+)<\/read_file>/i);
-    return match ? match[1] : '';
-}
-
-function isAbortError(error: any): boolean {
-    return error?.name === 'AbortError'
-        || error?.code === 'ERR_CANCELED'
-        || error?.message === 'canceled'
-        || error?.message === 'AbortError: This operation was aborted';
-}
-
-function formatPromptWithFileError(error: any, ollamaBase: string): string {
-    const targetName = getEngineDisplayName(ollamaBase);
-    const isOpenAICompatible = targetName !== 'Ollama';
-    const defaultPort = targetName === 'Rapid-MLX' ? '8000' : isOpenAICompatible ? '1234' : '11434';
-
-    if (error?.name === 'ReasoningOnlyStreamError') {
-        return `⚠️ ${error.message}\n\n**Try this:** switch to a non-thinking model, or make sure ${targetName} is asked to return only final answer content.`;
-    }
-    if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
-        return `⚠️ Could not reach ${targetName}.\n\n**Try this:**\n1. Open ${targetName} and make sure the local server is running.\n2. Check the engine URL in Settings. Default is http://127.0.0.1:${defaultPort}.`;
-    }
-    if (error.response?.status === 400) {
-        return `⚠️ Model request failed (400).\n\n**Usually this means:** the model name is off, or the prompt blew past the context window.\n**Try this:** pick the right model from the dropdown.\n${isOpenAICompatible ? `• In ${targetName}, make sure the model is loaded and the /v1 server is running.` : '• In Ollama, run `ollama list` and make sure the model exists.'}`;
-    }
-    if (error.response?.status === 404) {
-        return `⚠️ Model not found (404).\n\nThe selected model is not available in ${targetName} right now.\n${isOpenAICompatible ? `Load it in ${targetName} first, then try again.` : 'Pull it first with `ollama pull <model-name>`.'}`;
-    }
-    if (error.response?.status === 413) {
-        return '⚠️ Context limit hit (413).\n\nTry turning vault mode off for a moment, or spin up a fresh thread with `+`.';
-    }
-    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-        return '⚠️ The model timed out.\n\nTry a smaller model, a shorter prompt, or a longer request timeout.';
-    }
-    return `⚠️ Error: ${error.message}`;
-}
-
-function formatPromptError(error: any, ollamaBase: string): string {
-    const targetName = getEngineDisplayName(ollamaBase);
-
-    if (error?.name === 'ReasoningOnlyStreamError') {
-        return `⚠️ ${error.message}\n\nSwitch to a non-thinking model, or make sure ${targetName} returns final answer content instead of reasoning trace only.`;
-    }
-    if (error.code === 'ECONNREFUSED') {
-        return `⚠️ Could not reach ${targetName}.\nMake sure the local server is up.`;
-    }
-    if (error.response?.status === 400 || error.response?.status === 413) {
-        return '⚠️ Context limit hit. The prompt is too large. Start a fresh thread or trim the request.';
-    }
-    return `⚠️ Error: ${error.message}`;
 }

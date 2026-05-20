@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getVaultDir } from './config';
 import { tryAutoPushBrain } from './brainGitSync';
-import type { ActionExecutionHost } from './actionExecutor';
+import type { ActionExecutionHost } from './action-executor';
 
 export interface ActionReportContext {
     report: string[];

@@ -722,32 +722,14 @@ This release focuses on making agentic file edits visible, debuggable, and easie
 
 ### v3.7.0
 
+- Refactored webview main.ts into seven focused modules with reactive state management (state-store.ts, dom-elements.ts, event-registrations.ts, error-overlay.ts, slider-setup.ts, render-file-changes.ts)
+- Extracted sidebarChatProvider.ts module-level pure functions into three focused modules: drop-utils.ts (attachment/drop utilities), mcp-slash-utils.ts (MCP slash command parsing helpers), and format-utils.ts (formatting utilities)
 - Extracted queue manager from sidebarChatProvider.ts into queue-manager.ts with createQueueManager(deps) factory managing all queue state, retry backoff, and webview sync
 - Extracted webview message router host into webview-router-host.ts with typed RouterHostDeps interface
 - Extracted settings command host into settings-command-host.ts with factory handling globalState persistence
-- Extracted drop/attachment utility functions into drop-utils.ts
-- Extracted MCP slash command helpers into mcp-slash-utils.ts
-- Extracted formatting helpers into format-utils.ts
+- Fixed pre-existing Tab key handling bug in keydown event (was checking undefined variable)
 - Removed _stopGeneration() dead code after delegating directly to _queueManager
-- No class logic or behavior changes in sidebarChatProvider
-- Packaged `release/llem-3.7.0.vsix`.
-
-### v3.7.0
-
-- Refactored sidebarChatProvider.ts by extracting module-level pure functions into three focused modules: drop-utils.ts (attachment/drop utilities), mcp-slash-utils.ts (MCP slash command parsing helpers), and format-utils.ts (formatting utilities)
 - No class logic or behavior changes
-- Packaged `release/llem-3.7.0.vsix`.
-
-### v3.7.0
-
-- Refactored webview main.ts into seven focused modules with reactive state management
-- Added generic createStateStore factory with get/set/subscribe for type-safe reactive state
-- Extracted 61 DOM queries into dom-elements.ts with typed DomElements interface
-- Extracted safeListen and all event registrations into event-registrations.ts
-- Extracted error overlays into error-overlay.ts
-- Extracted slider displays into slider-setup.ts
-- Extracted renderFileChangesSummary into render-file-changes.ts
-- Fixed pre-existing Tab key handling bug in keydown event
 - Packaged `release/llem-3.7.0.vsix`.
 
 ### v3.6.9

@@ -1,0 +1,484 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import {
+    BRAIN_FILES_CACHE_TTL_MS,
+    EXCLUDED_DIRS,
+    MAX_CONTEXT_SIZE,
+    MAX_PROLOG_CONTEXT_SIZE,
+    SECOND_BRAIN_CONTEXT_CACHE_TTL_MS,
+    WORKSPACE_CONTEXT_CACHE_TTL_MS,
+    getVaultDir,
+    getConfig,
+    getPrologDirs,
+} from './config';
+import { buildDesignPlanningDirective, shouldUseDesignPlanningMode, type RequestExecutionPhase } from './designPlanningMode';
+import { buildExecutionModeDirective, type ExecutionMode } from './executionMode';
+import { logInfo } from './logger';
+import { PerfLogger } from './perfLogger';
+import { collectRelevantTerms, pruneHistoryMessages, truncateText } from './promptBudgeting';
+import type { BrainFilesCache, ChatMessage, ModelProfile, TextContextCache } from './types';
+
+// ===== Module-level helper functions (no closure needed) =====
+
+export interface RequestMessageBuildOptions {
+    chatHistory: ChatMessage[];
+    systemPrompt: string;
+    responsePreferenceDirective?: string;
+    brainEnabled: boolean;
+    internetEnabled?: boolean;
+    backgroundLabel?: string;
+    modelProfile?: ModelProfile;
+    activeModelName?: string;
+    activeEngineName?: string;
+    attachmentNames?: string[];
+    attachmentChars?: number;
+    prunedAttachmentChars?: number;
+    executionPhase?: RequestExecutionPhase;
+    executionMode?: ExecutionMode;
+}
+
+function getInternetDirective(enabled?: boolean): string {
+    if (!enabled) {
+        return '';
+    }
+
+    return `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`;
+}
+
+function getPrologContext(): string {
+    const prologDirs = getPrologDirs();
+    if (prologDirs.length === 0) {
+        return '';
+    }
+
+    try {
+        fs.mkdirSync(prologDirs[0], { recursive: true });
+    } catch {
+        // Continue with any readable existing prolog directory.
+    }
+
+    const markdownFiles = collectPrologMarkdownFiles(prologDirs);
+
+    if (markdownFiles.length === 0) {
+        return '';
+    }
+
+    const sections: string[] = [];
+    let totalChars = 0;
+    for (const file of markdownFiles) {
+        try {
+            const raw = fs.readFileSync(file.path, 'utf8');
+            const remaining = MAX_PROLOG_CONTEXT_SIZE - totalChars;
+            if (remaining <= 0) {
+                break;
+            }
+            const content = raw.length > remaining
+                ? `${raw.slice(0, Math.max(0, remaining - 90))}\n\n[Prolog file truncated to protect context window.]`
+                : raw;
+            totalChars += content.length;
+            sections.push(`### ${file.name}\nSource: ${file.dir}\n\n${content.trim()}`);
+        } catch {
+            // Skip unreadable prolog files.
+        }
+    }
+
+    if (sections.length === 0) {
+        return '';
+    }
+
+    return `\n\n[MANDATORY PROLOG INSTRUCTIONS]\nSources: ${prologDirs.join('; ')}\nMarkdown files from $HOME/.llem/prolog are applied first in 0-9, A-Z filename order before every prompt. Follow these instructions before all other user-workflow guidance.\n\n${sections.join('\n\n---\n\n')}`;
+}
+
+function collectPrologMarkdownFiles(prologDirs: string[]): Array<{ name: string; path: string; dir: string }> {
+    const byResolvedPath = new Map<string, { name: string; path: string; dir: string }>();
+    for (const prologDir of prologDirs) {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(prologDir, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isFile() || !/\.(?:md|markdown)$/i.test(entry.name)) {
+                continue;
+            }
+            const filePath = path.resolve(prologDir, entry.name);
+            const key = process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+            if (!byResolvedPath.has(key)) {
+                byResolvedPath.set(key, {
+                    name: entry.name,
+                    path: filePath,
+                    dir: prologDir
+                });
+            }
+        }
+    }
+
+    return Array.from(byResolvedPath.values())
+        .sort((a, b) => {
+            const dirOrder = prologDirs.indexOf(a.dir) - prologDirs.indexOf(b.dir);
+            if (dirOrder !== 0) {
+                return dirOrder;
+            }
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+}
+
+function findLatestUserPrompt(messages: ChatMessage[]): string {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.role === 'user' && typeof message.content === 'string') {
+            return message.content;
+        }
+    }
+    return '';
+}
+
+// ===== Deps interface =====
+
+export interface ContextBuilderDeps {
+    /** Provides the active editor filename and content for context. */
+    getActiveEditor(): { name?: string; content: string };
+    /** Provides the workspace root path (or undefined if no workspace is open). */
+    getWorkspaceRoot(): string | undefined;
+}
+
+// ===== Public interface =====
+
+export interface ContextBuilder {
+    invalidate(scope?: { workspace?: boolean; brain?: boolean }): void;
+    findBrainFiles(dir: string): string[];
+    getBrainFiles(brainDir?: string): string[];
+    getBrainFileCount(): number;
+    getSecondBrainContext(): string;
+    readBrainFile(filename: string): string;
+    getWorkspaceContext(): string;
+    buildRequestMessages(options: RequestMessageBuildOptions): ChatMessage[];
+}
+
+// ===== Factory =====
+
+export function createContextBuilder(deps: ContextBuilderDeps): ContextBuilder {
+    let workspaceContextCache: TextContextCache | undefined;
+    let secondBrainContextCache: TextContextCache | undefined;
+    let brainFilesCache: BrainFilesCache | undefined;
+
+    function invalidate(scope: { workspace?: boolean; brain?: boolean } = { workspace: true, brain: true }): void {
+        if (scope.workspace) {
+            workspaceContextCache = undefined;
+        }
+        if (scope.brain) {
+            secondBrainContextCache = undefined;
+            brainFilesCache = undefined;
+        }
+    }
+
+    function findBrainFiles(dir: string): string[] {
+        let results: string[] = [];
+        try {
+            const list = fs.readdirSync(dir);
+            for (const file of list) {
+                const filePath = path.join(dir, file);
+                const stat = fs.statSync(filePath);
+                if (stat && stat.isDirectory()) {
+                    if (file !== '.git' && file !== 'node_modules' && file !== '.obsidian') {
+                        results = results.concat(findBrainFiles(filePath));
+                    }
+                } else if (file.endsWith('.md') || file.endsWith('.txt')) {
+                    results.push(filePath);
+                }
+            }
+        } catch {
+            // skip unreadable dirs
+        }
+        return results;
+    }
+
+    function getBrainFiles(brainDir = getVaultDir()): string[] {
+        const cacheKey = brainDir;
+        const now = Date.now();
+        if (brainFilesCache && brainFilesCache.key === cacheKey && brainFilesCache.expiresAt > now) {
+            return brainFilesCache.files;
+        }
+
+        const files = fs.existsSync(brainDir) ? findBrainFiles(brainDir) : [];
+        brainFilesCache = {
+            key: cacheKey,
+            files,
+            expiresAt: now + BRAIN_FILES_CACHE_TTL_MS
+        };
+        return files;
+    }
+
+    function getBrainFileCount(): number {
+        return getBrainFiles().length;
+    }
+
+    function getSecondBrainContext(): string {
+        const brainDir = getVaultDir();
+        const cacheKey = brainDir;
+        const now = Date.now();
+        if (secondBrainContextCache && secondBrainContextCache.key === cacheKey && secondBrainContextCache.expiresAt > now) {
+            return secondBrainContextCache.value;
+        }
+
+        const value = buildSecondBrainContext(brainDir);
+        secondBrainContextCache = {
+            key: cacheKey,
+            value,
+            expiresAt: now + SECOND_BRAIN_CONTEXT_CACHE_TTL_MS
+        };
+        return value;
+    }
+
+    function readBrainFile(filename: string): string {
+        const brainDir = getVaultDir();
+        if (!fs.existsSync(brainDir)) {
+            return '[ERROR] The vault is not ready yet. Open the vault menu first.';
+        }
+
+        const exactPath = path.join(brainDir, filename);
+        if (fs.existsSync(exactPath)) {
+            const content = fs.readFileSync(exactPath, 'utf-8');
+            return content.slice(0, 8000);
+        }
+
+        const allFiles = getBrainFiles(brainDir);
+        const match = allFiles.find(f =>
+            path.basename(f) === filename ||
+            path.basename(f) === filename + '.md' ||
+            f.includes(filename)
+        );
+
+        if (match) {
+            const content = fs.readFileSync(match, 'utf-8');
+            return content.slice(0, 8000);
+        }
+
+        return `[NOT FOUND] Could not find "${filename}" in the vault. Check the vault index and try again.`;
+    }
+
+    function getWorkspaceContext(): string {
+        const root = deps.getWorkspaceRoot();
+        if (!root) { return ''; }
+
+        const cacheKey = `${root}:${getConfig().maxTreeFiles}`;
+        const now = Date.now();
+        if (workspaceContextCache && workspaceContextCache.key === cacheKey && workspaceContextCache.expiresAt > now) {
+            return workspaceContextCache.value;
+        }
+
+        const value = buildWorkspaceContext(root);
+        workspaceContextCache = {
+            key: cacheKey,
+            value,
+            expiresAt: now + WORKSPACE_CONTEXT_CACHE_TTL_MS
+        };
+        return value;
+    }
+
+    function buildRequestMessages(options: RequestMessageBuildOptions): ChatMessage[] {
+        const start = performance.now();
+        const reqMessages = [...options.chatHistory];
+        const activeEditor = deps.getActiveEditor();
+        const contextBudget = options.modelProfile?.contextBudget;
+        const workspaceContext = getWorkspaceContext();
+        const prologContext = getPrologContext();
+        const vaultContext = options.brainEnabled ? getSecondBrainContext() : '';
+        const internetDirective = getInternetDirective(options.internetEnabled);
+        const backgroundLabel = options.backgroundLabel ?? 'BACKGROUND CONTEXT';
+        const latestUserPrompt = findLatestUserPrompt(reqMessages);
+        const designPlanningDirective = shouldUseDesignPlanningMode(latestUserPrompt, options.attachmentNames || [])
+            ? buildDesignPlanningDirective(options.executionPhase ?? 'initial')
+            : '';
+        const executionModeDirective = buildExecutionModeDirective(options.executionMode ?? 'default');
+        const activeRuntimeDirective = options.activeModelName
+            ? `\n\n[ACTIVE RUNTIME]\nThis request is being answered by the real local engine "${options.activeEngineName || 'Local Engine'}" using the loaded model "${options.activeModelName}". If the user asks which model is being used right now, answer with this active runtime model exactly. Do NOT infer the answer from source files, config defaults, or examples in the workspace unless the user explicitly asks about code or settings values.`
+            : '';
+
+        const activeEditorContentRaw = contextBudget
+            ? truncateText(activeEditor.content, contextBudget.activeEditorChars)
+            : activeEditor.content;
+        let activeEditorContent = activeEditor.name
+            ? `\n\n[Currently open file: ${activeEditor.name}]\n\`\`\`\n${activeEditorContentRaw}\n\`\`\``
+            : activeEditorContentRaw;
+        let workspaceContent = contextBudget
+            ? truncateText(workspaceContext, contextBudget.workspaceChars)
+            : workspaceContext;
+        let vaultContent = contextBudget
+            ? truncateText(vaultContext, contextBudget.vaultChars)
+            : vaultContext;
+
+        if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
+            const buildSystemContent = () => `${options.systemPrompt}${prologContext}${options.responsePreferenceDirective || ''}${activeRuntimeDirective}${executionModeDirective}${designPlanningDirective}\n\n[${backgroundLabel}]\n${activeEditorContent}\n${workspaceContent}\n\n[VAULT DIRECTORY]\n${getVaultDir()}\n\n${vaultContent}${internetDirective}`;
+            let systemContent = buildSystemContent();
+            if (contextBudget) {
+                const minimumHistoryBudget = 4_000;
+                const maxSystemChars = Math.max(0, contextBudget.totalPromptChars - minimumHistoryBudget);
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    vaultContent = truncateText(vaultContent, Math.max(0, vaultContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    workspaceContent = truncateText(workspaceContent, Math.max(0, workspaceContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+                if (systemContent.length > maxSystemChars) {
+                    const overflow = systemContent.length - maxSystemChars;
+                    activeEditorContent = truncateText(activeEditorContent, Math.max(0, activeEditorContent.length - overflow));
+                    systemContent = buildSystemContent();
+                }
+            }
+            const historyBudget = contextBudget
+                ? Math.max(0, contextBudget.totalPromptChars - systemContent.length)
+                : Number.POSITIVE_INFINITY;
+            const prunedHistory = pruneHistoryMessages(
+                reqMessages.slice(1),
+                historyBudget,
+                collectRelevantTerms(activeEditor.name, options.attachmentNames || [])
+            );
+            const finalLatestUser = [...prunedHistory.messages]
+                .reverse()
+                .find(message => message.role === 'user' && typeof message.content === 'string' && !message.content.trimStart().startsWith('[SYSTEM:'));
+            if ((options.attachmentNames || []).length > 0) {
+                const finalLatestUserContent = String(finalLatestUser?.content || '');
+                logInfo(`[CONTEXT] Attachment final request check names=${(options.attachmentNames || []).join('|')} historyBudget=${historyBudget} keptHistoryChars=${prunedHistory.keptChars} latestUserChars=${finalLatestUserContent.length} hasAttachedFileBlock=${finalLatestUserContent.includes('[ATTACHED FILE:')} prunedMessages=${prunedHistory.prunedMessages}`);
+            }
+            reqMessages.splice(1, reqMessages.length - 1, ...prunedHistory.messages);
+            reqMessages[0] = {
+                role: 'system',
+                content: systemContent
+            };
+            PerfLogger.update({
+                historyChars: prunedHistory.keptChars,
+                activeEditorChars: activeEditorContent.length,
+                workspaceChars: workspaceContent.length,
+                vaultChars: vaultContent.length,
+                attachmentChars: options.attachmentChars || 0,
+                prunedMessages: prunedHistory.prunedMessages,
+                prunedAttachmentChars: options.prunedAttachmentChars || 0
+            });
+        }
+        PerfLogger.update({ contextBuildMs: performance.now() - start });
+        return reqMessages;
+    }
+
+    function buildSecondBrainContext(brainDir: string): string {
+        const start = performance.now();
+        if (!fs.existsSync(brainDir)) return '';
+
+        const files = getBrainFiles(brainDir);
+        PerfLogger.update({ vaultScanMs: performance.now() - start, vaultFileCount: files.length });
+        if (files.length === 0) return '';
+
+        const maxIndex = 200;
+        const index: string[] = [];
+        let truncated = false;
+
+        for (let i = 0; i < files.length; i++) {
+            if (i >= maxIndex) {
+                truncated = true;
+                break;
+            }
+            const file = files[i];
+            const relativePath = path.relative(brainDir, file);
+            try {
+                const firstLine = fs.readFileSync(file, 'utf-8').split('\n').find(l => l.trim().length > 0) || '';
+                const title = firstLine.replace(/^#+\s*/, '').slice(0, 80);
+                index.push(`  📄 ${relativePath}  →  "${title}"`);
+            } catch {
+                index.push(`  📄 ${relativePath}`);
+            }
+        }
+
+        const msgLimit = truncated ? `\n(Showing only the first ${maxIndex} files so the context does not blow up.)` : '';
+
+        return `\n\n[CRITICAL: VAULT INDEX — User Notes (${files.length} documents)]\nThe user has a synced markdown vault. Below is the table of contents.${msgLimit}\nIf the request overlaps with anything in this index, read the relevant note before answering.\nTo read the full content of any note, use EXACTLY this syntax: <read_vault>filename_or_path</read_vault>\nYou can call <read_vault> multiple times. Always read the full note before answering.\n\n**IMPORTANT: When your answer uses knowledge from the vault, end your response with a "Sources" line listing the note files you used. Example:\nSources: product-roadmap.md, launch-notes.md**\n\n${index.join('\n')}\n\n`;
+    }
+
+    function buildWorkspaceContext(root: string): string {
+        const { maxTreeFiles } = getConfig();
+        const lines: string[] = [];
+        let count = 0;
+
+        const walk = (dir: string, prefix: string) => {
+            if (count >= maxTreeFiles) { return; }
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(dir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+
+            entries.sort((a, b) => {
+                if (a.isDirectory() && !b.isDirectory()) { return -1; }
+                if (!a.isDirectory() && b.isDirectory()) { return 1; }
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const entry of entries) {
+                if (count >= maxTreeFiles) { break; }
+                if (EXCLUDED_DIRS.has(entry.name)) { continue; }
+                if (entry.name.startsWith('.') && entry.isDirectory()) { continue; }
+
+                if (entry.isDirectory()) {
+                    lines.push(`${prefix}📁 ${entry.name}/`);
+                    count++;
+                    walk(path.join(dir, entry.name), prefix + '  ');
+                } else {
+                    lines.push(`${prefix}📄 ${entry.name}`);
+                    count++;
+                }
+            }
+        };
+        walk(root, '');
+
+        let result = '';
+        if (lines.length > 0) {
+            result += `\n\n[WORKSPACE INFO]\nPath: ${root}\n\n[PROJECT TREE]\n${lines.join('\n')}`;
+        }
+
+        const keyFiles = [
+            'package.json', 'tsconfig.json', 'vite.config.ts', 'vite.config.js',
+            'next.config.js', 'next.config.ts', 'README.md',
+            'index.html', 'app.js', 'app.ts', 'main.ts', 'main.js',
+            'src/index.ts', 'src/index.js', 'src/App.tsx', 'src/App.jsx',
+            'src/main.ts', 'src/main.js'
+        ];
+        const CHUNK_LIMIT = 20_000;
+        const SUMMARY_PREVIEW = 4_000;
+
+        for (const keyFile of keyFiles) {
+            const abs = path.join(root, keyFile);
+            if (fs.existsSync(abs)) {
+                try {
+                    const content = fs.readFileSync(abs, 'utf-8');
+                    if (content.length < CHUNK_LIMIT) {
+                        result += `\n\n[FILE CONTENT: ${keyFile}]\n\`\`\`\n${content}\n\`\`\``;
+                    } else {
+                        result += `\n\n[FILE PREVIEW: ${keyFile} (${content.length} chars - preview)]\n\`\`\`\n${content.slice(0, SUMMARY_PREVIEW)}...\n\`\`\`\nTo read the full file, use: <read_file>${keyFile}</read_file>`;
+                    }
+                } catch {
+                    // skip unreadable key files
+                }
+            }
+        }
+
+        return result;
+    }
+
+    return {
+        invalidate,
+        findBrainFiles,
+        getBrainFiles,
+        getBrainFileCount,
+        getSecondBrainContext,
+        readBrainFile,
+        getWorkspaceContext,
+        buildRequestMessages
+    };
+}

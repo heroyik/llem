@@ -43,7 +43,6 @@ export interface QueueManagerDeps {
     logError(message: string): void;
 }
 
-
 export interface QueueManager {
     createQueuedRequest(input: {
         kind: QueueRequestKind;

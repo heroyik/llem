@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getLlemSettings, getVaultDir, getConfig } from './config';
-import { executeActions } from './actionExecutor';
+import { createActionExecutor, type ActionExecutor } from './action-executor';
 import { parseMcpSlashCommandActions } from './actionParser';
 import { SYSTEM_PROMPT } from './prompts';
 import { getChatWebviewHtml } from './webviewHtml';
-import { ContextBuilder } from './contextBuilder';
+import { createContextBuilder, type ContextBuilder } from './build-context';
 import { ChatSession } from './chatSession';
 import { HistoryManager } from './historyManager';
 import { ChatPipeline } from './chatPipeline';
@@ -68,6 +68,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _isSyncingBrain: boolean = false;
     public _brainEnabled: boolean = true;
     private _queueManager: QueueManager;
+    private _actionExecutor: ActionExecutor;
     private _lastPrompt?: string;
     private _lastModel?: string;
     private _lastFiles?: AttachedFile[];
@@ -79,7 +80,21 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _topK: number;
     private _rapidMlxTextSampling: RapidMlxTextSamplingSettings;
     private _systemPrompt: string;
-    private readonly _contextBuilder = new ContextBuilder();
+    private readonly _contextBuilder = createContextBuilder({
+        getActiveEditor: () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.uri.scheme !== 'file') {
+                return { content: '' };
+            }
+            const text = editor.document.getText();
+            const fileName = path.basename(editor.document.fileName);
+            if (text.trim().length === 0) {
+                return { name: fileName, content: '' };
+            }
+            return { name: fileName, content: text };
+        },
+        getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    });
     private readonly _chatSession: ChatSession;
     private readonly _historyManager: HistoryManager;
     private readonly _chatPipeline: ChatPipeline;
@@ -100,6 +115,34 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         this._historyManager = new HistoryManager(ctx);
         this._chatSession = new ChatSession(ctx, () => this._systemPrompt);
         this._responsePreferenceManager = new ResponsePreferenceManager(ctx);
+        this._actionExecutor = createActionExecutor({
+            appendChatMessage: (message) => this._chatSession.chatHistory.push(message),
+            injectSystemMessage: (message) => this.injectSystemMessage(message),
+            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
+            listMcpTools: () => this._mcpManager.listTools(),
+            callMcpTool: async (server, tool, args) => {
+                const startedAt = Date.now();
+                this._view?.webview.postMessage({
+                    type: 'mcpToolStatus',
+                    state: 'running',
+                    server,
+                    tool,
+                    startedAt
+                });
+                try {
+                    return await this._mcpManager.callTool(server, tool, args);
+                } finally {
+                    this._view?.webview.postMessage({
+                        type: 'mcpToolStatus',
+                        state: 'done',
+                        server,
+                        tool,
+                        durationMs: Date.now() - startedAt
+                    });
+                }
+            },
+            getExecutionMode: () => this._executionMode
+        });
         this._queueManager = createQueueManager({
             postWebviewMessage: (message) => this._view?.webview.postMessage(message),
             requestRetryGuard: this._requestRetryGuard,
@@ -1124,34 +1167,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _executeActions(aiMessage: string): Promise<string[]> {
-        return executeActions(aiMessage, {
-            appendChatMessage: (message) => this._chatSession.chatHistory.push(message),
-            injectSystemMessage: (message) => this.injectSystemMessage(message),
-            invalidateContextCaches: (scope) => this.invalidateContextCaches(scope),
-            listMcpTools: () => this._mcpManager.listTools(),
-            callMcpTool: async (server, tool, args) => {
-                const startedAt = Date.now();
-                this._view?.webview.postMessage({
-                    type: 'mcpToolStatus',
-                    state: 'running',
-                    server,
-                    tool,
-                    startedAt
-                });
-                try {
-                    return await this._mcpManager.callTool(server, tool, args);
-                } finally {
-                    this._view?.webview.postMessage({
-                        type: 'mcpToolStatus',
-                        state: 'done',
-                        server,
-                        tool,
-                        durationMs: Date.now() - startedAt
-                    });
-                }
-            },
-            getExecutionMode: () => this._executionMode
-        });
+        return this._actionExecutor.executeActions(aiMessage);
     }
 
     public getExecutionMode(): ExecutionMode {
